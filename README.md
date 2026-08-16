@@ -64,15 +64,36 @@
 
 ## 🚀 Installation & Activation
 
+### Method 1: Obtainium (Recommended)
+
+Automatically download and receive updates by adding SwiftBackupPrem to [Obtainium](https://github.com/ImranR98/Obtainium):
+
+<p>
+  <a href="https://apps.obtainium.imranr.dev/redirect?r=obtainium://add/https%3A%2F%2Fgithub.com%2Fs1ddhants1%2FSwiftBackupPrem">
+    <img src="https://raw.githubusercontent.com/ImranR98/Obtainium/main/assets/graphics/badge_obtainium.png" alt="Get it on Obtainium" height="80">
+  </a>
+</p>
+
+Or add the repository URL manually in Obtainium:
+```
+https://github.com/s1ddhants1/SwiftBackupPrem
+```
+
+### Method 2: Manual Download
+
 1. **Download**: Grab the latest APK from the [Releases](https://github.com/s1ddhants1/SwiftBackupPrem/releases) page.
 2. **Install**: Install the APK on your rooted Android device.
-3. **Enable Module in LSPosed**:
-   - Open **LSPosed Manager**.
-   - Navigate to the **Modules** tab and tap **SwiftBackupPrem**.
-   - Toggle **Enable module**.
-   - Ensure the scope includes **Swift Backup** (`org.swiftapps.swiftbackup`).
-4. **Reboot**: Perform a quick reboot (or soft reboot) of your device.
-5. **Configure**: Open the **SwiftBackupPrem** app to configure custom Firebase credentials (recommended) or launch Swift Backup directly.
+
+---
+
+### Module Activation (LSPosed)
+
+1. Open **LSPosed Manager**.
+2. Navigate to the **Modules** tab and tap **SwiftBackupPrem**.
+3. Toggle **Enable module**.
+4. Ensure the scope includes **Swift Backup** (`org.swiftapps.swiftbackup`).
+5. Perform a quick reboot (or soft reboot) of your device.
+6. Open the **SwiftBackupPrem** app to configure custom Firebase credentials (recommended) or launch Swift Backup directly.
 
 ---
 
