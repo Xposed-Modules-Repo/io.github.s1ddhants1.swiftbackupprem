@@ -34,6 +34,27 @@ class Module : IXposedHookLoadPackage {
         val prefs = PreferencesManager(xPrefs)
         val cl = lpparam.classLoader
 
+        // Neutralize System.exit and Runtime.exit to prevent forced JVM termination
+        try {
+            XposedHelpers.findAndHookMethod(System::class.java, "exit", Int::class.javaPrimitiveType, object : XC_MethodHook() {
+                override fun beforeHookedMethod(param: MethodHookParam) {
+                    val code = param.args[0] as? Int ?: 0
+                    Log.w("SBP", "Neutralized System.exit($code)")
+                    param.result = null
+                }
+            })
+        } catch (_: Throwable) {}
+
+        try {
+            XposedHelpers.findAndHookMethod(Runtime::class.java, "exit", Int::class.javaPrimitiveType, object : XC_MethodHook() {
+                override fun beforeHookedMethod(param: MethodHookParam) {
+                    val code = param.args[0] as? Int ?: 0
+                    Log.w("SBP", "Neutralized Runtime.exit($code)")
+                    param.result = null
+                }
+            })
+        } catch (_: Throwable) {}
+
         val swiftAppClass = try {
             cl.loadClass("org.swiftapps.swiftbackup.SwiftApp")
         } catch (t: Throwable) {
@@ -125,6 +146,7 @@ class Module : IXposedHookLoadPackage {
                 // Hook dynamically discovered classes from DexKit
                 vClass?.let { hookVClass(it) }
                 homeViewModelClass?.let { hookHomeViewModelClass(it) }
+                authUserClass?.let { hookAuthUserClass(it, cl) }
                 hookSwiftAppPremium(param.thisObject)
 
                 clientIdClass?.let { cIdClass ->
@@ -223,6 +245,9 @@ class Module : IXposedHookLoadPackage {
         // Obfuscated HomeViewModel hook
         homeViewModelClass?.let { hookHomeViewModelClass(it) }
 
+        // Obfuscated AuthUser hook
+        authUserClass?.let { hookAuthUserClass(it, cl) }
+
         // Hook NoGmsSignInActivity to dismiss blocked/failed dialogs and proceed with RESULT_OK
         try {
             val noGmsClass = cl.loadClass("org.swiftapps.swiftbackup.cloud.connect.NoGmsSignInActivity")
@@ -242,36 +267,18 @@ class Module : IXposedHookLoadPackage {
             }
         } catch (_: Throwable) {}
 
-        // Guarantee non-null MFirebaseUser so System.exit(0) is never called
-        try {
-            val a3Class = cl.loadClass("org.swiftapps.swiftbackup.common.a3")
-            for (m in a3Class.declaredMethods) {
-                if (m.parameterCount == 0 && m.returnType.name.contains("MFirebaseUser")) {
-                    XposedBridge.hookMethod(m, object : XC_MethodHook() {
-                        override fun afterHookedMethod(param: MethodHookParam) {
-                            if (param.result == null) {
-                                param.result = getFallbackUser(cl)
-                            }
-                        }
-                    })
-                }
-            }
-        } catch (_: Throwable) {}
-
-        try {
-            val authAClass = cl.loadClass("org.swiftapps.swiftbackup.anonymous.a")
-            for (m in authAClass.declaredMethods) {
-                if (m.parameterCount == 0 && m.returnType.name.contains("MFirebaseUser")) {
-                    XposedBridge.hookMethod(m, object : XC_MethodHook() {
-                        override fun afterHookedMethod(param: MethodHookParam) {
-                            if (param.result == null) {
-                                param.result = getFallbackUser(cl)
-                            }
-                        }
-                    })
-                }
-            }
-        } catch (_: Throwable) {}
+        // Guarantee non-null MFirebaseUser across all known class names
+        val knownAuthClassNames = listOf(
+            "defpackage.d45",
+            "org.swiftapps.swiftbackup.common.a3",
+            "org.swiftapps.swiftbackup.anonymous.a"
+        )
+        for (name in knownAuthClassNames) {
+            try {
+                val authClass = cl.loadClass(name)
+                hookAuthUserClass(authClass, cl)
+            } catch (_: Throwable) {}
+        }
 
         // Neutralize Const.Z0 (the block/signOut/exit handler)
         try {
@@ -284,6 +291,23 @@ class Module : IXposedHookLoadPackage {
                 }
             }
         } catch (_: Throwable) {}
+    }
+
+    private fun hookAuthUserClass(targetClass: Class<*>, cl: ClassLoader) {
+        Log.d("SBP", "Hooking AuthUser class: ${targetClass.name}")
+        for (m in targetClass.declaredMethods) {
+            if (m.parameterCount == 0 && m.returnType.name.contains("MFirebaseUser")) {
+                try {
+                    XposedBridge.hookMethod(m, object : XC_MethodHook() {
+                        override fun afterHookedMethod(param: MethodHookParam) {
+                            if (param.result == null) {
+                                param.result = getFallbackUser(cl)
+                            }
+                        }
+                    })
+                } catch (_: Throwable) {}
+            }
+        }
     }
 
     private fun hookSwiftAppPremium(swiftApp: Any?) {
@@ -347,13 +371,44 @@ class Module : IXposedHookLoadPackage {
     }
 
     private fun getFallbackUser(cl: ClassLoader): Any? {
+        // 1. Try anonUserClass or known anonymous user generator classes
+        val anonClasses = listOfNotNull(
+            anonUserClass,
+            try { cl.loadClass("defpackage.b45") } catch (_: Throwable) { null },
+            try { cl.loadClass("org.swiftapps.swiftbackup.anonymous.a") } catch (_: Throwable) { null }
+        )
+        for (c in anonClasses) {
+            try {
+                for (m in c.declaredMethods) {
+                    if (m.parameterCount == 0 && m.returnType.name.contains("MFirebaseUser") && java.lang.reflect.Modifier.isStatic(m.modifiers)) {
+                        m.isAccessible = true
+                        val res = m.invoke(null)
+                        if (res != null) return res
+                    }
+                }
+            } catch (_: Throwable) {}
+        }
+
+        // 2. Direct MFirebaseUser instantiation
         return try {
-            val authAClass = cl.loadClass("org.swiftapps.swiftbackup.anonymous.a")
-            val companionField = authAClass.getField("b")
-            val companionInstance = companionField.get(null)
-            val dMethod = companionInstance.javaClass.getMethod("d")
-            dMethod.invoke(companionInstance)
-        } catch (_: Throwable) {
+            val mUserClass = cl.loadClass("org.swiftapps.swiftbackup.anonymous.MFirebaseUser")
+            for (ctor in mUserClass.declaredConstructors) {
+                if (ctor.parameterTypes.size == 7) {
+                    ctor.isAccessible = true
+                    return ctor.newInstance(
+                        "anonymous_user",
+                        "anonymous@swiftbackup.app",
+                        true,
+                        "Anonymous user",
+                        null,
+                        emptyList<Any>(),
+                        "anonymous"
+                    )
+                }
+            }
+            null
+        } catch (t: Throwable) {
+            Log.e("SBP", "Failed creating fallback MFirebaseUser", t)
             null
         }
     }

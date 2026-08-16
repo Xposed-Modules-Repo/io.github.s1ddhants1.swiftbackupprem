@@ -12,6 +12,8 @@ private val classesClientId = mapOf(561 to "kf.s0", 569 to "rf.r0", 590 to "eh.u
 private val classesBackupApk = mapOf(561 to "org.swiftapps.swiftbackup.common.w1", 569 to "org.swiftapps.swiftbackup.common.n2", 590 to "org.swiftapps.swiftbackup.common.c2", 620 to "defpackage.qm")
 private val classesPaths = mapOf(561 to "me.b", 569 to "te.c", 590 to "org.swiftapps.swiftbackup.a", 620 to "defpackage.ry5")
 private val classesHomeViewModel = mapOf(561 to "org.swiftapps.swiftbackup.home.a", 569 to "org.swiftapps.swiftbackup.home.a", 590 to "org.swiftapps.swiftbackup.home.a", 620 to "defpackage.c64")
+private val classesAuthUser = mapOf(561 to "org.swiftapps.swiftbackup.common.a3", 569 to "org.swiftapps.swiftbackup.common.a3", 590 to "org.swiftapps.swiftbackup.common.a3", 620 to "defpackage.d45")
+private val classesAnonUser = mapOf(561 to "org.swiftapps.swiftbackup.anonymous.a", 569 to "org.swiftapps.swiftbackup.anonymous.a", 590 to "org.swiftapps.swiftbackup.anonymous.a", 620 to "defpackage.b45")
 
 @Keep
 @JvmField
@@ -31,6 +33,12 @@ var cloudGmsClass: Class<*>? = null
 @Keep
 @JvmField
 var homeViewModelClass: Class<*>? = null
+@Keep
+@JvmField
+var authUserClass: Class<*>? = null
+@Keep
+@JvmField
+var anonUserClass: Class<*>? = null
 
 @Keep
 @Suppress("DEPRECATION")
@@ -41,6 +49,8 @@ fun findObfuscatedClasses(ctx: Context, cl: ClassLoader, sourceDir: String) {
         try { backupApkClass = cl.loadClass(classesBackupApk[ver]) } catch (_: Throwable) {}
         try { pathsClass = cl.loadClass(classesPaths[ver]) } catch (_: Throwable) {}
         try { homeViewModelClass = cl.loadClass(classesHomeViewModel[ver]) } catch (_: Throwable) {}
+        try { authUserClass = cl.loadClass(classesAuthUser[ver]) } catch (_: Throwable) {}
+        try { anonUserClass = cl.loadClass(classesAnonUser[ver]) } catch (_: Throwable) {}
     }
 
     try {
@@ -178,6 +188,22 @@ fun findObfuscatedClasses(ctx: Context, cl: ClassLoader, sourceDir: String) {
                     }.firstOrNull { !it.name.contains("$") })?.let {
                     homeViewModelClass = it.getInstance(cl)
                     Log.d("SBP", "Found HomeViewModel class: ${it.name}")
+                }
+            }
+
+            if (authUserClass == null) {
+                (bridge.findClass {
+                    excludePackages(excludePackages)
+                    matcher {
+                        addMethod {
+                            returnType("org.swiftapps.swiftbackup.anonymous.MFirebaseUser")
+                            modifiers(Modifier.PUBLIC or Modifier.STATIC)
+                            paramCount(0)
+                        }
+                    }
+                }.firstOrNull { !it.name.contains("$") })?.let {
+                    authUserClass = it.getInstance(cl)
+                    Log.d("SBP", "Found AuthUser class: ${it.name}")
                 }
             }
         }
