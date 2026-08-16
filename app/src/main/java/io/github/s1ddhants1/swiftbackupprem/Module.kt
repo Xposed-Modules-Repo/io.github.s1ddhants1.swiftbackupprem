@@ -31,7 +31,7 @@ class Module : IXposedHookLoadPackage {
             Log.w("SBP", "Could not set world readable on XSharedPreferences", t)
         }
 
-        val prefs = PreferencesManager(xPrefs)
+        val prefs = PreferencesManager(xPrefs, isDynamic = true)
         val cl = lpparam.classLoader
 
         // Neutralize System.exit and Runtime.exit to prevent forced JVM termination
@@ -143,13 +143,17 @@ class Module : IXposedHookLoadPackage {
                     } catch (_: Throwable) {}
                 }
 
-                if (prefs.enablePremium) {
-                    // Hook dynamically discovered classes from DexKit
-                    vClass?.let { hookVClass(it) }
-                    homeViewModelClass?.let { hookHomeViewModelClass(it) }
-                    authUserClass?.let { hookAuthUserClass(it, cl) }
-                    hookSwiftAppPremium(param.thisObject)
+                val isPremium = prefs.enablePremium
+                Log.d("SBP", "Applying premium state: $isPremium")
 
+                // Hook dynamically discovered classes from DexKit
+                vClass?.let { hookVClass(it, isPremium) }
+                homeViewModelClass?.let { hookHomeViewModelClass(it, isPremium) }
+                authUserClass?.let { hookAuthUserClass(it, cl) }
+                hookKnownClasses(cl, isPremium)
+                hookSwiftAppPremium(param.thisObject, isPremium)
+
+                if (isPremium) {
                     clientIdClass?.let { cIdClass ->
                         for (m in cIdClass.declaredMethods) {
                             if (m.name == "e" && m.parameterCount == 2) {
@@ -192,8 +196,6 @@ class Module : IXposedHookLoadPackage {
                             }
                         }
                     }
-                } else {
-                    Log.d("SBP", "Premium hooks disabled by user preference")
                 }
 
                 if (backupApkClass != null && pathsClass != null) {
@@ -209,9 +211,7 @@ class Module : IXposedHookLoadPackage {
             }
 
             override fun afterHookedMethod(param: MethodHookParam) {
-                if (prefs.enablePremium) {
-                    hookSwiftAppPremium(param.thisObject)
-                }
+                hookSwiftAppPremium(param.thisObject, prefs.enablePremium)
                 val isCustomFirebase = prefs.customFirebaseApp && prefs.clientId.isNotBlank()
                 if (isCustomFirebase) {
                     clientIdClass?.let { cIdClass ->
@@ -229,18 +229,13 @@ class Module : IXposedHookLoadPackage {
                 }
             }
         })
-
-        if (prefs.enablePremium) {
-            hookKnownClasses(cl)
-        }
-        hookTelemetrySuppression(cl, prefs)
     }
 
-    private fun hookKnownClasses(cl: ClassLoader) {
+    private fun hookKnownClasses(cl: ClassLoader, isPremium: Boolean) {
         // V class hooks
         try {
             val vClass = cl.loadClass("org.swiftapps.swiftbackup.common.V")
-            hookVClass(vClass)
+            hookVClass(vClass, isPremium)
         } catch (_: Throwable) {}
 
         // V$a hook
@@ -248,14 +243,14 @@ class Module : IXposedHookLoadPackage {
             val vClassA = cl.loadClass("org.swiftapps.swiftbackup.common.V\$a")
             for (m in vClassA.declaredMethods) {
                 if (m.name == "invoke") {
-                    XposedBridge.hookMethod(m, XC_MethodReplacement.returnConstant(java.lang.Boolean.TRUE))
+                    XposedBridge.hookMethod(m, XC_MethodReplacement.returnConstant(isPremium))
                     break
                 }
             }
         } catch (_: Throwable) {}
 
         // Obfuscated HomeViewModel hook
-        homeViewModelClass?.let { hookHomeViewModelClass(it) }
+        homeViewModelClass?.let { hookHomeViewModelClass(it, isPremium) }
 
         // Obfuscated AuthUser hook
         authUserClass?.let { hookAuthUserClass(it, cl) }
@@ -322,7 +317,7 @@ class Module : IXposedHookLoadPackage {
         }
     }
 
-    private fun hookSwiftAppPremium(swiftApp: Any?) {
+    private fun hookSwiftAppPremium(swiftApp: Any?, isPremium: Boolean) {
         if (swiftApp == null) return
         try {
             val appClass = swiftApp.javaClass
@@ -339,25 +334,25 @@ class Module : IXposedHookLoadPackage {
                         liveDataClass.name == "el.a"
 
                 if (isTarget) {
-                    Log.d("SBP", "Found SwiftApp premium LiveData field: ${field.name} (${liveDataClass.name})")
+                    Log.d("SBP", "Found SwiftApp premium LiveData field: ${field.name} (${liveDataClass.name}) -> setting $isPremium")
 
-                    // 1. Immediately force value to true
+                    // 1. Immediately force value to isPremium
                     for (m in liveDataClass.methods) {
                         if (m.parameterCount == 1 && (m.parameterTypes[0] == Any::class.java || m.parameterTypes[0] == java.lang.Boolean::class.java || m.parameterTypes[0] == Boolean::class.javaPrimitiveType)) {
                             if (m.name in listOf("k", "setValue", "postValue", "i", "l", "p")) {
-                                try { m.invoke(liveDataObj, java.lang.Boolean.TRUE) } catch (_: Throwable) {}
+                                try { m.invoke(liveDataObj, isPremium) } catch (_: Throwable) {}
                             }
                         }
                     }
 
-                    // 2. Hook setter methods to always force true on this specific instance
+                    // 2. Hook setter methods to always force isPremium on this specific instance
                     for (m in liveDataClass.declaredMethods) {
                         if (m.parameterCount == 1) {
                             try {
                                 XposedBridge.hookMethod(m, object : XC_MethodHook() {
                                     override fun beforeHookedMethod(param: MethodHookParam) {
                                         if (param.thisObject === liveDataObj && (param.args[0] is Boolean || param.args[0] == null)) {
-                                            param.args[0] = java.lang.Boolean.TRUE
+                                            param.args[0] = isPremium
                                         }
                                     }
                                 })
@@ -368,7 +363,7 @@ class Module : IXposedHookLoadPackage {
                                 XposedBridge.hookMethod(m, object : XC_MethodHook() {
                                     override fun afterHookedMethod(param: MethodHookParam) {
                                         if (param.thisObject === liveDataObj) {
-                                            param.result = java.lang.Boolean.TRUE
+                                            param.result = isPremium
                                         }
                                     }
                                 })
@@ -425,28 +420,28 @@ class Module : IXposedHookLoadPackage {
         }
     }
 
-    private fun hookVClass(targetClass: Class<*>) {
-        Log.d("SBP", "Hooking V class: ${targetClass.name}")
+    private fun hookVClass(targetClass: Class<*>, isPremium: Boolean) {
+        Log.d("SBP", "Hooking V class: ${targetClass.name} (isPremium=$isPremium)")
         try {
             val vpField = targetClass.getDeclaredField("vp")
             vpField.isAccessible = true
-            vpField.set(null, true)
+            vpField.set(null, isPremium)
         } catch (_: Throwable) {}
 
         try {
-            XposedHelpers.findAndHookMethod(targetClass, "getA", XC_MethodReplacement.returnConstant(java.lang.Boolean.TRUE))
+            XposedHelpers.findAndHookMethod(targetClass, "getA", XC_MethodReplacement.returnConstant(isPremium))
         } catch (_: Throwable) {}
 
         try {
             XposedHelpers.findAndHookMethod(targetClass, "setA", Boolean::class.javaPrimitiveType, object : XC_MethodHook() {
                 override fun beforeHookedMethod(param: MethodHookParam) {
-                    param.args[0] = java.lang.Boolean.TRUE
+                    param.args[0] = isPremium
                 }
             })
         } catch (_: Throwable) {}
 
         try {
-            XposedHelpers.findAndHookMethod(targetClass, "getG", XC_MethodReplacement.returnConstant(java.lang.Boolean.TRUE))
+            XposedHelpers.findAndHookMethod(targetClass, "getG", XC_MethodReplacement.returnConstant(isPremium))
         } catch (_: Throwable) {}
 
         // getC is the 'isBlocked' check: MUST return FALSE!
@@ -460,27 +455,27 @@ class Module : IXposedHookLoadPackage {
         } catch (_: Throwable) {}
 
         try {
-            XposedHelpers.findAndHookMethod(targetClass, "getVp", XC_MethodReplacement.returnConstant(java.lang.Boolean.TRUE))
+            XposedHelpers.findAndHookMethod(targetClass, "getVp", XC_MethodReplacement.returnConstant(isPremium))
         } catch (_: Throwable) {}
 
         try {
             XposedHelpers.findAndHookMethod(targetClass, "setVp", Boolean::class.javaPrimitiveType, object : XC_MethodHook() {
                 override fun beforeHookedMethod(param: MethodHookParam) {
-                    param.args[0] = java.lang.Boolean.TRUE
+                    param.args[0] = isPremium
                 }
             })
         } catch (_: Throwable) {}
     }
 
-    private fun hookHomeViewModelClass(targetClass: Class<*>) {
-        Log.d("SBP", "Hooking HomeViewModel class: ${targetClass.name}")
+    private fun hookHomeViewModelClass(targetClass: Class<*>, isPremium: Boolean) {
+        Log.d("SBP", "Hooking HomeViewModel class: ${targetClass.name} (isPremium=$isPremium)")
         for (m in targetClass.declaredMethods) {
             if (m.parameterCount == 1 && (m.parameterTypes[0] == Boolean::class.javaPrimitiveType || m.parameterTypes[0] == Boolean::class.javaObjectType)) {
-                Log.d("SBP", "Hooking HomeViewModel method: ${m.name}(${m.parameterTypes[0].name})")
+                Log.d("SBP", "Hooking HomeViewModel method: ${m.name}(${m.parameterTypes[0].name}) -> $isPremium")
                 try {
                     XposedBridge.hookMethod(m, object : XC_MethodHook() {
                         override fun beforeHookedMethod(param: MethodHookParam) {
-                            param.args[0] = java.lang.Boolean.TRUE
+                            param.args[0] = isPremium
                         }
                     })
                 } catch (t: Throwable) {
@@ -488,7 +483,7 @@ class Module : IXposedHookLoadPackage {
                 }
             } else if (m.parameterCount == 0 && (m.returnType == Boolean::class.javaPrimitiveType || m.returnType == Boolean::class.javaObjectType)) {
                 try {
-                    XposedBridge.hookMethod(m, XC_MethodReplacement.returnConstant(java.lang.Boolean.TRUE))
+                    XposedBridge.hookMethod(m, XC_MethodReplacement.returnConstant(isPremium))
                 } catch (_: Throwable) {}
             }
         }

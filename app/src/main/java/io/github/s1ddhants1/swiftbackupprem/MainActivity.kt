@@ -38,6 +38,7 @@ import io.github.s1ddhants1.swiftbackupprem.ui.component.SettingsSwitch
 import io.github.s1ddhants1.swiftbackupprem.ui.theme.Theme
 import io.github.s1ddhants1.swiftbackupprem.util.AppUtils
 import io.github.s1ddhants1.swiftbackupprem.util.PreferencesManager
+import java.io.File
 
 enum class AppScreen {
     Settings, About
@@ -326,5 +327,25 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        makeWorldReadable()
+    }
+
+    private fun makeWorldReadable() {
+        try {
+            @Suppress("DEPRECATION")
+            val prefsDir = File(applicationInfo.dataDir, "shared_prefs")
+            val prefsFile = File(prefsDir, "${BuildConfig.APPLICATION_ID}_preferences.xml")
+            if (prefsDir.exists()) {
+                prefsDir.setReadable(true, false)
+                prefsDir.setExecutable(true, false)
+            }
+            if (prefsFile.exists()) {
+                prefsFile.setReadable(true, false)
+            }
+        } catch (_: Throwable) {}
     }
 }

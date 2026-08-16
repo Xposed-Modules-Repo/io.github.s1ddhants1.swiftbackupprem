@@ -6,17 +6,28 @@ import androidx.core.content.edit
 import io.github.s1ddhants1.swiftbackupprem.Consts
 import kotlin.reflect.KProperty
 
-class PreferencesManager(private val prefs: SharedPreferences) {
+class PreferencesManager(
+    private val prefs: SharedPreferences,
+    private val isDynamic: Boolean = false
+) {
     private class Preference<T>(
+        private val isDynamic: Boolean,
         private val key: String,
-        defaultValue: T,
-        getter: (key: String, defaultValue: T) -> T,
+        private val defaultValue: T,
+        private val getter: (key: String, defaultValue: T) -> T,
         private val setter: (key: String, newValue: T) -> Unit
     ) {
         var value by mutableStateOf(getter(key, defaultValue))
             private set
 
-        operator fun getValue(thisRef: Any?, property: KProperty<*>) = value
+        operator fun getValue(thisRef: Any?, property: KProperty<*>): T {
+            return if (isDynamic) {
+                getter(key, defaultValue)
+            } else {
+                value
+            }
+        }
+
         operator fun setValue(thisRef: Any?, property: KProperty<*>, newValue: T) {
             value = newValue
             setter(key, newValue)
@@ -26,12 +37,13 @@ class PreferencesManager(private val prefs: SharedPreferences) {
     private fun getString(key: String, defaultValue: String) = prefs.getString(key, defaultValue) ?: defaultValue
     private fun getBoolean(key: String, defaultValue: Boolean) = prefs.getBoolean(key, defaultValue)
 
-    private fun putString(key: String, value: String?) = prefs.edit { putString(key, value) }
-    private fun putBoolean(key: String, value: Boolean) = prefs.edit { putBoolean(key, value) }
+    private fun putString(key: String, value: String?) = prefs.edit(commit = true) { putString(key, value) }
+    private fun putBoolean(key: String, value: Boolean) = prefs.edit(commit = true) { putBoolean(key, value) }
 
     private fun stringPreference(
         key: String
     ) = Preference(
+        isDynamic = isDynamic,
         key = key,
         defaultValue = "",
         getter = ::getString,
@@ -42,6 +54,7 @@ class PreferencesManager(private val prefs: SharedPreferences) {
         key: String,
         defaultValue: Boolean = false
     ) = Preference(
+        isDynamic = isDynamic,
         key = key,
         defaultValue = defaultValue,
         getter = ::getBoolean,
