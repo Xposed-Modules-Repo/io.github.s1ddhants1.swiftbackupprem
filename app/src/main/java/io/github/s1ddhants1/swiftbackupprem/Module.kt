@@ -143,53 +143,57 @@ class Module : IXposedHookLoadPackage {
                     } catch (_: Throwable) {}
                 }
 
-                // Hook dynamically discovered classes from DexKit
-                vClass?.let { hookVClass(it) }
-                homeViewModelClass?.let { hookHomeViewModelClass(it) }
-                authUserClass?.let { hookAuthUserClass(it, cl) }
-                hookSwiftAppPremium(param.thisObject)
+                if (prefs.enablePremium) {
+                    // Hook dynamically discovered classes from DexKit
+                    vClass?.let { hookVClass(it) }
+                    homeViewModelClass?.let { hookHomeViewModelClass(it) }
+                    authUserClass?.let { hookAuthUserClass(it, cl) }
+                    hookSwiftAppPremium(param.thisObject)
 
-                clientIdClass?.let { cIdClass ->
-                    for (m in cIdClass.declaredMethods) {
-                        if (m.name == "e" && m.parameterCount == 2) {
-                            try {
-                                XposedBridge.hookMethod(m, object : XC_MethodHook() {
-                                    override fun beforeHookedMethod(param: MethodHookParam) {
-                                        val task = param.args[1] ?: return
-                                        val isSuccessful = try {
-                                            task.javaClass.getMethod("isSuccessful").invoke(task) as? Boolean ?: true
-                                        } catch (_: Throwable) {
-                                            true
-                                        }
-                                        if (!isSuccessful) {
-                                            val exceptionMsg = try {
-                                                (task.javaClass.getMethod("getException").invoke(task) as? Throwable)?.message
+                    clientIdClass?.let { cIdClass ->
+                        for (m in cIdClass.declaredMethods) {
+                            if (m.name == "e" && m.parameterCount == 2) {
+                                try {
+                                    XposedBridge.hookMethod(m, object : XC_MethodHook() {
+                                        override fun beforeHookedMethod(param: MethodHookParam) {
+                                            val task = param.args[1] ?: return
+                                            val isSuccessful = try {
+                                                task.javaClass.getMethod("isSuccessful").invoke(task) as? Boolean ?: true
                                             } catch (_: Throwable) {
-                                                "unknown"
+                                                true
                                             }
-                                            Log.w("SBP", "FirebaseAuth failed ($exceptionMsg), bypassing account block and forcing sign-in success")
-                                            val callback = param.args[0] ?: return
-                                            try {
-                                                for (nested in cIdClass.declaredClasses) {
-                                                    for (inner in nested.declaredClasses) {
-                                                        if (inner.simpleName == "b") {
-                                                            val successInstance = inner.getField("a").get(null)
-                                                            val invokeMethod = callback.javaClass.getMethod("invoke", Any::class.java)
-                                                            invokeMethod.invoke(callback, successInstance)
-                                                            param.result = null
-                                                            return
+                                            if (!isSuccessful) {
+                                                val exceptionMsg = try {
+                                                    (task.javaClass.getMethod("getException").invoke(task) as? Throwable)?.message
+                                                } catch (_: Throwable) {
+                                                    "unknown"
+                                                }
+                                                Log.w("SBP", "FirebaseAuth failed ($exceptionMsg), bypassing account block and forcing sign-in success")
+                                                val callback = param.args[0] ?: return
+                                                try {
+                                                    for (nested in cIdClass.declaredClasses) {
+                                                        for (inner in nested.declaredClasses) {
+                                                            if (inner.simpleName == "b") {
+                                                                val successInstance = inner.getField("a").get(null)
+                                                                val invokeMethod = callback.javaClass.getMethod("invoke", Any::class.java)
+                                                                invokeMethod.invoke(callback, successInstance)
+                                                                param.result = null
+                                                                return
+                                                            }
                                                         }
                                                     }
+                                                } catch (t: Throwable) {
+                                                    Log.e("SBP", "Failed setting success callback", t)
                                                 }
-                                            } catch (t: Throwable) {
-                                                Log.e("SBP", "Failed setting success callback", t)
                                             }
                                         }
-                                    }
-                                })
-                            } catch (_: Throwable) {}
+                                    })
+                                } catch (_: Throwable) {}
+                            }
                         }
                     }
+                } else {
+                    Log.d("SBP", "Premium hooks disabled by user preference")
                 }
 
                 if (backupApkClass != null && pathsClass != null) {
@@ -199,10 +203,15 @@ class Module : IXposedHookLoadPackage {
                         Log.e("SBP", "Failed to hook BackupApk", t)
                     }
                 }
+
+                // Apply telemetry suppression hooks
+                hookTelemetrySuppression(cl, prefs)
             }
 
             override fun afterHookedMethod(param: MethodHookParam) {
-                hookSwiftAppPremium(param.thisObject)
+                if (prefs.enablePremium) {
+                    hookSwiftAppPremium(param.thisObject)
+                }
                 val isCustomFirebase = prefs.customFirebaseApp && prefs.clientId.isNotBlank()
                 if (isCustomFirebase) {
                     clientIdClass?.let { cIdClass ->
@@ -221,7 +230,10 @@ class Module : IXposedHookLoadPackage {
             }
         })
 
-        hookKnownClasses(cl)
+        if (prefs.enablePremium) {
+            hookKnownClasses(cl)
+        }
+        hookTelemetrySuppression(cl, prefs)
     }
 
     private fun hookKnownClasses(cl: ClassLoader) {
@@ -494,4 +506,269 @@ class Module : IXposedHookLoadPackage {
             fallback
         }
     }
+
+    private fun hookTelemetrySuppression(cl: ClassLoader, prefs: PreferencesManager) {
+        if (!prefs.suppressTelemetry) {
+            Log.d("SBP", "Telemetry suppression disabled by user preference")
+            return
+        }
+
+        Log.d("SBP", "Applying telemetry, analytics, and tracking suppression")
+
+        suppressDataTransport(cl)
+        suppressCrashlytics(cl)
+        suppressAnalytics(cl)
+        suppressSessions(cl)
+        suppressInstallations(cl)
+    }
+
+    private fun suppressDataTransport(cl: ClassLoader) {
+        // 1. Hook TransportRuntime
+        try {
+            val runtimeClass = cl.loadClass("com.google.android.datatransport.runtime.TransportRuntime")
+            for (m in runtimeClass.declaredMethods) {
+                when (m.name) {
+                    "send" -> {
+                        try {
+                            XposedBridge.hookMethod(m, object : XC_MethodHook() {
+                                override fun beforeHookedMethod(param: MethodHookParam) {
+                                    Log.d("SBP", "Blocked DataTransport.send() request")
+                                    param.result = null
+                                }
+                            })
+                        } catch (_: Throwable) {}
+                    }
+                    "schedule" -> {
+                        try {
+                            XposedBridge.hookMethod(m, object : XC_MethodHook() {
+                                override fun beforeHookedMethod(param: MethodHookParam) {
+                                    Log.d("SBP", "Intercepted DataTransport.schedule() request")
+                                    val callback = param.args.lastOrNull()
+                                    if (callback != null) {
+                                        try {
+                                            val onSchedule = callback.javaClass.getMethod("onSchedule", Exception::class.java)
+                                            onSchedule.invoke(callback, null)
+                                        } catch (_: Throwable) {}
+                                    }
+                                    param.result = null
+                                }
+                            })
+                        } catch (_: Throwable) {}
+                    }
+                }
+            }
+        } catch (_: Throwable) {}
+
+        // 2. Hook CctTransportBackend
+        try {
+            val cctClass = cl.loadClass("com.google.android.datatransport.cct.CctTransportBackend")
+            for (m in cctClass.declaredMethods) {
+                if (m.name == "send" || (m.parameterCount == 1 && m.returnType.simpleName == "BackendResponse")) {
+                    try {
+                        val backendResponseClass = cl.loadClass("com.google.android.datatransport.runtime.backends.BackendResponse")
+                        val okMethod = backendResponseClass.getMethod("ok", Long::class.javaPrimitiveType)
+                        val dummyResponse = okMethod.invoke(null, 1000L)
+                        XposedBridge.hookMethod(m, object : XC_MethodHook() {
+                            override fun beforeHookedMethod(param: MethodHookParam) {
+                                Log.d("SBP", "Blocked CctTransportBackend.send() network request to firebaselogging.googleapis.com")
+                                param.result = dummyResponse
+                            }
+                        })
+                    } catch (_: Throwable) {
+                        try {
+                            XposedBridge.hookMethod(m, XC_MethodReplacement.DO_NOTHING)
+                        } catch (_: Throwable) {}
+                    }
+                }
+            }
+        } catch (_: Throwable) {}
+
+        // 3. Hook Schedulers & Uploaders
+        val transportSchedulers = listOf(
+            "com.google.android.datatransport.runtime.scheduling.jobscheduling.Uploader",
+            "com.google.android.datatransport.runtime.scheduling.jobscheduling.JobInfoScheduler",
+            "com.google.android.datatransport.runtime.scheduling.jobscheduling.AlarmManagerScheduler"
+        )
+        for (className in transportSchedulers) {
+            try {
+                val clazz = cl.loadClass(className)
+                for (m in clazz.declaredMethods) {
+                    if (m.name in listOf("upload", "schedule", "logAndUpdateState")) {
+                        try {
+                            XposedBridge.hookMethod(m, XC_MethodReplacement.DO_NOTHING)
+                        } catch (_: Throwable) {}
+                    }
+                }
+            } catch (_: Throwable) {}
+        }
+        Log.d("SBP", "Google DataTransport suppressed")
+    }
+
+    private fun suppressCrashlytics(cl: ClassLoader) {
+        // 1. Hook FirebaseCrashlytics main class
+        try {
+            val crashlyticsClass = cl.loadClass("com.google.firebase.crashlytics.FirebaseCrashlytics")
+            for (m in crashlyticsClass.declaredMethods) {
+                when (m.name) {
+                    "setCrashlyticsCollectionEnabled" -> {
+                        try {
+                            XposedBridge.hookMethod(m, object : XC_MethodHook() {
+                                override fun beforeHookedMethod(param: MethodHookParam) {
+                                    if (param.args.isNotEmpty()) {
+                                        param.args[0] = java.lang.Boolean.FALSE
+                                    }
+                                }
+                            })
+                        } catch (_: Throwable) {}
+                    }
+                    "recordException", "log", "setCustomKey", "setUserId", "sendUnsentReports", "deleteUnsentReports" -> {
+                        try {
+                            XposedBridge.hookMethod(m, object : XC_MethodHook() {
+                                override fun beforeHookedMethod(param: MethodHookParam) {
+                                    Log.d("SBP", "Blocked Crashlytics call: ${m.name}")
+                                    param.result = null
+                                }
+                            })
+                        } catch (_: Throwable) {}
+                    }
+                    "checkForUnsentReports" -> {
+                        try {
+                            val tasksClass = cl.loadClass("com.google.android.gms.tasks.Tasks")
+                            val forResult = tasksClass.getMethod("forResult", Any::class.java)
+                            val falseTask = forResult.invoke(null, java.lang.Boolean.FALSE)
+                            XposedBridge.hookMethod(m, XC_MethodReplacement.returnConstant(falseTask))
+                        } catch (_: Throwable) {}
+                    }
+                }
+            }
+        } catch (_: Throwable) {}
+
+        // 2. Hook CrashlyticsCore / CrashlyticsController
+        val coreClasses = listOf(
+            "com.google.firebase.crashlytics.internal.common.CrashlyticsCore",
+            "com.google.firebase.crashlytics.internal.common.CrashlyticsController",
+            "com.google.firebase.crashlytics.ndk.FirebaseCrashlyticsNdk"
+        )
+        for (name in coreClasses) {
+            try {
+                val clazz = cl.loadClass(name)
+                for (m in clazz.declaredMethods) {
+                    if (m.name in listOf("log", "logException", "logFatalException", "openSession", "writeToLog", "finalizeSessions", "installHandler")) {
+                        try {
+                            XposedBridge.hookMethod(m, XC_MethodReplacement.DO_NOTHING)
+                        } catch (_: Throwable) {}
+                    }
+                }
+            } catch (_: Throwable) {}
+        }
+        Log.d("SBP", "Firebase Crashlytics suppressed")
+    }
+
+    private fun suppressAnalytics(cl: ClassLoader) {
+        // 1. Hook FirebaseAnalytics
+        try {
+            val analyticsClass = cl.loadClass("com.google.firebase.analytics.FirebaseAnalytics")
+            for (m in analyticsClass.declaredMethods) {
+                when (m.name) {
+                    "setAnalyticsCollectionEnabled" -> {
+                        try {
+                            XposedBridge.hookMethod(m, object : XC_MethodHook() {
+                                override fun beforeHookedMethod(param: MethodHookParam) {
+                                    if (param.args.isNotEmpty()) {
+                                        param.args[0] = java.lang.Boolean.FALSE
+                                    }
+                                }
+                            })
+                        } catch (_: Throwable) {}
+                    }
+                    "logEvent" -> {
+                        try {
+                            XposedBridge.hookMethod(m, object : XC_MethodHook() {
+                                override fun beforeHookedMethod(param: MethodHookParam) {
+                                    val eventName = param.args.getOrNull(0)
+                                    Log.d("SBP", "Blocked Firebase Analytics logEvent: $eventName")
+                                    param.result = null
+                                }
+                            })
+                        } catch (_: Throwable) {}
+                    }
+                    "setUserProperty", "setUserId", "setCurrentScreen", "resetAnalyticsData" -> {
+                        try {
+                            XposedBridge.hookMethod(m, XC_MethodReplacement.DO_NOTHING)
+                        } catch (_: Throwable) {}
+                    }
+                }
+            }
+        } catch (_: Throwable) {}
+
+        // 2. Hook AppMeasurement
+        val measurementClasses = listOf(
+            "com.google.android.gms.measurement.AppMeasurement",
+            "com.google.android.gms.measurement.internal.zzhd",
+            "com.google.android.gms.measurement.internal.zzha"
+        )
+        for (name in measurementClasses) {
+            try {
+                val clazz = cl.loadClass(name)
+                for (m in clazz.declaredMethods) {
+                    if (m.name.startsWith("logEvent") || m.name.startsWith("setUserProperty")) {
+                        try {
+                            XposedBridge.hookMethod(m, XC_MethodReplacement.DO_NOTHING)
+                        } catch (_: Throwable) {}
+                    }
+                }
+            } catch (_: Throwable) {}
+        }
+        Log.d("SBP", "Firebase Analytics suppressed")
+    }
+
+    private fun suppressSessions(cl: ClassLoader) {
+        val sessionClasses = listOf(
+            "com.google.firebase.sessions.FirebaseSessions",
+            "com.google.firebase.sessions.SessionFirelogPublisherImpl",
+            "com.google.firebase.sessions.SessionFirelogPublisher"
+        )
+        for (name in sessionClasses) {
+            try {
+                val clazz = cl.loadClass(name)
+                for (m in clazz.declaredMethods) {
+                    if (m.name in listOf("register", "appForeground", "appBackground", "logSession", "attemptLoggingSessionEvent")) {
+                        try {
+                            XposedBridge.hookMethod(m, XC_MethodReplacement.DO_NOTHING)
+                        } catch (_: Throwable) {}
+                    }
+                }
+            } catch (_: Throwable) {}
+        }
+        Log.d("SBP", "Firebase Sessions suppressed")
+    }
+
+    private fun suppressInstallations(cl: ClassLoader) {
+        // 1. Hook FirebaseInstallations
+        try {
+            val installationsClass = cl.loadClass("com.google.firebase.installations.FirebaseInstallations")
+            for (m in installationsClass.declaredMethods) {
+                if (m.name == "delete") {
+                    try {
+                        XposedBridge.hookMethod(m, XC_MethodReplacement.DO_NOTHING)
+                    } catch (_: Throwable) {}
+                }
+            }
+        } catch (_: Throwable) {}
+
+        // 2. Hook FirebaseInstallationServiceClient
+        try {
+            val clientClass = cl.loadClass("com.google.firebase.installations.remote.FirebaseInstallationServiceClient")
+            for (m in clientClass.declaredMethods) {
+                if (m.name in listOf("deleteFirebaseInstallation")) {
+                    try {
+                        XposedBridge.hookMethod(m, XC_MethodReplacement.DO_NOTHING)
+                    } catch (_: Throwable) {}
+                }
+            }
+        } catch (_: Throwable) {}
+        Log.d("SBP", "Firebase Installations suppressed")
+    }
 }
+
+

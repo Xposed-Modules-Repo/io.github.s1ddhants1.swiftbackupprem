@@ -56,5 +56,10 @@ class PreferencesManager(private val prefs: SharedPreferences) {
     var projectId by stringPreference(Consts.projectId)
     var clientId by stringPreference(Consts.oauthClientId)
 
+    var enablePremium by booleanPreference("enable_premium", true)
+
     var customFirebaseApp by booleanPreference("custom_firebase_app")
+
+    var suppressTelemetry by booleanPreference("suppress_telemetry", true)
 }
+

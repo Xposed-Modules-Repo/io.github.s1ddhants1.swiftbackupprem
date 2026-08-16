@@ -212,6 +212,40 @@ class MainActivity : ComponentActivity() {
                                                         .padding(horizontal = 16.dp, vertical = 6.dp),
                                                     shape = RoundedCornerShape(16.dp),
                                                     colors = CardDefaults.elevatedCardColors(
+                                                        containerColor = MaterialTheme.colorScheme.surface
+                                                    )
+                                                ) {
+                                                    SettingsSwitch(
+                                                        label = "Enable Premium",
+                                                        secondaryLabel = "Unlock Swift Backup premium features and bypass license checks",
+                                                        pref = prefs.enablePremium,
+                                                        onPrefChange = { prefs.enablePremium = it }
+                                                    )
+                                                }
+
+                                                 ElevatedCard(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .padding(horizontal = 16.dp, vertical = 6.dp),
+                                                    shape = RoundedCornerShape(16.dp),
+                                                    colors = CardDefaults.elevatedCardColors(
+                                                        containerColor = MaterialTheme.colorScheme.surface
+                                                    )
+                                                ) {
+                                                    SettingsSwitch(
+                                                        label = "Suppress Telemetry & Tracking",
+                                                        secondaryLabel = "Block Firebase Analytics, Crashlytics, Sessions, Installations, and DataTransport",
+                                                        pref = prefs.suppressTelemetry,
+                                                        onPrefChange = { prefs.suppressTelemetry = it }
+                                                    )
+                                                }
+
+                                                ElevatedCard(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .padding(horizontal = 16.dp, vertical = 6.dp),
+                                                    shape = RoundedCornerShape(16.dp),
+                                                    colors = CardDefaults.elevatedCardColors(
                                                         containerColor = if (prefs.customFirebaseApp)
                                                             MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
                                                         else
