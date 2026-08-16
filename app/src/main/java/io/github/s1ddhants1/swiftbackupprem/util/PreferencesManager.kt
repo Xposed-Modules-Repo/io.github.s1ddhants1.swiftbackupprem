@@ -1,9 +1,9 @@
-package io.github.juby210.swiftbackupprem.util
+package io.github.s1ddhants1.swiftbackupprem.util
 
 import android.content.SharedPreferences
 import androidx.compose.runtime.*
 import androidx.core.content.edit
-import io.github.juby210.swiftbackupprem.Consts
+import io.github.s1ddhants1.swiftbackupprem.Consts
 import kotlin.reflect.KProperty
 
 class PreferencesManager(private val prefs: SharedPreferences) {

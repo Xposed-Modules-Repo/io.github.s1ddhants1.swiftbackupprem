@@ -1,4 +1,4 @@
-package io.github.juby210.swiftbackupprem
+package io.github.s1ddhants1.swiftbackupprem
 
 object Consts {
     const val packageName = "org.swiftapps.swiftbackup"

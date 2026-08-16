@@ -1,4 +1,4 @@
-package io.github.juby210.swiftbackupprem.ui.theme
+package io.github.s1ddhants1.swiftbackupprem.ui.theme
 
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme

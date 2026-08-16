@@ -1,11 +1,11 @@
-package io.github.juby210.swiftbackupprem
+package io.github.s1ddhants1.swiftbackupprem
 
 import android.content.Context
 import android.util.Log
 import androidx.annotation.Keep
 import de.robv.android.xposed.XC_MethodHook
 import de.robv.android.xposed.XposedBridge
-import io.github.juby210.swiftbackupprem.util.PreferencesManager
+import io.github.s1ddhants1.swiftbackupprem.util.PreferencesManager
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File

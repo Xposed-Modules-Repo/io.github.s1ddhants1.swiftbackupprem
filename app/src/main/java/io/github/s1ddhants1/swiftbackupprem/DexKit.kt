@@ -1,6 +1,6 @@
 @file:JvmName("DexKit")
 
-package io.github.juby210.swiftbackupprem
+package io.github.s1ddhants1.swiftbackupprem
 
 import android.content.Context
 import android.util.Log

@@ -1,4 +1,4 @@
-package io.github.juby210.swiftbackupprem.ui.component
+package io.github.s1ddhants1.swiftbackupprem.ui.component
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons

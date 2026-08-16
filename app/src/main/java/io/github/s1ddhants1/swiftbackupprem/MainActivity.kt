@@ -1,4 +1,4 @@
-package io.github.juby210.swiftbackupprem
+package io.github.s1ddhants1.swiftbackupprem
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -31,13 +31,13 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import io.github.juby210.swiftbackupprem.ui.MainViewModel
-import io.github.juby210.swiftbackupprem.ui.component.AboutScreen
-import io.github.juby210.swiftbackupprem.ui.component.GuidedSetupWizard
-import io.github.juby210.swiftbackupprem.ui.component.SettingsSwitch
-import io.github.juby210.swiftbackupprem.ui.theme.Theme
-import io.github.juby210.swiftbackupprem.util.AppUtils
-import io.github.juby210.swiftbackupprem.util.PreferencesManager
+import io.github.s1ddhants1.swiftbackupprem.ui.MainViewModel
+import io.github.s1ddhants1.swiftbackupprem.ui.component.AboutScreen
+import io.github.s1ddhants1.swiftbackupprem.ui.component.GuidedSetupWizard
+import io.github.s1ddhants1.swiftbackupprem.ui.component.SettingsSwitch
+import io.github.s1ddhants1.swiftbackupprem.ui.theme.Theme
+import io.github.s1ddhants1.swiftbackupprem.util.AppUtils
+import io.github.s1ddhants1.swiftbackupprem.util.PreferencesManager
 
 enum class AppScreen {
     Settings, About

@@ -1,4 +1,4 @@
-package io.github.juby210.swiftbackupprem
+package io.github.s1ddhants1.swiftbackupprem
 
 import android.content.Context
 import android.util.Log
@@ -10,7 +10,7 @@ import de.robv.android.xposed.XSharedPreferences
 import de.robv.android.xposed.XposedBridge
 import de.robv.android.xposed.XposedHelpers
 import de.robv.android.xposed.callbacks.XC_LoadPackage
-import io.github.juby210.swiftbackupprem.util.PreferencesManager
+import io.github.s1ddhants1.swiftbackupprem.util.PreferencesManager
 
 @Keep
 class Module : IXposedHookLoadPackage {

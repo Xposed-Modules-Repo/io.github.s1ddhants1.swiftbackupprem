@@ -2,8 +2,8 @@
 -keepattributes SourceFile,LineNumberTable,*Annotation*,Signature,InnerClasses,EnclosingMethod,Exceptions
 
 # Keep all module classes, fields, and methods from R8 obfuscation/shrinking
--keep class io.github.juby210.swiftbackupprem.** { *; }
--keepclassmembers class io.github.juby210.swiftbackupprem.** { *; }
+-keep class io.github.s1ddhants1.swiftbackupprem.** { *; }
+-keepclassmembers class io.github.s1ddhants1.swiftbackupprem.** { *; }
 
 # Keep Xposed API framework classes provided at runtime via compileOnly
 -dontwarn de.robv.android.xposed.**

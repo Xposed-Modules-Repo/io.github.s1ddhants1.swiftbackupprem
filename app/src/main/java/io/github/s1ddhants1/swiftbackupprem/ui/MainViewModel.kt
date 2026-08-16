@@ -1,11 +1,11 @@
-package io.github.juby210.swiftbackupprem.ui
+package io.github.s1ddhants1.swiftbackupprem.ui
 
 import android.content.ContentResolver
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import io.github.juby210.swiftbackupprem.Consts
-import io.github.juby210.swiftbackupprem.util.PreferencesManager
+import io.github.s1ddhants1.swiftbackupprem.Consts
+import io.github.s1ddhants1.swiftbackupprem.util.PreferencesManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import org.json.JSONObject

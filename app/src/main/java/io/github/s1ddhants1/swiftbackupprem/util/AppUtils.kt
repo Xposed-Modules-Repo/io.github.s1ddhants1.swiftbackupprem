@@ -1,4 +1,4 @@
-package io.github.juby210.swiftbackupprem.util
+package io.github.s1ddhants1.swiftbackupprem.util
 
 import android.content.Context
 import android.content.Intent
@@ -6,7 +6,7 @@ import android.net.Uri
 import android.os.Build
 import android.provider.Settings
 import android.util.Log
-import io.github.juby210.swiftbackupprem.Consts
+import io.github.s1ddhants1.swiftbackupprem.Consts
 import java.security.MessageDigest
 
 object AppUtils {

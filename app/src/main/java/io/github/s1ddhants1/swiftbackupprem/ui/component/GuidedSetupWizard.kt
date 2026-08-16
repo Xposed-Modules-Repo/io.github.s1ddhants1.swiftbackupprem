@@ -1,4 +1,4 @@
-package io.github.juby210.swiftbackupprem.ui.component
+package io.github.s1ddhants1.swiftbackupprem.ui.component
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -41,9 +41,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import io.github.juby210.swiftbackupprem.Consts
-import io.github.juby210.swiftbackupprem.util.AppUtils
-import io.github.juby210.swiftbackupprem.util.PreferencesManager
+import io.github.s1ddhants1.swiftbackupprem.Consts
+import io.github.s1ddhants1.swiftbackupprem.util.AppUtils
+import io.github.s1ddhants1.swiftbackupprem.util.PreferencesManager
 import org.json.JSONObject
 
 @OptIn(ExperimentalMaterial3Api::class)

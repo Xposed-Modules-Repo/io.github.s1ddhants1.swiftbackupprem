@@ -4,12 +4,12 @@ plugins {
 }
 
 android {
-    namespace 'io.github.juby210.swiftbackupprem'
+    namespace 'io.github.s1ddhants1.swiftbackupprem'
     compileSdk 37
     ndkVersion '25.1.8937393'
 
     defaultConfig {
-        applicationId 'io.github.juby210.swiftbackupprem'
+        applicationId 'io.github.s1ddhants1.swiftbackupprem'
         minSdk 27
         targetSdk 37
         versionCode 210

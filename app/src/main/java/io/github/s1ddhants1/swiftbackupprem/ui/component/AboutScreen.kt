@@ -1,4 +1,4 @@
-package io.github.juby210.swiftbackupprem.ui.component
+package io.github.s1ddhants1.swiftbackupprem.ui.component
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -22,8 +22,8 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import io.github.juby210.swiftbackupprem.BuildConfig
-import io.github.juby210.swiftbackupprem.R
+import io.github.s1ddhants1.swiftbackupprem.BuildConfig
+import io.github.s1ddhants1.swiftbackupprem.R
 
 @Composable
 fun AboutScreen() {
