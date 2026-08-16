@@ -503,8 +503,8 @@ class Module : IXposedHookLoadPackage {
     }
 
     private fun hookTelemetrySuppression(cl: ClassLoader, prefs: PreferencesManager) {
-        if (!prefs.suppressTelemetry) {
-            Log.d("SBP", "Telemetry suppression disabled by user preference")
+        if (!prefs.disableTelemetry) {
+            Log.d("SBP", "Telemetry blocking disabled by user preference")
             return
         }
 

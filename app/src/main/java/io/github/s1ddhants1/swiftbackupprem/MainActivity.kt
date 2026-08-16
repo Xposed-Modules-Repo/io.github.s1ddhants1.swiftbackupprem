@@ -234,10 +234,10 @@ class MainActivity : ComponentActivity() {
                                                     )
                                                 ) {
                                                     SettingsSwitch(
-                                                        label = "Suppress Telemetry & Tracking",
+                                                        label = "Disable Telemetry & Tracking",
                                                         secondaryLabel = "Block Firebase Analytics, Crashlytics, Sessions, Installations, and DataTransport",
-                                                        pref = prefs.suppressTelemetry,
-                                                        onPrefChange = { prefs.suppressTelemetry = it }
+                                                        pref = prefs.disableTelemetry,
+                                                        onPrefChange = { prefs.disableTelemetry = it }
                                                     )
                                                 }
 

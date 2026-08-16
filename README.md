@@ -37,7 +37,8 @@
 
 ## ✨ Features
 
-- 🔓 **Premium Unlocked**: Seamlessly enables all Swift Backup Premium functionality without needing Google Play Store licensing.
+- 🔓 **Premium Toggle & Unlocking**: Enables all Swift Backup Premium functionality on-demand without needing Google Play Store licensing, with active runtime state enforcement.
+- 🚫 **Disable Telemetry & Tracking**: Selectively blocks Firebase Analytics, Crashlytics, Sessions, Installations, and Google DataTransport tracking calls for maximum privacy.
 - 🛡️ **Custom Firebase Backend (Anti-Ban & Privacy)**: Directs Swift Backup to use your personal Firebase instance for user authentication and cloud synchronization metadata, eliminating reliance on the developer's shared backend.
 - ⚡ **Dynamic DexKit Bytecode Scanning**: Utilizes [DexKit](https://github.com/LuckyPray/DexKit) to dynamically locate obfuscated classes and methods at runtime across versions, ensuring robust compatibility with newer app updates.
 - 🎨 **Modern Material 3 UI**: Clean user interface built with Jetpack Compose, edge-to-edge display, dynamic theme adaptation, and responsive layouts.

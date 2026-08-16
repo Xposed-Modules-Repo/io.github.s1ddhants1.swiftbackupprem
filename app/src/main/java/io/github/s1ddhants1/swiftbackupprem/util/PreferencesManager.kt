@@ -71,8 +71,8 @@ class PreferencesManager(
 
     var enablePremium by booleanPreference("enable_premium", true)
 
-    var customFirebaseApp by booleanPreference("custom_firebase_app")
+    var disableTelemetry by booleanPreference("disable_telemetry", true)
 
-    var suppressTelemetry by booleanPreference("suppress_telemetry", true)
+    var customFirebaseApp by booleanPreference("custom_firebase_app")
 }
 
