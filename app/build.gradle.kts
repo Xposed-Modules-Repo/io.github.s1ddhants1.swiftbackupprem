@@ -7,7 +7,7 @@ plugins {
 android {
     namespace = "io.github.s1ddhants1.swiftbackupprem"
     compileSdk = 37
-    ndkVersion = "25.1.8937393"
+    ndkVersion = "29.0.14206865"
 
     defaultConfig {
         applicationId = "io.github.s1ddhants1.swiftbackupprem"

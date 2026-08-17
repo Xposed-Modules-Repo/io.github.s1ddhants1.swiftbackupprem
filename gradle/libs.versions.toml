@@ -10,7 +10,7 @@ libxposed-api = "102.0.0"
 libxposed-service = "102.0.0"
 junit = "4.13.2"
 json = "20260814"
-kotlinx-serialization = "1.7.3"
+kotlinx-serialization = "1.11.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
