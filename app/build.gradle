@@ -12,12 +12,13 @@ android {
         applicationId = 'io.github.s1ddhants1.swiftbackupprem'
         minSdk = 27
         targetSdk = 37
-        versionCode = 220
-        versionName = '2.2.0'
+        versionCode = 230
+        versionName = '2.3.0'
     }
 
     buildTypes {
         release {
+            signingConfig = signingConfigs.debug
             minifyEnabled = true
             shrinkResources = true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
