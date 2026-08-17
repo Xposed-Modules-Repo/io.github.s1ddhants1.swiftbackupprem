@@ -17,6 +17,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -57,7 +58,7 @@ fun AboutScreen() {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
                             painter = painterResource(id = R.drawable.ic_launcher_foreground),
-                            contentDescription = "SwiftBackupPrem App Icon",
+                            contentDescription = stringResource(R.string.cd_app_icon),
                             tint = MaterialTheme.colorScheme.onPrimary,
                             modifier = Modifier.size(48.dp)
                         )
@@ -65,7 +66,7 @@ fun AboutScreen() {
                 }
 
                 Text(
-                    text = "SwiftBackupPrem",
+                    text = stringResource(R.string.app_name),
                     style = MaterialTheme.typography.headlineMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onPrimaryContainer
@@ -76,7 +77,7 @@ fun AboutScreen() {
                     color = MaterialTheme.colorScheme.surface.copy(alpha = 0.6f)
                 ) {
                     Text(
-                        text = "Version ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
+                        text = stringResource(R.string.about_version_format, BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE),
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onSurface,
@@ -85,7 +86,7 @@ fun AboutScreen() {
                 }
 
                 Text(
-                    text = "An Xposed / LSPosed module for Swift Backup providing Premium features and custom Firebase backend integration.",
+                    text = stringResource(R.string.about_app_summary),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.9f)
                 )
@@ -102,7 +103,7 @@ fun AboutScreen() {
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Text(
-                    text = "Core Features",
+                    text = stringResource(R.string.about_core_features),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary
@@ -119,8 +120,8 @@ fun AboutScreen() {
                         modifier = Modifier.size(22.dp)
                     )
                     Column {
-                        Text("Premium Unlocked", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
-                        Text("Enables full access to Swift Backup premium capabilities.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(stringResource(R.string.about_feature_premium_title), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                        Text(stringResource(R.string.about_feature_premium_desc), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
 
@@ -137,8 +138,8 @@ fun AboutScreen() {
                         modifier = Modifier.size(22.dp)
                     )
                     Column {
-                        Text("Custom Firebase Backend", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
-                        Text("Optionally connect your personal Firebase database & credentials.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(stringResource(R.string.about_feature_firebase_title), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                        Text(stringResource(R.string.about_feature_firebase_desc), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
@@ -154,7 +155,7 @@ fun AboutScreen() {
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Text(
-                    text = "Authors & Maintainers",
+                    text = stringResource(R.string.about_authors_maintainers),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary
@@ -172,14 +173,14 @@ fun AboutScreen() {
                         Icon(Icons.Default.Person, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                         Column {
                             Text("Juby210", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
-                            Text("Original Author", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(stringResource(R.string.about_original_author_role), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                     OutlinedButton(
                         onClick = { uriHandler.openUri("https://github.com/Juby210") },
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
                     ) {
-                        Text("GitHub", fontSize = 12.sp)
+                        Text(stringResource(R.string.btn_github), fontSize = 12.sp)
                         Spacer(Modifier.width(4.dp))
                         Icon(Icons.AutoMirrored.Filled.Launch, contentDescription = null, modifier = Modifier.size(14.dp))
                     }
@@ -199,14 +200,14 @@ fun AboutScreen() {
                         Icon(Icons.Default.Person, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                         Column {
                             Text("s1ddhants1", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
-                            Text("Maintainer", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(stringResource(R.string.about_maintainer_role), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                     OutlinedButton(
                         onClick = { uriHandler.openUri("https://github.com/s1ddhants1") },
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
                     ) {
-                        Text("GitHub", fontSize = 12.sp)
+                        Text(stringResource(R.string.btn_github), fontSize = 12.sp)
                         Spacer(Modifier.width(4.dp))
                         Icon(Icons.AutoMirrored.Filled.Launch, contentDescription = null, modifier = Modifier.size(14.dp))
                     }
@@ -224,7 +225,7 @@ fun AboutScreen() {
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Text(
-                    text = "Libraries & Technologies",
+                    text = stringResource(R.string.about_libraries_technologies),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary
@@ -235,7 +236,7 @@ fun AboutScreen() {
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     Icon(Icons.Default.Code, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text("DexKit by LuckyPray", style = MaterialTheme.typography.bodyMedium)
+                    Text(stringResource(R.string.about_lib_dexkit), style = MaterialTheme.typography.bodyMedium)
                 }
 
                 Row(
@@ -243,7 +244,7 @@ fun AboutScreen() {
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     Icon(Icons.Default.Extension, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text("LibXposed / Xposed API", style = MaterialTheme.typography.bodyMedium)
+                    Text(stringResource(R.string.about_lib_libxposed), style = MaterialTheme.typography.bodyMedium)
                 }
 
                 Row(
@@ -251,7 +252,7 @@ fun AboutScreen() {
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     Icon(Icons.Default.Android, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text("AndroidX Jetpack Compose & Material 3", style = MaterialTheme.typography.bodyMedium)
+                    Text(stringResource(R.string.about_lib_compose), style = MaterialTheme.typography.bodyMedium)
                 }
             }
         }
@@ -263,7 +264,7 @@ fun AboutScreen() {
         ) {
             Icon(Icons.Default.Code, contentDescription = null, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(8.dp))
-            Text("View Source on GitHub")
+            Text(stringResource(R.string.btn_view_source_github))
             Spacer(Modifier.width(4.dp))
             Icon(Icons.AutoMirrored.Filled.Launch, contentDescription = null, modifier = Modifier.size(16.dp))
         }

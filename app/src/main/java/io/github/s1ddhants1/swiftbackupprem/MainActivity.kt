@@ -12,17 +12,14 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.animation.*
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.ui.graphics.Color
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Launch
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.MoreVert
@@ -34,9 +31,11 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.libxposed.service.XposedService
 import io.github.libxposed.service.XposedServiceHelper
 import io.github.s1ddhants1.swiftbackupprem.ui.MainViewModel
@@ -56,10 +55,7 @@ enum class AppScreen {
 class MainActivity : ComponentActivity() {
     private val viewModel: MainViewModel by viewModels()
 
-    private var xposedService by mutableStateOf<XposedService?>(null)
-    private var isFrameworkConnected by mutableStateOf(false)
-    private var frameworkName by mutableStateOf("")
-    private var frameworkVersion by mutableStateOf("")
+    private var xposedService: XposedService? = null
 
     @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -76,9 +72,9 @@ class MainActivity : ComponentActivity() {
                 override fun onServiceBind(service: XposedService) {
                     Log.i("SBP", "XposedService bound: ${service.frameworkName} ${service.frameworkVersion} (API ${service.apiVersion})")
                     xposedService = service
-                    isFrameworkConnected = true
-                    frameworkName = attempt("get frameworkName", silent = true) { service.frameworkName } ?: "LSPosed"
-                    frameworkVersion = attempt("get frameworkVersion", silent = true) { service.frameworkVersion } ?: ""
+                    val name = attempt("get frameworkName", silent = true) { service.frameworkName } ?: "LSPosed"
+                    val version = attempt("get frameworkVersion", silent = true) { service.frameworkVersion } ?: ""
+                    viewModel.onFrameworkConnected(name, version)
 
                     attempt("retrieve remote preferences from XposedService") {
                         val remotePrefs = service.getRemotePreferences("settings")
@@ -89,7 +85,7 @@ class MainActivity : ComponentActivity() {
                 override fun onServiceDied(service: XposedService) {
                     Log.w("SBP", "XposedService disconnected")
                     xposedService = null
-                    isFrameworkConnected = false
+                    viewModel.onFrameworkDisconnected()
                 }
             })
         }
@@ -97,6 +93,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             val context = LocalContext.current
             val prefs = prefsState.value
+            val state by viewModel.uiState.collectAsStateWithLifecycle()
 
             var currentScreen by remember { mutableStateOf(AppScreen.Settings) }
             var showMenu by remember { mutableStateOf(false) }
@@ -107,27 +104,34 @@ class MainActivity : ComponentActivity() {
                 currentScreen = AppScreen.Settings
             }
 
-            val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
-                if (uri != null) {
-                    viewModel.exportConfig(contentResolver, uri, prefs) { result ->
-                        coroutineScope.launch {
+            LaunchedEffect(Unit) {
+                viewModel.events.collect { event ->
+                    when (event) {
+                        is io.github.s1ddhants1.swiftbackupprem.ui.MainUiEvent.ConfigExported -> {
                             snackbarHostState.showSnackbar(
-                                if (result.isSuccess) "Config exported" else "Export failed: ${result.exceptionOrNull()?.localizedMessage ?: "unknown error"}"
+                                if (event.success) this@MainActivity.getString(R.string.msg_config_exported)
+                                else this@MainActivity.getString(R.string.msg_export_failed, event.error ?: "unknown error")
+                            )
+                        }
+                        is io.github.s1ddhants1.swiftbackupprem.ui.MainUiEvent.ConfigImported -> {
+                            snackbarHostState.showSnackbar(
+                                if (event.success) this@MainActivity.getString(R.string.msg_config_imported)
+                                else this@MainActivity.getString(R.string.msg_import_failed, event.error ?: "unknown error")
                             )
                         }
                     }
                 }
             }
 
+            val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+                if (uri != null) {
+                    viewModel.exportConfig(contentResolver, uri, prefs)
+                }
+            }
+
             val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
                 if (uri != null) {
-                    viewModel.importConfig(contentResolver, uri, prefs) { result ->
-                        coroutineScope.launch {
-                            snackbarHostState.showSnackbar(
-                                if (result.isSuccess) "Config imported" else "Import failed: ${result.exceptionOrNull()?.localizedMessage ?: "unknown error"}"
-                            )
-                        }
-                    }
+                    viewModel.importConfig(contentResolver, uri, prefs)
                 }
             }
 
@@ -139,55 +143,55 @@ class MainActivity : ComponentActivity() {
                             title = {
                                 Text(
                                     text = when (currentScreen) {
-                                        AppScreen.Settings -> "SwiftBackupPrem"
-                                        AppScreen.About -> "About"
+                                        AppScreen.Settings -> stringResource(R.string.screen_settings)
+                                        AppScreen.About -> stringResource(R.string.screen_about)
                                     }
                                 )
                             },
                             navigationIcon = {
                                 if (currentScreen != AppScreen.Settings) {
                                     IconButton(onClick = { currentScreen = AppScreen.Settings }) {
-                                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back to Settings")
+                                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.cd_back_to_settings))
                                     }
                                 }
                             },
                             actions = {
                                 if (currentScreen == AppScreen.Settings) {
                                     IconButton(onClick = { showMenu = true }) {
-                                        Icon(Icons.Default.MoreVert, contentDescription = "Menu Options")
+                                        Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.cd_menu_options))
                                     }
                                     DropdownMenu(
                                         expanded = showMenu,
                                         onDismissRequest = { showMenu = false }
                                     ) {
                                         DropdownMenuItem(
-                                            text = { Text("Export Config") },
+                                            text = { Text(stringResource(R.string.menu_export_config)) },
                                             onClick = {
                                                 showMenu = false
                                                 exportLauncher.launch("sbp_config.json")
                                             },
                                             leadingIcon = {
-                                                Icon(Icons.Default.Upload, contentDescription = "Export")
+                                                Icon(Icons.Default.Upload, contentDescription = stringResource(R.string.menu_export_config))
                                             }
                                         )
                                         DropdownMenuItem(
-                                            text = { Text("Import Config") },
+                                            text = { Text(stringResource(R.string.menu_import_config)) },
                                             onClick = {
                                                 showMenu = false
                                                 importLauncher.launch("application/json")
                                             },
                                             leadingIcon = {
-                                                Icon(Icons.Default.Download, contentDescription = "Import")
+                                                Icon(Icons.Default.Download, contentDescription = stringResource(R.string.menu_import_config))
                                             }
                                         )
                                         DropdownMenuItem(
-                                            text = { Text("About") },
+                                            text = { Text(stringResource(R.string.menu_about)) },
                                             onClick = {
                                                 showMenu = false
                                                 currentScreen = AppScreen.About
                                             },
                                             leadingIcon = {
-                                                Icon(Icons.Default.Info, contentDescription = "About")
+                                                Icon(Icons.Default.Info, contentDescription = stringResource(R.string.menu_about))
                                             }
                                         )
                                     }
@@ -218,7 +222,8 @@ class MainActivity : ComponentActivity() {
                                             coroutineScope.launch {
                                                 val stopped = AppUtils.forceStopSwiftBackup(context)
                                                 snackbarHostState.showSnackbar(
-                                                    if (stopped) "Swift Backup force-stopped" else "Opened Swift Backup app settings"
+                                                    if (stopped) this@MainActivity.getString(R.string.msg_swift_backup_force_stopped)
+                                                    else this@MainActivity.getString(R.string.msg_opened_swift_backup_settings)
                                                 )
                                             }
                                         },
@@ -228,7 +233,7 @@ class MainActivity : ComponentActivity() {
                                     ) {
                                         Icon(Icons.Default.PowerSettingsNew, contentDescription = null, modifier = Modifier.size(18.dp))
                                         Spacer(Modifier.width(6.dp))
-                                        Text("Force Stop", fontWeight = FontWeight.Bold, textAlign = TextAlign.Center, softWrap = true)
+                                        Text(stringResource(R.string.btn_force_stop), fontWeight = FontWeight.Bold, textAlign = TextAlign.Center, softWrap = true)
                                     }
 
                                     Button(
@@ -239,7 +244,7 @@ class MainActivity : ComponentActivity() {
                                     ) {
                                         Icon(Icons.AutoMirrored.Filled.Launch, contentDescription = null, modifier = Modifier.size(18.dp))
                                         Spacer(Modifier.width(6.dp))
-                                        Text("Open App", fontWeight = FontWeight.Bold, textAlign = TextAlign.Center, softWrap = true)
+                                        Text(stringResource(R.string.btn_open_app), fontWeight = FontWeight.Bold, textAlign = TextAlign.Center, softWrap = true)
                                     }
                                 }
                             }
@@ -261,10 +266,21 @@ class MainActivity : ComponentActivity() {
                                             .padding(vertical = 8.dp)
                                     ) {
                                         // Framework status card
-                                        val isDark = isSystemInDarkTheme()
-                                        val warningContainer = if (isDark) Color(0xFF3E2D12) else Color(0xFFFFF3E0)
-                                        val onWarningContainer = if (isDark) Color(0xFFFFDCBE) else Color(0xFF7A3300)
-                                        val warningIconColor = if (isDark) Color(0xFFFFB74D) else Color(0xFFE65100)
+                                        val statusContainerColor = if (state.isFrameworkConnected) {
+                                            MaterialTheme.colorScheme.primaryContainer
+                                        } else {
+                                            MaterialTheme.colorScheme.tertiaryContainer
+                                        }
+                                        val onStatusContainerColor = if (state.isFrameworkConnected) {
+                                            MaterialTheme.colorScheme.onPrimaryContainer
+                                        } else {
+                                            MaterialTheme.colorScheme.onTertiaryContainer
+                                        }
+                                        val statusIconTint = if (state.isFrameworkConnected) {
+                                            MaterialTheme.colorScheme.primary
+                                        } else {
+                                            MaterialTheme.colorScheme.tertiary
+                                        }
 
                                         ElevatedCard(
                                             modifier = Modifier
@@ -272,10 +288,7 @@ class MainActivity : ComponentActivity() {
                                                 .padding(horizontal = 16.dp, vertical = 6.dp),
                                             shape = RoundedCornerShape(16.dp),
                                             colors = CardDefaults.elevatedCardColors(
-                                                containerColor = if (isFrameworkConnected)
-                                                    MaterialTheme.colorScheme.primaryContainer
-                                                else
-                                                    warningContainer
+                                                containerColor = statusContainerColor
                                             )
                                         ) {
                                             Row(
@@ -284,24 +297,24 @@ class MainActivity : ComponentActivity() {
                                                 horizontalArrangement = Arrangement.spacedBy(12.dp)
                                             ) {
                                                 Icon(
-                                                    imageVector = if (isFrameworkConnected) Icons.Default.CheckCircle else Icons.Default.Warning,
+                                                    imageVector = if (state.isFrameworkConnected) Icons.Default.CheckCircle else Icons.Default.Warning,
                                                     contentDescription = null,
-                                                    tint = if (isFrameworkConnected) MaterialTheme.colorScheme.primary else warningIconColor
+                                                    tint = statusIconTint
                                                 )
                                                 Column {
                                                     Text(
-                                                        text = if (isFrameworkConnected) "LSPosed Module Active" else "LSPosed Module Not Enabled",
+                                                        text = if (state.isFrameworkConnected) stringResource(R.string.framework_active_title) else stringResource(R.string.framework_inactive_title),
                                                         style = MaterialTheme.typography.titleSmall,
                                                         fontWeight = FontWeight.Bold,
-                                                        color = if (isFrameworkConnected) MaterialTheme.colorScheme.onPrimaryContainer else onWarningContainer
+                                                        color = onStatusContainerColor
                                                     )
                                                     Text(
-                                                        text = if (isFrameworkConnected)
-                                                            "Connected to $frameworkName $frameworkVersion"
+                                                        text = if (state.isFrameworkConnected)
+                                                            stringResource(R.string.framework_active_desc, state.frameworkName, state.frameworkVersion)
                                                         else
-                                                            "Enable module in LSPosed manager and reboot.",
+                                                            stringResource(R.string.framework_inactive_desc),
                                                         style = MaterialTheme.typography.bodySmall,
-                                                        color = if (isFrameworkConnected) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f) else onWarningContainer.copy(alpha = 0.85f)
+                                                        color = onStatusContainerColor.copy(alpha = 0.85f)
                                                     )
                                                 }
                                             }
@@ -317,10 +330,10 @@ class MainActivity : ComponentActivity() {
                                             )
                                         ) {
                                             SettingsSwitch(
-                                                label = "Enable Premium",
-                                                secondaryLabel = "Unlock Swift Backup premium features and bypass license checks",
+                                                label = stringResource(R.string.pref_enable_premium_title),
+                                                secondaryLabel = stringResource(R.string.pref_enable_premium_subtitle),
                                                 pref = prefs.enablePremium,
-                                                enabled = isFrameworkConnected,
+                                                enabled = state.isFrameworkConnected,
                                                 onPrefChange = { prefs.enablePremium = it }
                                             )
                                         }
@@ -335,10 +348,10 @@ class MainActivity : ComponentActivity() {
                                             )
                                         ) {
                                             SettingsSwitch(
-                                                label = "Disable Telemetry & Tracking",
-                                                secondaryLabel = "Block Firebase Analytics, Crashlytics, Sessions, Installations, and DataTransport",
+                                                label = stringResource(R.string.pref_disable_telemetry_title),
+                                                secondaryLabel = stringResource(R.string.pref_disable_telemetry_subtitle),
                                                 pref = prefs.disableTelemetry,
-                                                enabled = isFrameworkConnected,
+                                                enabled = state.isFrameworkConnected,
                                                 onPrefChange = { prefs.disableTelemetry = it }
                                             )
                                         }
@@ -349,7 +362,7 @@ class MainActivity : ComponentActivity() {
                                                 .padding(horizontal = 16.dp, vertical = 6.dp),
                                             shape = RoundedCornerShape(16.dp),
                                             colors = CardDefaults.elevatedCardColors(
-                                                containerColor = if (isFrameworkConnected && prefs.customFirebaseApp)
+                                                containerColor = if (state.isFrameworkConnected && prefs.customFirebaseApp)
                                                     MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
                                                 else
                                                     MaterialTheme.colorScheme.surface
@@ -357,18 +370,18 @@ class MainActivity : ComponentActivity() {
                                         ) {
                                             Column {
                                                 SettingsSwitch(
-                                                    label = "Custom firebase app",
-                                                    secondaryLabel = "Recommended, forces Swift Backup to use your own firebase credentials",
+                                                    label = stringResource(R.string.pref_custom_firebase_title),
+                                                    secondaryLabel = stringResource(R.string.pref_custom_firebase_subtitle),
                                                     pref = prefs.customFirebaseApp,
-                                                    enabled = isFrameworkConnected,
+                                                    enabled = state.isFrameworkConnected,
                                                     onPrefChange = { prefs.customFirebaseApp = it }
                                                 )
 
                                                 AnimatedVisibility(
-                                                    visible = isFrameworkConnected && prefs.customFirebaseApp,
+                                                    visible = state.isFrameworkConnected && prefs.customFirebaseApp,
                                                     enter = expandVertically() + fadeIn(),
                                                     exit = shrinkVertically() + fadeOut()
-                                                    ) {
+                                                ) {
                                                     Column(
                                                         modifier = Modifier
                                                             .fillMaxWidth()
@@ -379,7 +392,10 @@ class MainActivity : ComponentActivity() {
                                                             color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
                                                         )
                                                         GuidedSetupWizard(
-                                                            prefs = prefs
+                                                            prefs = prefs,
+                                                            onImportGoogleServices = { uri ->
+                                                                viewModel.importGoogleServices(contentResolver, uri, prefs)
+                                                            }
                                                         )
                                                     }
                                                 }

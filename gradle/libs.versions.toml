@@ -5,12 +5,12 @@ coreKtx = "1.19.0"
 activityCompose = "1.13.0"
 lifecycle = "2.11.0"
 composeBom = "2026.08.00"
-material3 = "1.4.0"
 dexkit = "2.2.0"
 libxposed-api = "102.0.0"
 libxposed-service = "102.0.0"
 junit = "4.13.2"
 json = "20260814"
+kotlinx-serialization = "1.7.3"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -21,15 +21,21 @@ androidx-lifecycle-runtime-compose = { group = "androidx.lifecycle", name = "lif
 androidx-compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "composeBom" }
 androidx-compose-ui = { group = "androidx.compose.ui", name = "ui" }
 androidx-compose-ui-tooling = { group = "androidx.compose.ui", name = "ui-tooling" }
-androidx-compose-material3 = { group = "androidx.compose.material3", name = "material3", version.ref = "material3" }
+androidx-compose-material3 = { group = "androidx.compose.material3", name = "material3" }
 androidx-compose-material-icons-extended = { group = "androidx.compose.material", name = "material-icons-extended" }
 
 dexkit = { group = "org.luckypray", name = "dexkit", version.ref = "dexkit" }
 libxposed-api = { group = "io.github.libxposed", name = "api", version.ref = "libxposed-api" }
 libxposed-service = { group = "io.github.libxposed", name = "service", version.ref = "libxposed-service" }
+kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "kotlinx-serialization" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 json = { group = "org.json", name = "json", version.ref = "json" }
+
+[bundles]
+compose = ["androidx-compose-ui", "androidx-compose-material3", "androidx-compose-material-icons-extended"]
+unit-test = ["junit", "json"]
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }

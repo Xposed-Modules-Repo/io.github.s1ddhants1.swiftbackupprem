@@ -9,6 +9,8 @@ import org.junit.Test
 
 class ConfigImportExportTest {
 
+    private val viewModel = MainViewModel()
+
     @Test
     fun parseAndApplyConfigImportsFullSbpJson() {
         val prefs = PreferencesManager(null)
@@ -29,7 +31,7 @@ class ConfigImportExportTest {
             """.trimIndent()
         )
 
-        MainViewModel.parseAndApplyConfig(json, prefs)
+        viewModel.parseAndApplyConfig(json, prefs)
 
         assertTrue(prefs.enablePremium)
         assertFalse(prefs.disableTelemetry)
@@ -55,7 +57,7 @@ class ConfigImportExportTest {
             """.trimIndent()
         )
 
-        MainViewModel.parseAndApplyConfig(json, prefs)
+        viewModel.parseAndApplyConfig(json, prefs)
 
         assertFalse(prefs.disableTelemetry)
         assertTrue(prefs.enablePremium)
@@ -90,7 +92,7 @@ class ConfigImportExportTest {
             """.trimIndent()
         )
 
-        MainViewModel.parseAndApplyConfig(json, prefs)
+        viewModel.parseAndApplyConfig(json, prefs)
 
         assertTrue(prefs.customFirebaseApp)
         assertEquals("1:777888:android:xyz", prefs.googleAppId)
@@ -117,7 +119,7 @@ class ConfigImportExportTest {
         )
 
         try {
-            MainViewModel.parseAndApplyConfig(json, prefs)
+            viewModel.parseAndApplyConfig(json, prefs)
         } finally {
             // Verify preferences were not mutated
             assertEquals("original-project", prefs.projectId)

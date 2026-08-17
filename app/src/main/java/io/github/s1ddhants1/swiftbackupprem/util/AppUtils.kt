@@ -7,6 +7,7 @@ import android.os.Build
 import android.provider.Settings
 import android.util.Log
 import io.github.s1ddhants1.swiftbackupprem.Consts
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
@@ -26,14 +27,14 @@ object AppUtils {
         }
     }
 
-    suspend fun forceStopSwiftBackup(context: Context): Boolean {
-        val stopped = withContext(Dispatchers.IO) {
+    suspend fun forceStopSwiftBackup(context: Context, ioDispatcher: CoroutineDispatcher = Dispatchers.IO): Boolean {
+        val stopped = withContext(ioDispatcher) {
             var process: Process? = null
             try {
                 process = Runtime.getRuntime().exec(arrayOf("su", "-c", "am force-stop ${Consts.packageName}"))
                 withTimeoutOrNull(3_000) { process.waitFor() } == 0
-            } catch (t: Throwable) {
-                Log.w("SBP", "Could not force-stop Swift Backup with su", t)
+            } catch (e: Exception) {
+                Log.w("SBP", "Could not force-stop Swift Backup with su", e)
                 false
             } finally {
                 process?.destroy()

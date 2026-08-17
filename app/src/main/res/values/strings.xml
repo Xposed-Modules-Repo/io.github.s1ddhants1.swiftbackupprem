@@ -2,4 +2,102 @@
 <resources>
     <string name="app_name">SwiftBackupPrem</string>
     <string name="app_description">Swift Backup Premium</string>
+
+    <!-- Top App Bar & Menu -->
+    <string name="screen_settings">SwiftBackupPrem</string>
+    <string name="screen_about">About</string>
+    <string name="menu_export_config">Export Config</string>
+    <string name="menu_import_config">Import Config</string>
+    <string name="menu_about">About</string>
+    <string name="cd_back_to_settings">Back to Settings</string>
+    <string name="cd_menu_options">Menu Options</string>
+
+    <!-- Action Buttons & Snackbars -->
+    <string name="btn_force_stop">Force Stop</string>
+    <string name="btn_open_app">Open App</string>
+    <string name="btn_back">Back</string>
+    <string name="btn_next">Next</string>
+    <string name="btn_review">Review</string>
+    <string name="btn_finish_save">Finish &amp; Save</string>
+    <string name="btn_start_setup">Start Setup</string>
+    <string name="btn_edit_setup">Edit Setup</string>
+    <string name="btn_import_json">Import google-services.json</string>
+    <string name="btn_open_console">Open Console</string>
+    <string name="btn_copy_rules">Copy Rules</string>
+    <string name="btn_copy_package">Copy Package</string>
+    <string name="btn_copy_fingerprint">Copy Fingerprint</string>
+    <string name="btn_cloud_console">Cloud Console</string>
+    <string name="btn_enable_drive_api">Enable Drive API</string>
+    <string name="btn_view_source_github">View Source on GitHub</string>
+    <string name="btn_github">GitHub</string>
+
+    <string name="msg_config_exported">Config exported</string>
+    <string name="msg_export_failed">Export failed: %1$s</string>
+    <string name="msg_config_imported">Config imported</string>
+    <string name="msg_import_failed">Import failed: %1$s</string>
+    <string name="msg_swift_backup_force_stopped">Swift Backup force-stopped</string>
+    <string name="msg_opened_swift_backup_settings">Opened Swift Backup app settings</string>
+
+    <!-- Framework Status Card -->
+    <string name="framework_active_title">LSPosed Module Active</string>
+    <string name="framework_inactive_title">LSPosed Module Not Enabled</string>
+    <string name="framework_active_desc">Connected to %1$s %2$s</string>
+    <string name="framework_inactive_desc">Enable module in LSPosed manager and reboot.</string>
+
+    <!-- Settings Switches -->
+    <string name="pref_enable_premium_title">Enable Premium</string>
+    <string name="pref_enable_premium_subtitle">Unlock Swift Backup premium features and bypass license checks</string>
+    <string name="pref_disable_telemetry_title">Disable Telemetry &amp; Tracking</string>
+    <string name="pref_disable_telemetry_subtitle">Block Firebase Analytics, Crashlytics, Sessions, Installations, and DataTransport</string>
+    <string name="pref_custom_firebase_title">Custom firebase app</string>
+    <string name="pref_custom_firebase_subtitle">Recommended, forces Swift Backup to use your own firebase credentials</string>
+
+    <!-- Setup Wizard -->
+    <string name="wizard_step_format">Step %1$d of %2$d</string>
+    <string name="wizard_title_step_1">Welcome &amp; Import</string>
+    <string name="wizard_title_step_2">Database Setup</string>
+    <string name="wizard_title_step_3">Auth &amp; Storage</string>
+    <string name="wizard_title_step_4">OAuth Client</string>
+    <string name="wizard_title_step_5">Review &amp; Finish</string>
+
+    <string name="wizard_firebase_configured_title">Firebase Configured</string>
+    <string name="wizard_firebase_configured_desc">Force stop and restart Swift Backup to apply changes.</string>
+    <string name="wizard_guided_setup_title">Guided Manual Setup</string>
+    <string name="wizard_one_tap_import_title">One-Tap Import</string>
+    <string name="wizard_or_divider">OR</string>
+    <string name="wizard_credentials_complete">Credentials Complete!</string>
+    <string name="wizard_checklist_title">Configuration Checklist</string>
+    <string name="wizard_storage_bucket_optional">Storage Bucket (Optional)</string>
+    <string name="wizard_status_ok">OK</string>
+    <string name="wizard_status_missing">Missing</string>
+    <string name="wizard_status_auto_default">Auto Default</string>
+
+    <!-- Input Field Labels -->
+    <string name="label_project_id">Project ID</string>
+    <string name="label_firebase_db_url">Firebase Database URL</string>
+    <string name="label_google_app_id">Google App ID</string>
+    <string name="label_google_api_key">Google Api Key</string>
+    <string name="label_gcm_sender_id">GCM Sender ID (Project Number)</string>
+    <string name="label_google_storage_bucket">Google Storage Bucket (Optional)</string>
+    <string name="label_client_id">Client ID</string>
+
+    <!-- About Screen -->
+    <string name="about_app_summary">An Xposed / LSPosed module for Swift Backup providing Premium features and custom Firebase backend integration.</string>
+    <string name="about_version_format">Version %1$s (%2$d)</string>
+    <string name="about_core_features">Core Features</string>
+    <string name="about_feature_premium_title">Premium Unlocked</string>
+    <string name="about_feature_premium_desc">Enables full access to Swift Backup premium capabilities.</string>
+    <string name="about_feature_firebase_title">Custom Firebase Backend</string>
+    <string name="about_feature_firebase_desc">Optionally connect your personal Firebase database &amp; credentials.</string>
+    <string name="about_authors_maintainers">Authors &amp; Maintainers</string>
+    <string name="about_original_author_role">Original Author</string>
+    <string name="about_maintainer_role">Maintainer</string>
+    <string name="about_libraries_technologies">Libraries &amp; Technologies</string>
+    <string name="about_lib_dexkit">DexKit by LuckyPray</string>
+    <string name="about_lib_libxposed">LibXposed / Xposed API</string>
+    <string name="about_lib_compose">AndroidX Jetpack Compose &amp; Material 3</string>
+
+    <!-- Accessibility Content Descriptions -->
+    <string name="cd_clear_input">Clear input</string>
+    <string name="cd_app_icon">SwiftBackupPrem App Icon</string>
 </resources>

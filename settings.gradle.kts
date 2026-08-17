@@ -3,20 +3,20 @@ pluginManagement {
         google()
         mavenCentral()
         gradlePluginPortal()
-        maven { url = 'https://libxposed.github.io/api/' }
+        maven("https://libxposed.github.io/api/")
     }
 }
 plugins {
-    id 'org.gradle.toolchains.foojay-resolver-convention' version '0.10.0'
+    id("org.gradle.toolchains.foojay-resolver-convention") version "0.10.0"
 }
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
         google()
         mavenCentral()
-        maven { url = 'https://libxposed.github.io/api/' }
+        maven("https://libxposed.github.io/api/")
     }
 }
 
-rootProject.name = 'SwiftBackupPrem'
-include ':app'
+rootProject.name = "SwiftBackupPrem"
+include(":app")

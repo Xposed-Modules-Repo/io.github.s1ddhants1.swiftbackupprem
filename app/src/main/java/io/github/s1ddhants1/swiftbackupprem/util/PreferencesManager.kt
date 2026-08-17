@@ -83,4 +83,30 @@ class PreferencesManager(
     var disableTelemetry by booleanPreference("disable_telemetry", true)
 
     var customFirebaseApp by booleanPreference("custom_firebase_app")
+
+    fun toConfig(): io.github.s1ddhants1.swiftbackupprem.model.SbpConfig = io.github.s1ddhants1.swiftbackupprem.model.SbpConfig(
+        enablePremium = enablePremium,
+        disableTelemetry = disableTelemetry,
+        customFirebaseApp = customFirebaseApp,
+        googleAppId = googleAppId,
+        googleApiKey = googleApiKey,
+        firebaseDatabaseUrl = firebaseDatabaseUrl,
+        gcmDefaultSenderId = gcmDefaultSenderId,
+        googleStorageBucket = googleStorageBucket,
+        projectId = projectId,
+        clientId = clientId
+    )
+
+    fun applyConfig(config: io.github.s1ddhants1.swiftbackupprem.model.SbpConfig) {
+        enablePremium = config.enablePremium
+        disableTelemetry = config.disableTelemetry
+        customFirebaseApp = config.customFirebaseApp
+        googleAppId = config.googleAppId
+        googleApiKey = config.googleApiKey
+        firebaseDatabaseUrl = config.firebaseDatabaseUrl
+        gcmDefaultSenderId = config.gcmDefaultSenderId
+        googleStorageBucket = config.googleStorageBucket
+        projectId = config.projectId
+        clientId = config.clientId
+    }
 }

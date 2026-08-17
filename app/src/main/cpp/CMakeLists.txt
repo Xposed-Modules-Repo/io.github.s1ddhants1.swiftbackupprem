@@ -24,3 +24,6 @@ add_library( # Sets the name of the library.
         nativelib.c)
 
 target_link_libraries(nativelib)
+
+# Ensure 16 KB page-size alignment for Android 15+ / API 37 compatibility
+target_link_options(nativelib PRIVATE "-Wl,-z,max-page-size=16384")
