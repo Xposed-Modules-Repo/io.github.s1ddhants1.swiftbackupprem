@@ -11,29 +11,21 @@ import java.lang.reflect.Modifier
 
 data class VersionClasses(
     val clientId: String,
-    val backupApk: String,
-    val paths: String,
     val homeViewModel: String,
     val authUser: String,
     val anonUser: String
 )
 
 val versionMap = mapOf(
-    561 to VersionClasses("kf.s0", "org.swiftapps.swiftbackup.common.w1", "me.b", "org.swiftapps.swiftbackup.home.a", "org.swiftapps.swiftbackup.common.a3", "org.swiftapps.swiftbackup.anonymous.a"),
-    569 to VersionClasses("rf.r0", "org.swiftapps.swiftbackup.common.n2", "te.c", "org.swiftapps.swiftbackup.home.a", "org.swiftapps.swiftbackup.common.a3", "org.swiftapps.swiftbackup.anonymous.a"),
-    590 to VersionClasses("eh.u", "org.swiftapps.swiftbackup.common.c2", "org.swiftapps.swiftbackup.a", "org.swiftapps.swiftbackup.home.a", "org.swiftapps.swiftbackup.common.a3", "org.swiftapps.swiftbackup.anonymous.a"),
-    620 to VersionClasses("defpackage.gn5", "defpackage.qm", "defpackage.ry5", "defpackage.c64", "defpackage.d45", "defpackage.b45"),
+    561 to VersionClasses("kf.s0", "org.swiftapps.swiftbackup.home.a", "org.swiftapps.swiftbackup.common.a3", "org.swiftapps.swiftbackup.anonymous.a"),
+    569 to VersionClasses("rf.r0", "org.swiftapps.swiftbackup.home.a", "org.swiftapps.swiftbackup.common.a3", "org.swiftapps.swiftbackup.anonymous.a"),
+    590 to VersionClasses("eh.u", "org.swiftapps.swiftbackup.home.a", "org.swiftapps.swiftbackup.common.a3", "org.swiftapps.swiftbackup.anonymous.a"),
+    620 to VersionClasses("defpackage.gn5", "defpackage.c64", "defpackage.d45", "defpackage.b45"),
 )
 
 @Keep
 @JvmField
 var clientIdClass: Class<*>? = null
-@Keep
-@JvmField
-var backupApkClass: Class<*>? = null
-@Keep
-@JvmField
-var pathsClass: Class<*>? = null
 @Keep
 @JvmField
 var vClass: Class<*>? = null
@@ -53,8 +45,6 @@ var anonUserClass: Class<*>? = null
 private fun hasResolvedHookTargets(): Boolean =
     listOf(
         clientIdClass,
-        backupApkClass,
-        pathsClass,
         vClass,
         homeViewModelClass,
         authUserClass
@@ -66,8 +56,6 @@ fun findObfuscatedClasses(ctx: Context, cl: ClassLoader, sourceDir: String) {
     val ver = Integer.valueOf(ctx.packageManager.getPackageInfo(Consts.packageName, 0).versionCode)
     versionMap[ver]?.let { classes ->
         attempt("load clientIdClass from versionMap", silent = true) { clientIdClass = cl.loadClass(classes.clientId) }
-        attempt("load backupApkClass from versionMap", silent = true) { backupApkClass = cl.loadClass(classes.backupApk) }
-        attempt("load pathsClass from versionMap", silent = true) { pathsClass = cl.loadClass(classes.paths) }
         attempt("load homeViewModelClass from versionMap", silent = true) { homeViewModelClass = cl.loadClass(classes.homeViewModel) }
         attempt("load authUserClass from versionMap", silent = true) { authUserClass = cl.loadClass(classes.authUser) }
         attempt("load anonUserClass from versionMap", silent = true) { anonUserClass = cl.loadClass(classes.anonUser) }
@@ -155,50 +143,6 @@ fun findObfuscatedClasses(ctx: Context, cl: ClassLoader, sourceDir: String) {
                 selected?.let {
                     clientIdClass = it.getInstance(cl)
                     Log.d("SBP", "Found client id class: ${it.name}")
-                }
-            }
-
-            if (backupApkClass == null) {
-                val candidates = bridge.findClass {
-                    matcher {
-                        usingStrings("swift_backup_apks/", "SwiftBackupApkSaver")
-                    }
-                }
-                Log.d("SBP", "Found ${candidates.size} candidate(s) for backupApkClass")
-                val selected = when (candidates.size) {
-                    0 -> null
-                    1 -> candidates.single()
-                    else -> {
-                        Log.w("SBP", "Multiple backupApkClass candidates (${candidates.size}): ${candidates.map { it.name }}")
-                        candidates.firstOrNull()
-                    }
-                }
-                selected?.let {
-                    backupApkClass = it.getInstance(cl)
-                    Log.d("SBP", "Found backup apk class: ${it.name}")
-                }
-            }
-
-            if (pathsClass == null) {
-                val candidates = bridge.findClass {
-                    excludePackages(excludePackages)
-                    matcher {
-                        methods {
-                            add {
-                                name("<init>")
-                                addParamType("org.swiftapps.swiftbackup.anonymous.MFirebaseUser")
-                                addParamType("java.lang.String")
-                                paramCount(2)
-                                usingStrings("accounts/", "backups/", "cache/", "apps/", "local/", "cloud/", "icon_cache/", "sms/", "calls/")
-                            }
-                        }
-                    }
-                }
-                Log.d("SBP", "Found ${candidates.size} candidate(s) for pathsClass")
-                val selected = candidates.singleOrNull() ?: candidates.firstOrNull()
-                selected?.let {
-                    pathsClass = it.getInstance(cl)
-                    Log.d("SBP", "Found paths class: ${it.name}")
                 }
             }
 
@@ -313,7 +257,7 @@ fun findObfuscatedClasses(ctx: Context, cl: ClassLoader, sourceDir: String) {
         Log.e("SBP", "DexKit search encountered an error", t)
     }
 
-    if (clientIdClass == null || backupApkClass == null || pathsClass == null || homeViewModelClass == null) {
+    if (clientIdClass == null || homeViewModelClass == null) {
         Log.w("SBP", "Couldn't fully hook Swift Backup.")
     }
 }

@@ -27,7 +27,7 @@
   - [Step 4: Register Android App & OAuth Client](#step-4-register-android-app--oauth-client)
   - [Step 5: Enable Google Drive API](#step-5-enable-google-drive-api)
   - [Step 6: Import or Enter Credentials in SwiftBackupPrem](#step-6-import-or-enter-credentials-in-swiftbackupprem)
-- [🔄 Backup, Export & Migration](#-backup-export--migration)
+- [🔄 Configuration Export & Migration](#-configuration-export--migration)
 - [🛠️ Building from Source](#️-building-from-source)
 - [❓ Frequently Asked Questions (FAQ)](#-frequently-asked-questions-faq)
 - [🤝 Credits & Acknowledgements](#-credits--acknowledgements)
@@ -45,7 +45,6 @@
 - 🧙 **Interactive 5-Step Guided Wizard**: In-app wizard with 1-click clipboard helpers (package name, SHA-1 signing fingerprint) and direct links to Firebase and Google Cloud consoles.
 - 📥 **One-Tap JSON Import**: Automatically parses and fills credentials directly from standard `google-services.json` files.
 - 💾 **Configuration Export & Import**: Easily backup or migrate your custom Firebase setup across devices using `sbp_config.json`.
-- 📦 **Automated Module & Config Archiving**: Automatically mirrors and backs up the module APK and `google-services.json` into your backup storage directory (`sbp/`) whenever Swift Backup creates an APK backup.
 - ⚡ **Quick Process Controls**: One-tap Root Force Stop and Launch shortcuts directly inside the app.
 
 ---
@@ -215,18 +214,10 @@ If you plan to use Google Drive for cloud backups:
 
 ---
 
-## 🔄 Backup, Export & Migration
+## 🔄 Configuration Export & Migration
 
-### Configuration Import & Export
 - **Export Config**: Tap the top-right menu (⋮) > **Export Config** to save your active configuration to a JSON file (`sbp_config.json`).
 - **Import Config**: On a new device or fresh ROM install, tap **Import Config** to restore your settings in a single click.
-
-### Automatic Backup Archiving
-When Swift Backup performs an APK backup, SwiftBackupPrem automatically copies:
-- The currently installed `SwiftBackupPrem.apk`
-- The active `google-services.json` configuration
-
-into your backup directory under `.../sbp/` so your module and setup are preserved with your backups.
 
 ---
 

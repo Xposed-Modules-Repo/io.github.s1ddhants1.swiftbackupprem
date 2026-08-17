@@ -21,12 +21,6 @@ class DexKitVersionMapTest {
             assertNotNull("clientId is null for $version", classes.clientId)
             assertTrue("clientId is blank for $version", classes.clientId.isNotBlank())
 
-            assertNotNull("backupApk is null for $version", classes.backupApk)
-            assertTrue("backupApk is blank for $version", classes.backupApk.isNotBlank())
-
-            assertNotNull("paths is null for $version", classes.paths)
-            assertTrue("paths is blank for $version", classes.paths.isNotBlank())
-
             assertNotNull("homeViewModel is null for $version", classes.homeViewModel)
             assertTrue("homeViewModel is blank for $version", classes.homeViewModel.isNotBlank())
 
@@ -43,8 +37,6 @@ class DexKitVersionMapTest {
         val v620 = versionMap[620]
         assertNotNull(v620)
         assertEquals("defpackage.gn5", v620!!.clientId)
-        assertEquals("defpackage.qm", v620.backupApk)
-        assertEquals("defpackage.ry5", v620.paths)
         assertEquals("defpackage.c64", v620.homeViewModel)
         assertEquals("defpackage.d45", v620.authUser)
         assertEquals("defpackage.b45", v620.anonUser)

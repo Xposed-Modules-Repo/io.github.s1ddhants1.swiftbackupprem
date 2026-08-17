@@ -143,12 +143,6 @@ class Module : XposedModule() {
                     hookFirebaseAuthBypass()
                 }
 
-                if (backupApkClass != null && pathsClass != null) {
-                    attempt("hook BackupApk") {
-                        hookBackupApk(cl, ctx, isCustomFirebase, prefs)
-                    }
-                }
-
                 // Apply telemetry suppression hooks
                 hookTelemetrySuppression(cl, prefs)
             }
