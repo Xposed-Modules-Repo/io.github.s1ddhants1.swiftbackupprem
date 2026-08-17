@@ -320,6 +320,7 @@ class MainActivity : ComponentActivity() {
                                                 label = "Enable Premium",
                                                 secondaryLabel = "Unlock Swift Backup premium features and bypass license checks",
                                                 pref = prefs.enablePremium,
+                                                enabled = isFrameworkConnected,
                                                 onPrefChange = { prefs.enablePremium = it }
                                             )
                                         }
@@ -337,6 +338,7 @@ class MainActivity : ComponentActivity() {
                                                 label = "Disable Telemetry & Tracking",
                                                 secondaryLabel = "Block Firebase Analytics, Crashlytics, Sessions, Installations, and DataTransport",
                                                 pref = prefs.disableTelemetry,
+                                                enabled = isFrameworkConnected,
                                                 onPrefChange = { prefs.disableTelemetry = it }
                                             )
                                         }
@@ -347,7 +349,7 @@ class MainActivity : ComponentActivity() {
                                                 .padding(horizontal = 16.dp, vertical = 6.dp),
                                             shape = RoundedCornerShape(16.dp),
                                             colors = CardDefaults.elevatedCardColors(
-                                                containerColor = if (prefs.customFirebaseApp)
+                                                containerColor = if (isFrameworkConnected && prefs.customFirebaseApp)
                                                     MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
                                                 else
                                                     MaterialTheme.colorScheme.surface
@@ -358,14 +360,15 @@ class MainActivity : ComponentActivity() {
                                                     label = "Custom firebase app",
                                                     secondaryLabel = "Recommended, forces Swift Backup to use your own firebase credentials",
                                                     pref = prefs.customFirebaseApp,
+                                                    enabled = isFrameworkConnected,
                                                     onPrefChange = { prefs.customFirebaseApp = it }
                                                 )
 
                                                 AnimatedVisibility(
-                                                    visible = prefs.customFirebaseApp,
+                                                    visible = isFrameworkConnected && prefs.customFirebaseApp,
                                                     enter = expandVertically() + fadeIn(),
                                                     exit = shrinkVertically() + fadeOut()
-                                                ) {
+                                                    ) {
                                                     Column(
                                                         modifier = Modifier
                                                             .fillMaxWidth()

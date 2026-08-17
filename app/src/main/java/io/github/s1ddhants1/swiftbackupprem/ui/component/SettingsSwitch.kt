@@ -15,13 +15,17 @@ fun SettingsSwitch(
     label: String,
     secondaryLabel: String,
     pref: Boolean,
+    enabled: Boolean = true,
     onPrefChange: (Boolean) -> Unit,
 ) {
+    val titleAlpha = if (enabled) 1f else 0.38f
+    val subtitleAlpha = if (enabled) 0.6f else 0.38f
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 5.dp)
-            .clickable { onPrefChange(!pref) },
+            .clickable(enabled = enabled) { onPrefChange(!pref) },
         horizontalArrangement = Arrangement.spacedBy(15.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -32,14 +36,15 @@ fun SettingsSwitch(
             ProvideTextStyle(
                 MaterialTheme.typography.titleLarge.copy(
                     fontWeight = FontWeight.Normal,
-                    fontSize = 18.sp
+                    fontSize = 18.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = titleAlpha)
                 )
             ) {
                 Text(text = label, softWrap = true)
             }
             ProvideTextStyle(
                 MaterialTheme.typography.bodyMedium.copy(
-                    color = MaterialTheme.colorScheme.onSurface.copy(0.6f)
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = subtitleAlpha)
                 )
             ) {
                 Text(text = secondaryLabel)
@@ -49,7 +54,8 @@ fun SettingsSwitch(
         Spacer(Modifier.weight(0.05f, true))
 
         Switch(
-            checked = pref,
+            checked = if (enabled) pref else false,
+            enabled = enabled,
             onCheckedChange = { onPrefChange(!pref) }
         )
     }
