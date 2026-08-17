@@ -4,30 +4,29 @@ plugins {
 }
 
 android {
-    namespace 'io.github.s1ddhants1.swiftbackupprem'
-    compileSdk 37
-    ndkVersion '25.1.8937393'
+    namespace = 'io.github.s1ddhants1.swiftbackupprem'
+    compileSdk = 37
+    ndkVersion = '25.1.8937393'
 
     defaultConfig {
-        applicationId 'io.github.s1ddhants1.swiftbackupprem'
-        minSdk 27
-        targetSdk 37
-        versionCode 220
-        versionName '2.2.0'
+        applicationId = 'io.github.s1ddhants1.swiftbackupprem'
+        minSdk = 27
+        targetSdk = 37
+        versionCode = 220
+        versionName = '2.2.0'
     }
 
     buildTypes {
         release {
-            signingConfig signingConfigs.debug
-            minifyEnabled true
-            shrinkResources true
+            minifyEnabled = true
+            shrinkResources = true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
     externalNativeBuild {
         cmake {
-            path 'src/main/cpp/CMakeLists.txt'
-            version '3.22.1'
+            path = file('src/main/cpp/CMakeLists.txt')
+            version = '3.22.1'
         }
     }
     compileOptions {
@@ -35,9 +34,9 @@ android {
         targetCompatibility JavaVersion.VERSION_17
     }
     buildFeatures {
-        buildConfig true
-        compose true
-        resValues false
+        buildConfig = true
+        compose = true
+        resValues = false
     }
 }
 
@@ -61,5 +60,6 @@ dependencies {
 
     testImplementation libs.libxposed.api
     testImplementation libs.libxposed.service
-    testImplementation 'junit:junit:4.13.2'
+    testImplementation libs.junit
+    testImplementation libs.json
 }

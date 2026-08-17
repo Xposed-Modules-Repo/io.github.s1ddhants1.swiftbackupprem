@@ -2,6 +2,7 @@ package io.github.s1ddhants1.swiftbackupprem.ui.component
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import android.util.Log
 import androidx.compose.animation.*
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -53,6 +54,7 @@ import io.github.s1ddhants1.swiftbackupprem.util.GoogleServicesJson
 import io.github.s1ddhants1.swiftbackupprem.util.PreferencesManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
 private const val FIREBASE_DATABASE_RULES = "{\n" +
@@ -99,10 +101,13 @@ fun GuidedSetupWizard(
                     context.contentResolver.openInputStream(uri)?.use { inputStream ->
                         val jsonStr = inputStream.bufferedReader().use { r -> r.readText() }
                         val json = JSONObject(jsonStr)
-                        GoogleServicesJson.applyToPrefs(json, prefs)
-                        userOverrodeCollapse = null
+                        withContext(Dispatchers.Main) {
+                            GoogleServicesJson.applyToPrefs(json, prefs)
+                            userOverrodeCollapse = null
+                        }
                     }
-                } catch (_: Throwable) {
+                } catch (t: Throwable) {
+                    Log.e("SBP", "Failed importing google-services.json", t)
                 }
             }
         }
@@ -622,9 +627,7 @@ private fun Step5ReviewFinish(
         )
     }
 
-    val allFilled by remember {
-        derivedStateOf { requiredFields.all { it.second.isNotBlank() } }
-    }
+    val allFilled = requiredFields.all { it.second.isNotBlank() }
 
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Card(

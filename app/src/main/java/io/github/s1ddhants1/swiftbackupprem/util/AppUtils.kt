@@ -7,6 +7,9 @@ import android.os.Build
 import android.provider.Settings
 import android.util.Log
 import io.github.s1ddhants1.swiftbackupprem.Consts
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.security.MessageDigest
 
 object AppUtils {
@@ -18,29 +21,34 @@ object AppUtils {
                 setPackage(Consts.packageName)
             }
         launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        try {
+        attempt("launch Swift Backup") {
             context.startActivity(launchIntent)
-        } catch (e: Throwable) {
-            Log.e("SBP", "Could not launch Swift Backup: ${e.localizedMessage}")
         }
     }
 
-    fun forceStopSwiftBackup(context: Context) {
-        try {
-            val process = Runtime.getRuntime().exec(arrayOf("su", "-c", "am force-stop ${Consts.packageName}"))
-            val exitCode = process.waitFor()
-            if (exitCode == 0) {
-                return
+    suspend fun forceStopSwiftBackup(context: Context): Boolean {
+        val stopped = withContext(Dispatchers.IO) {
+            var process: Process? = null
+            try {
+                process = Runtime.getRuntime().exec(arrayOf("su", "-c", "am force-stop ${Consts.packageName}"))
+                withTimeoutOrNull(3_000) { process.waitFor() } == 0
+            } catch (t: Throwable) {
+                Log.w("SBP", "Could not force-stop Swift Backup with su", t)
+                false
+            } finally {
+                process?.destroy()
             }
-        } catch (_: Throwable) {}
+        }
+        if (stopped) return true
 
-        try {
+        attempt("open Swift Backup app settings") {
             val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
                 data = Uri.fromParts("package", Consts.packageName, null)
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
             context.startActivity(intent)
-        } catch (_: Throwable) {}
+        }
+        return false
     }
 
     fun getSwiftBackupSha1(context: Context): String =
@@ -48,8 +56,12 @@ object AppUtils {
             ?: getSha1ForPackage(context, context.packageName)
             ?: ""
 
+    fun formatSha1(bytes: ByteArray): String =
+        MessageDigest.getInstance("SHA-1").digest(bytes)
+            .joinToString(":") { "%02X".format(it) }
+
     private fun getSha1ForPackage(context: Context, packageName: String): String? {
-        return try {
+        return attempt("get SHA-1 for package $packageName", silent = true) {
             val packageInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 context.packageManager.getPackageInfo(
                     packageName,
@@ -74,9 +86,8 @@ object AppUtils {
             }
 
             signatures?.firstOrNull()?.toByteArray()?.let { cert ->
-                MessageDigest.getInstance("SHA-1").digest(cert)
-                    .joinToString(":") { "%02X".format(it) }
+                formatSha1(cert)
             }
-        } catch (_: Throwable) { null }
+        }
     }
 }

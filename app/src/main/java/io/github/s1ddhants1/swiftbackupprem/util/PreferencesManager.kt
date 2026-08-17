@@ -39,14 +39,14 @@ class PreferencesManager(
     private fun getBoolean(key: String, defaultValue: Boolean) = prefs?.getBoolean(key, defaultValue) ?: defaultValue
 
     private fun putString(key: String, value: String?) {
-        try {
+        attempt("save preference string $key", silent = true) {
             prefs?.edit(commit = false) { putString(key, value) }
-        } catch (_: Throwable) {}
+        }
     }
     private fun putBoolean(key: String, value: Boolean) {
-        try {
+        attempt("save preference boolean $key", silent = true) {
             prefs?.edit(commit = false) { putBoolean(key, value) }
-        } catch (_: Throwable) {}
+        }
     }
 
     private fun stringPreference(

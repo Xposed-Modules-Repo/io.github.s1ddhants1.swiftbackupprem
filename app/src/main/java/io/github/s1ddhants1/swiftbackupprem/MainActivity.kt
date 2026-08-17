@@ -44,6 +44,8 @@ import io.github.s1ddhants1.swiftbackupprem.ui.component.SettingsSwitch
 import io.github.s1ddhants1.swiftbackupprem.ui.theme.Theme
 import io.github.s1ddhants1.swiftbackupprem.util.AppUtils
 import io.github.s1ddhants1.swiftbackupprem.util.PreferencesManager
+import io.github.s1ddhants1.swiftbackupprem.util.attempt
+import kotlinx.coroutines.launch
 
 enum class AppScreen {
     Settings, About
@@ -67,20 +69,18 @@ class MainActivity : ComponentActivity() {
         val prefsState = mutableStateOf(PreferencesManager(localPrefs))
 
         // Register listener for Modern Xposed API Framework Service
-        try {
+        attempt("register XposedServiceHelper listener") {
             XposedServiceHelper.registerListener(object : XposedServiceHelper.OnServiceListener {
                 override fun onServiceBind(service: XposedService) {
                     Log.i("SBP", "XposedService bound: ${service.frameworkName} ${service.frameworkVersion} (API ${service.apiVersion})")
                     xposedService = service
                     isFrameworkConnected = true
-                    frameworkName = try { service.frameworkName } catch (_: Throwable) { "LSPosed" }
-                    frameworkVersion = try { service.frameworkVersion } catch (_: Throwable) { "" }
+                    frameworkName = attempt("get frameworkName", silent = true) { service.frameworkName } ?: "LSPosed"
+                    frameworkVersion = attempt("get frameworkVersion", silent = true) { service.frameworkVersion } ?: ""
 
-                    try {
+                    attempt("retrieve remote preferences from XposedService") {
                         val remotePrefs = service.getRemotePreferences("settings")
                         prefsState.value = PreferencesManager(remotePrefs)
-                    } catch (t: Throwable) {
-                        Log.e("SBP", "Failed to retrieve remote preferences from XposedService", t)
                     }
                 }
 
@@ -90,8 +90,6 @@ class MainActivity : ComponentActivity() {
                     isFrameworkConnected = false
                 }
             })
-        } catch (t: Throwable) {
-            Log.e("SBP", "Failed registering XposedServiceHelper listener", t)
         }
 
         setContent {
@@ -100,6 +98,8 @@ class MainActivity : ComponentActivity() {
 
             var currentScreen by remember { mutableStateOf(AppScreen.Settings) }
             var showMenu by remember { mutableStateOf(false) }
+            val snackbarHostState = remember { SnackbarHostState() }
+            val coroutineScope = rememberCoroutineScope()
 
             BackHandler(enabled = currentScreen != AppScreen.Settings) {
                 currentScreen = AppScreen.Settings
@@ -107,18 +107,31 @@ class MainActivity : ComponentActivity() {
 
             val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
                 if (uri != null) {
-                    viewModel.exportConfig(contentResolver, uri, prefs)
+                    viewModel.exportConfig(contentResolver, uri, prefs) { result ->
+                        coroutineScope.launch {
+                            snackbarHostState.showSnackbar(
+                                if (result.isSuccess) "Config exported" else "Export failed: ${result.exceptionOrNull()?.localizedMessage ?: "unknown error"}"
+                            )
+                        }
+                    }
                 }
             }
 
             val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
                 if (uri != null) {
-                    viewModel.importConfig(contentResolver, uri, prefs)
+                    viewModel.importConfig(contentResolver, uri, prefs) { result ->
+                        coroutineScope.launch {
+                            snackbarHostState.showSnackbar(
+                                if (result.isSuccess) "Config imported" else "Import failed: ${result.exceptionOrNull()?.localizedMessage ?: "unknown error"}"
+                            )
+                        }
+                    }
                 }
             }
 
             Theme {
                 Scaffold(
+                    snackbarHost = { SnackbarHost(snackbarHostState) },
                     topBar = {
                         TopAppBar(
                             title = {
@@ -328,7 +341,14 @@ class MainActivity : ComponentActivity() {
                                                 horizontalArrangement = Arrangement.spacedBy(10.dp)
                                             ) {
                                                 Button(
-                                                    onClick = { AppUtils.forceStopSwiftBackup(context) },
+                                                    onClick = {
+                                                        coroutineScope.launch {
+                                                            val stopped = AppUtils.forceStopSwiftBackup(context)
+                                                            snackbarHostState.showSnackbar(
+                                                                if (stopped) "Swift Backup force-stopped" else "Opened Swift Backup app settings"
+                                                            )
+                                                        }
+                                                    },
                                                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
                                                     modifier = Modifier.weight(1f).heightIn(min = 46.dp),
                                                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)

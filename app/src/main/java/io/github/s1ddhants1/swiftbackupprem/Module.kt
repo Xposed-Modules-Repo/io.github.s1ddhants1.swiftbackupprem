@@ -2,11 +2,14 @@ package io.github.s1ddhants1.swiftbackupprem
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.annotation.SuppressLint
 import android.util.Log
 import androidx.annotation.Keep
 import io.github.libxposed.api.XposedModule
 import io.github.libxposed.api.XposedModuleInterface
 import io.github.s1ddhants1.swiftbackupprem.util.PreferencesManager
+import io.github.s1ddhants1.swiftbackupprem.util.attempt
+import io.github.s1ddhants1.swiftbackupprem.util.attemptOrDefault
 import java.lang.reflect.Modifier
 
 @Keep
@@ -16,54 +19,43 @@ class Module : XposedModule() {
         super.onPackageReady(param)
         if (param.packageName != Consts.packageName) return
 
-        try {
+        attempt("load nativelib native library") {
             System.loadLibrary("nativelib")
-        } catch (t: Throwable) {
-            Log.e("SBP", "Failed to load nativelib native library", t)
         }
 
-        val remotePrefs: SharedPreferences? = try {
+        val remotePrefs: SharedPreferences? = attempt("get remote preferences") {
             getRemotePreferences("settings")
-        } catch (t: Throwable) {
-            Log.w("SBP", "Failed to get remote preferences", t)
-            null
         }
 
         val prefs = PreferencesManager(remotePrefs, isDynamic = true)
         val cl = param.classLoader
 
         // Neutralize System.exit and Runtime.exit to prevent forced JVM termination
-        try {
+        attempt("neutralize System.exit") {
             val systemExit = System::class.java.getDeclaredMethod("exit", Int::class.javaPrimitiveType)
             hook(systemExit).intercept { chain ->
                 val code = chain.getArg(0) as? Int ?: 0
                 Log.w("SBP", "Neutralized System.exit($code)")
                 null
             }
-        } catch (_: Throwable) {}
+        }
 
-        try {
+        attempt("neutralize Runtime.exit") {
             val runtimeExit = Runtime::class.java.getDeclaredMethod("exit", Int::class.javaPrimitiveType)
             hook(runtimeExit).intercept { chain ->
                 val code = chain.getArg(0) as? Int ?: 0
                 Log.w("SBP", "Neutralized Runtime.exit($code)")
                 null
             }
-        } catch (_: Throwable) {}
+        }
 
-        val swiftAppClass = try {
+        val swiftAppClass = attempt("load SwiftApp class") {
             cl.loadClass("org.swiftapps.swiftbackup.SwiftApp")
-        } catch (t: Throwable) {
-            Log.e("SBP", "Failed to load SwiftApp class", t)
-            return
-        }
+        } ?: return
 
-        val onCreateMethod = try {
+        val onCreateMethod = attempt("find SwiftApp.onCreate") {
             swiftAppClass.getDeclaredMethod("onCreate")
-        } catch (t: Throwable) {
-            Log.e("SBP", "Failed to find SwiftApp.onCreate", t)
-            return
-        }
+        } ?: return
 
         hook(onCreateMethod).intercept { chain ->
             val ctx = chain.thisObject as? Context
@@ -76,15 +68,13 @@ class Module : XposedModule() {
                         prefs.projectId.isNotBlank() &&
                         prefs.clientId.isNotBlank()
 
-                try {
+                attempt("find obfuscated classes with DexKit") {
                     val appSourceDir = param.applicationInfo.sourceDir
                     findObfuscatedClasses(ctx, cl, appSourceDir)
-                } catch (t: Throwable) {
-                    Log.e("SBP", "Failed DexKit search", t)
                 }
 
                 // Initialize FirebaseApp (custom if configured, or default with APK resources)
-                try {
+                attempt("initialize FirebaseApp") {
                     val firebaseAppClass = cl.loadClass("com.google.firebase.FirebaseApp")
                     val optionsClass = cl.loadClass("com.google.firebase.FirebaseOptions")
                     val constructorParams = Array(7) { String::class.java }
@@ -130,15 +120,13 @@ class Module : XposedModule() {
                     )
                     initializeAppMethod.invoke(null, ctx, optionsInstance)
                     Log.d("SBP", "Initialized FirebaseApp (custom: $isCustomFirebase, project: $projectId)")
-                } catch (t: Throwable) {
-                    Log.e("SBP", "Failed to initialize FirebaseApp", t)
                 }
 
                 if (isCustomFirebase) {
-                    try {
+                    attempt("hook getGoogleAuthAndroidClientId") {
                         val getClientIdMethod = swiftAppClass.getDeclaredMethod("getGoogleAuthAndroidClientId")
                         hook(getClientIdMethod).intercept { prefs.clientId }
-                    } catch (_: Throwable) {}
+                    }
                 }
 
                 val isPremium = prefs.enablePremium
@@ -156,10 +144,8 @@ class Module : XposedModule() {
                 }
 
                 if (backupApkClass != null && pathsClass != null) {
-                    try {
+                    attempt("hook BackupApk") {
                         hookBackupApk(cl, ctx, isCustomFirebase, prefs)
-                    } catch (t: Throwable) {
-                        Log.e("SBP", "Failed to hook BackupApk", t)
                     }
                 }
 
@@ -175,15 +161,13 @@ class Module : XposedModule() {
             val isCustomFirebase = prefs.customFirebaseApp && prefs.clientId.isNotBlank()
             if (isCustomFirebase) {
                 clientIdClass?.let { cIdClass ->
-                    try {
+                    attempt("set static clientId on $cIdClass") {
                         for (f in cIdClass.declaredFields) {
                             if (f.type == String::class.java && Modifier.isStatic(f.modifiers)) {
                                 f.isAccessible = true
                                 f.set(null, prefs.clientId)
                             }
                         }
-                    } catch (t: Throwable) {
-                        Log.e("SBP", "Failed setting clientId on $cIdClass in after onCreate", t)
                     }
                 }
             }
@@ -196,26 +180,23 @@ class Module : XposedModule() {
         clientIdClass?.let { cIdClass ->
             for (m in cIdClass.declaredMethods) {
                 if (m.name == "e" && m.parameterCount == 2) {
-                    try {
+                    attempt("hook FirebaseAuth bypass method ${m.name}") {
                         hook(m).intercept { chain ->
                             val task = chain.getArg(1)
-                            val isSuccessful = try {
+                            val isSuccessful = attempt("check task isSuccessful", silent = true) {
                                 if (task != null) {
                                     task.javaClass.getMethod("isSuccessful").invoke(task) as? Boolean ?: true
                                 } else true
-                            } catch (_: Throwable) {
-                                true
-                            }
+                            } ?: true
+
                             if (!isSuccessful && task != null) {
-                                val exceptionMsg = try {
+                                val exceptionMsg = attempt("get task exception message", silent = true) {
                                     (task.javaClass.getMethod("getException").invoke(task) as? Throwable)?.message
-                                } catch (_: Throwable) {
-                                    "unknown"
-                                }
+                                } ?: "unknown"
                                 Log.w("SBP", "FirebaseAuth failed ($exceptionMsg), bypassing account block and forcing sign-in success")
                                 val callback = chain.getArg(0)
                                 if (callback != null) {
-                                    try {
+                                    attempt("set auth success callback") {
                                         for (nested in cIdClass.declaredClasses) {
                                             for (inner in nested.declaredClasses) {
                                                 if (inner.simpleName == "b") {
@@ -226,14 +207,12 @@ class Module : XposedModule() {
                                                 }
                                             }
                                         }
-                                    } catch (t: Throwable) {
-                                        Log.e("SBP", "Failed setting success callback", t)
                                     }
                                 }
                             }
                             chain.proceed()
                         }
-                    } catch (_: Throwable) {}
+                    }
                 }
             }
         }
@@ -241,13 +220,13 @@ class Module : XposedModule() {
 
     private fun hookKnownClasses(cl: ClassLoader, isPremium: Boolean) {
         // V class hooks (via known class name as fallback)
-        try {
+        attempt("load and hook known V class fallback", silent = true) {
             val vClass = cl.loadClass("org.swiftapps.swiftbackup.common.V")
             hookVClass(vClass, isPremium)
-        } catch (_: Throwable) {}
+        }
 
         // V$a hook
-        try {
+        attempt("load and hook known V\$a class", silent = true) {
             val vClassA = cl.loadClass("org.swiftapps.swiftbackup.common.V\$a")
             for (m in vClassA.declaredMethods) {
                 if (m.name == "invoke") {
@@ -255,10 +234,10 @@ class Module : XposedModule() {
                     break
                 }
             }
-        } catch (_: Throwable) {}
+        }
 
         // Hook NoGmsSignInActivity to dismiss blocked/failed dialogs and proceed with RESULT_OK
-        try {
+        attempt("hook NoGmsSignInActivity", silent = true) {
             val noGmsClass = cl.loadClass("org.swiftapps.swiftbackup.cloud.connect.NoGmsSignInActivity")
             for (m in noGmsClass.declaredMethods) {
                 if (m.parameterCount == 2 && m.parameterTypes[0] == noGmsClass && m.parameterTypes[1] == String::class.java) {
@@ -272,7 +251,7 @@ class Module : XposedModule() {
                     }
                 }
             }
-        } catch (_: Throwable) {}
+        }
 
         // Guarantee non-null MFirebaseUser across all known class names
         val knownAuthClassNames = listOf(
@@ -281,46 +260,46 @@ class Module : XposedModule() {
             "org.swiftapps.swiftbackup.anonymous.a"
         )
         for (name in knownAuthClassNames) {
-            try {
+            attempt("load and hook auth class $name", silent = true) {
                 val authClass = cl.loadClass(name)
                 hookAuthUserClass(authClass, cl)
-            } catch (_: Throwable) {}
+            }
         }
 
         // Neutralize Const.Z0 (the block/signOut/exit handler)
-        try {
+        attempt("neutralize Const.Z0", silent = true) {
             val constClass = cl.loadClass("org.swiftapps.swiftbackup.common.Const")
             for (m in constClass.declaredMethods) {
                 if (m.name == "Z0" || (m.parameterCount == 1 && m.parameterTypes[0] == String::class.java && Modifier.isSynchronized(m.modifiers))) {
-                    try {
+                    attempt("hook Const.Z0 method ${m.name}") {
                         hook(m).intercept { null }
-                    } catch (_: Throwable) {}
+                    }
                 }
             }
-        } catch (_: Throwable) {}
+        }
     }
 
     private fun hookAuthUserClass(targetClass: Class<*>, cl: ClassLoader) {
         Log.d("SBP", "Hooking AuthUser class: ${targetClass.name}")
         for (m in targetClass.declaredMethods) {
             if (m.parameterCount == 0 && m.returnType.name.contains("MFirebaseUser")) {
-                try {
+                attempt("hook AuthUser method ${m.name}") {
                     hook(m).intercept { chain ->
                         val res = chain.proceed()
                         res ?: getFallbackUser(cl)
                     }
-                } catch (_: Throwable) {}
+                }
             }
         }
     }
 
     private fun hookSwiftAppPremium(swiftApp: Any?, isPremium: Boolean) {
         if (swiftApp == null) return
-        try {
+        attempt("hook SwiftApp premium LiveData") {
             val appClass = swiftApp.javaClass
             for (field in appClass.declaredFields) {
                 field.isAccessible = true
-                val liveDataObj = try { field.get(swiftApp) } catch (_: Throwable) { null } ?: continue
+                val liveDataObj = attempt("read field ${field.name}", silent = true) { field.get(swiftApp) } ?: continue
                 val liveDataClass = liveDataObj.javaClass
 
                 val isTarget = field.name == "a" ||
@@ -337,7 +316,7 @@ class Module : XposedModule() {
                     for (m in liveDataClass.methods) {
                         if (m.parameterCount == 1 && (m.parameterTypes[0] == Any::class.java || m.parameterTypes[0] == Boolean::class.javaObjectType || m.parameterTypes[0] == Boolean::class.javaPrimitiveType)) {
                             if (m.name in listOf("k", "setValue", "postValue", "i", "l", "p")) {
-                                try { m.invoke(liveDataObj, isPremium) } catch (_: Throwable) {}
+                                attempt("invoke LiveData setter ${m.name}", silent = true) { m.invoke(liveDataObj, isPremium) }
                             }
                         }
                     }
@@ -345,7 +324,7 @@ class Module : XposedModule() {
                     // 2. Hook setter methods to always force isPremium on this specific instance
                     for (m in liveDataClass.declaredMethods) {
                         if (m.parameterCount == 1) {
-                            try {
+                            attempt("hook LiveData setter ${m.name}") {
                                 hook(m).intercept { chain ->
                                     if (chain.thisObject === liveDataObj && (chain.getArg(0) is Boolean || chain.getArg(0) == null)) {
                                         chain.proceed(arrayOf(isPremium))
@@ -353,10 +332,10 @@ class Module : XposedModule() {
                                         chain.proceed()
                                     }
                                 }
-                            } catch (_: Throwable) {}
+                            }
                         }
                         if (m.parameterCount == 0 && (m.name == "getValue" || m.name == "d")) {
-                            try {
+                            attempt("hook LiveData getter ${m.name}") {
                                 hook(m).intercept { chain ->
                                     if (chain.thisObject === liveDataObj) {
                                         isPremium
@@ -364,13 +343,11 @@ class Module : XposedModule() {
                                         chain.proceed()
                                     }
                                 }
-                            } catch (_: Throwable) {}
+                            }
                         }
                     }
                 }
             }
-        } catch (t: Throwable) {
-            Log.e("SBP", "Error hooking SwiftApp premium LiveData", t)
         }
     }
 
@@ -378,11 +355,11 @@ class Module : XposedModule() {
         // 1. Try anonUserClass or known anonymous user generator classes
         val anonClasses = listOfNotNull(
             anonUserClass,
-            try { cl.loadClass("defpackage.b45") } catch (_: Throwable) { null },
-            try { cl.loadClass("org.swiftapps.swiftbackup.anonymous.a") } catch (_: Throwable) { null }
+            attempt("load defpackage.b45", silent = true) { cl.loadClass("defpackage.b45") },
+            attempt("load org.swiftapps.swiftbackup.anonymous.a", silent = true) { cl.loadClass("org.swiftapps.swiftbackup.anonymous.a") }
         )
         for (c in anonClasses) {
-            try {
+            attempt("get fallback user from ${c.name}", silent = true) {
                 for (m in c.declaredMethods) {
                     if (m.parameterCount == 0 && m.returnType.name.contains("MFirebaseUser") && Modifier.isStatic(m.modifiers)) {
                         m.isAccessible = true
@@ -390,16 +367,16 @@ class Module : XposedModule() {
                         if (res != null) return res
                     }
                 }
-            } catch (_: Throwable) {}
+            }
         }
 
         // 2. Direct MFirebaseUser instantiation
-        return try {
+        return attempt("create direct fallback MFirebaseUser") {
             val mUserClass = cl.loadClass("org.swiftapps.swiftbackup.anonymous.MFirebaseUser")
             for (ctor in mUserClass.declaredConstructors) {
                 if (ctor.parameterTypes.size == 7) {
                     ctor.isAccessible = true
-                    return ctor.newInstance(
+                    return@attempt ctor.newInstance(
                         "anonymous_user",
                         "anonymous@swiftbackup.app",
                         true,
@@ -411,41 +388,38 @@ class Module : XposedModule() {
                 }
             }
             null
-        } catch (t: Throwable) {
-            Log.e("SBP", "Failed creating fallback MFirebaseUser", t)
-            null
         }
     }
 
     private fun hookVClass(targetClass: Class<*>, isPremium: Boolean) {
         Log.d("SBP", "Hooking V class: ${targetClass.name} (isPremium=$isPremium)")
-        try {
+        attempt("set V.vp field") {
             val vpField = targetClass.getDeclaredField("vp")
             vpField.isAccessible = true
             vpField.set(null, isPremium)
-        } catch (_: Throwable) {}
+        }
 
         for (m in targetClass.declaredMethods) {
             when (m.name) {
                 "getA", "getG", "getVp" -> {
-                    try { hook(m).intercept { isPremium } } catch (_: Throwable) {}
+                    attempt("hook V method ${m.name}") { hook(m).intercept { isPremium } }
                 }
                 "setA", "setVp" -> {
                     if (m.parameterCount == 1) {
-                        try {
+                        attempt("hook V setter ${m.name}") {
                             hook(m).intercept { chain ->
                                 chain.proceed(arrayOf(isPremium))
                             }
-                        } catch (_: Throwable) {}
+                        }
                     }
                 }
                 "getC" -> {
                     // getC is the 'isBlocked' check: MUST return FALSE!
-                    try { hook(m).intercept { java.lang.Boolean.FALSE } } catch (_: Throwable) {}
+                    attempt("hook V.getC") { hook(m).intercept { java.lang.Boolean.FALSE } }
                 }
                 "getB" -> {
                     // getB is the 'isBannedVersion' check: MUST return null
-                    try { hook(m).intercept { null } } catch (_: Throwable) {}
+                    attempt("hook V.getB") { hook(m).intercept { null } }
                 }
             }
         }
@@ -456,28 +430,25 @@ class Module : XposedModule() {
         for (m in targetClass.declaredMethods) {
             if (m.parameterCount == 1 && (m.parameterTypes[0] == Boolean::class.javaPrimitiveType || m.parameterTypes[0] == Boolean::class.javaObjectType)) {
                 Log.d("SBP", "Hooking HomeViewModel method: ${m.name}(${m.parameterTypes[0].name}) -> $isPremium")
-                try {
+                attempt("hook HomeViewModel setter ${m.name}") {
                     hook(m).intercept { chain ->
                         chain.proceed(arrayOf(isPremium))
                     }
-                } catch (t: Throwable) {
-                    Log.e("SBP", "Failed hooking ${m.name} on ${targetClass.name}", t)
                 }
             } else if (m.parameterCount == 0 && (m.returnType == Boolean::class.javaPrimitiveType || m.returnType == Boolean::class.javaObjectType)) {
-                try {
+                attempt("hook HomeViewModel getter ${m.name}") {
                     hook(m).intercept { isPremium }
-                } catch (_: Throwable) {}
+                }
             }
         }
     }
 
+    @SuppressLint("DiscouragedApi")
     private fun getResourceString(ctx: Context, name: String, fallback: String): String {
         val resId = ctx.resources.getIdentifier(name, "string", ctx.packageName)
         return if (resId != 0) {
-            try {
+            attemptOrDefault("getResourceString $name", fallback, silent = true) {
                 ctx.getString(resId)
-            } catch (_: Throwable) {
-                fallback
             }
         } else {
             fallback
@@ -511,14 +482,16 @@ class Module : XposedModule() {
             "com.google.firebase.installations.remote.FirebaseInstallationServiceClient" to setOf("deleteFirebaseInstallation"),
         )
         for ((className, methods) in nullTargets) {
-            try {
+            attempt("hook telemetry in $className", silent = true) {
                 val clazz = cl.loadClass(className)
                 for (m in clazz.declaredMethods) {
                     if (m.name in methods) {
-                        try { hook(m).intercept { null } } catch (_: Throwable) {}
+                        attempt("hook method ${m.name} in $className", silent = true) {
+                            hook(m).intercept { null }
+                        }
                     }
                 }
-            } catch (_: Throwable) {}
+            }
         }
 
         // Prefix-match for AppMeasurement variants
@@ -527,14 +500,16 @@ class Module : XposedModule() {
             "com.google.android.gms.measurement.internal.zzhd",
             "com.google.android.gms.measurement.internal.zzha"
         )) {
-            try {
+            attempt("hook AppMeasurement class $name", silent = true) {
                 val clazz = cl.loadClass(name)
                 for (m in clazz.declaredMethods) {
                     if (m.name.startsWith("logEvent") || m.name.startsWith("setUserProperty")) {
-                        try { hook(m).intercept { null } } catch (_: Throwable) {}
+                        attempt("hook method ${m.name} in $name", silent = true) {
+                            hook(m).intercept { null }
+                        }
                     }
                 }
-            } catch (_: Throwable) {}
+            }
         }
 
         // Force-disable collection: override arg to FALSE
@@ -542,63 +517,67 @@ class Module : XposedModule() {
             "com.google.firebase.crashlytics.FirebaseCrashlytics" to "setCrashlyticsCollectionEnabled",
             "com.google.firebase.analytics.FirebaseAnalytics" to "setAnalyticsCollectionEnabled"
         )) {
-            try {
+            attempt("hook collection enable method in $className", silent = true) {
                 val clazz = cl.loadClass(className)
                 for (m in clazz.declaredMethods) {
                     if (m.name == methodName) {
-                        try {
+                        attempt("hook $methodName in $className", silent = true) {
                             hook(m).intercept { chain ->
                                 if (chain.args.isNotEmpty()) chain.proceed(arrayOf(java.lang.Boolean.FALSE))
                                 else chain.proceed()
                             }
-                        } catch (_: Throwable) {}
+                        }
                     }
                 }
-            } catch (_: Throwable) {}
+            }
         }
 
         // TransportRuntime.schedule: invoke onSchedule callback to prevent retries
-        try {
+        attempt("hook TransportRuntime.schedule", silent = true) {
             val runtimeClass = cl.loadClass("com.google.android.datatransport.runtime.TransportRuntime")
             for (m in runtimeClass.declaredMethods) {
                 if (m.name == "schedule") {
-                    try {
+                    attempt("hook schedule in TransportRuntime", silent = true) {
                         hook(m).intercept { chain ->
                             chain.args.lastOrNull()?.let { callback ->
-                                try {
+                                attempt("invoke schedule callback", silent = true) {
                                     callback.javaClass.getMethod("onSchedule", Exception::class.java)
                                         .invoke(callback, null)
-                                } catch (_: Throwable) {}
+                                }
                             }
                             null
                         }
-                    } catch (_: Throwable) {}
+                    }
                 }
             }
-        } catch (_: Throwable) {}
+        }
 
         // CctTransportBackend.send: return BackendResponse.ok(1000L) instead of making network call
-        try {
+        attempt("hook CctTransportBackend.send", silent = true) {
             val cctClass = cl.loadClass("com.google.android.datatransport.cct.CctTransportBackend")
             val backendResponseClass = cl.loadClass("com.google.android.datatransport.runtime.backends.BackendResponse")
             val dummyResponse = backendResponseClass.getMethod("ok", Long::class.javaPrimitiveType).invoke(null, 1000L)
             for (m in cctClass.declaredMethods) {
                 if (m.name == "send" || (m.parameterCount == 1 && m.returnType.simpleName == "BackendResponse")) {
-                    try { hook(m).intercept { dummyResponse } } catch (_: Throwable) {}
+                    attempt("hook send in CctTransportBackend", silent = true) {
+                        hook(m).intercept { dummyResponse }
+                    }
                 }
             }
-        } catch (_: Throwable) {}
+        }
 
         // checkForUnsentReports: return Tasks.forResult(false) to prevent report uploads
-        try {
+        attempt("hook checkForUnsentReports", silent = true) {
             val crashlyticsClass = cl.loadClass("com.google.firebase.crashlytics.FirebaseCrashlytics")
             val tasksClass = cl.loadClass("com.google.android.gms.tasks.Tasks")
             val falseTask = tasksClass.getMethod("forResult", Any::class.java).invoke(null, java.lang.Boolean.FALSE)
             for (m in crashlyticsClass.declaredMethods) {
                 if (m.name == "checkForUnsentReports") {
-                    try { hook(m).intercept { falseTask } } catch (_: Throwable) {}
+                    attempt("hook checkForUnsentReports in FirebaseCrashlytics", silent = true) {
+                        hook(m).intercept { falseTask }
+                    }
                 }
             }
-        } catch (_: Throwable) {}
+        }
     }
 }

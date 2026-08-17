@@ -8,13 +8,19 @@ import io.github.s1ddhants1.swiftbackupprem.util.GoogleServicesJson
 import io.github.s1ddhants1.swiftbackupprem.util.PreferencesManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
 class MainViewModel : ViewModel() {
 
-    fun exportConfig(contentResolver: ContentResolver, uri: Uri, prefs: PreferencesManager) {
+    fun exportConfig(
+        contentResolver: ContentResolver,
+        uri: Uri,
+        prefs: PreferencesManager,
+        onResult: (Result<Unit>) -> Unit = {}
+    ) {
         viewModelScope.launch(Dispatchers.IO) {
-            try {
+            val result = runCatching {
                 contentResolver.openOutputStream(uri)?.use { outputStream ->
                     val json = JSONObject().apply {
                         put("enablePremium", prefs.enablePremium)
@@ -29,46 +35,77 @@ class MainViewModel : ViewModel() {
                         put("clientId", prefs.clientId)
                     }.toString(2)
                     outputStream.write(json.toByteArray(Charsets.UTF_8))
-                }
-            } catch (_: Throwable) {
+                } ?: error("Could not open selected export destination")
             }
+            withContext(Dispatchers.Main) { onResult(result) }
         }
     }
 
-    fun importConfig(contentResolver: ContentResolver, uri: Uri, prefs: PreferencesManager) {
+    fun importConfig(
+        contentResolver: ContentResolver,
+        uri: Uri,
+        prefs: PreferencesManager,
+        onResult: (Result<Unit>) -> Unit = {}
+    ) {
         viewModelScope.launch(Dispatchers.IO) {
-            try {
+            val result = runCatching {
                 contentResolver.openInputStream(uri)?.use { inputStream ->
                     val jsonStr = inputStream.bufferedReader().use { it.readText() }
                     val json = JSONObject(jsonStr)
-
-                    if (json.has("enablePremium")) {
-                        prefs.enablePremium = json.optBoolean("enablePremium", true)
-                    }
-                    if (json.has("disableTelemetry")) {
-                        prefs.disableTelemetry = json.optBoolean("disableTelemetry", true)
-                    } else if (json.has("suppressTelemetry")) {
-                        prefs.disableTelemetry = json.optBoolean("suppressTelemetry", true)
-                    }
-
-                    if (json.has("customFirebaseApp") || json.has("googleAppId")) {
-                        if (json.has("customFirebaseApp")) {
-                            prefs.customFirebaseApp = json.optBoolean("customFirebaseApp", true)
-                        }
-                        prefs.googleAppId = json.optString("googleAppId", "")
-                        prefs.googleApiKey = json.optString("googleApiKey", "")
-                        prefs.firebaseDatabaseUrl = json.optString("firebaseDatabaseUrl", "")
-                        prefs.gcmDefaultSenderId = json.optString("gcmDefaultSenderId", "")
-                        prefs.googleStorageBucket = json.optString("googleStorageBucket", "")
-                        prefs.projectId = json.optString("projectId", "")
-                        prefs.clientId = json.optString("clientId", "")
-                    } else if (json.has("client") && json.has("project_info")) {
-                        prefs.customFirebaseApp = true
-                        GoogleServicesJson.applyToPrefs(json, prefs)
-                    }
-                }
-            } catch (_: Throwable) {
+                    parseAndApplyConfig(json, prefs)
+                } ?: error("Could not open selected import file")
             }
+            withContext(Dispatchers.Main) { onResult(result) }
+        }
+    }
+
+    companion object {
+        fun parseAndApplyConfig(json: JSONObject, prefs: PreferencesManager) {
+            val isGoogleServices = json.has("client") && json.has("project_info")
+            val hasSbpKeys = json.has("enablePremium") ||
+                    json.has("disableTelemetry") ||
+                    json.has("suppressTelemetry") ||
+                    json.has("customFirebaseApp") ||
+                    json.has("googleAppId") ||
+                    json.has("projectId")
+
+            if (!isGoogleServices && !hasSbpKeys) {
+                throw IllegalArgumentException("Unrecognized or invalid configuration file format")
+            }
+
+            if (isGoogleServices) {
+                prefs.customFirebaseApp = true
+                GoogleServicesJson.applyToPrefs(json, prefs)
+                return
+            }
+
+            // Extract all parsed values before mutating preferences
+            val enablePremium = if (json.has("enablePremium")) json.optBoolean("enablePremium", true) else null
+            val disableTelemetry = when {
+                json.has("disableTelemetry") -> json.optBoolean("disableTelemetry", true)
+                json.has("suppressTelemetry") -> json.optBoolean("suppressTelemetry", true)
+                else -> null
+            }
+            val customFirebaseApp = if (json.has("customFirebaseApp")) json.optBoolean("customFirebaseApp", true) else null
+            val googleAppId = if (json.has("googleAppId")) json.optString("googleAppId", "") else null
+            val googleApiKey = if (json.has("googleApiKey")) json.optString("googleApiKey", "") else null
+            val firebaseDatabaseUrl = if (json.has("firebaseDatabaseUrl")) json.optString("firebaseDatabaseUrl", "") else null
+            val gcmDefaultSenderId = if (json.has("gcmDefaultSenderId")) json.optString("gcmDefaultSenderId", "") else null
+            val googleStorageBucket = if (json.has("googleStorageBucket")) json.optString("googleStorageBucket", "") else null
+            val projectId = if (json.has("projectId")) json.optString("projectId", "") else null
+            val clientId = if (json.has("clientId")) json.optString("clientId", "") else null
+
+            // Apply all extracted values to prefs
+            enablePremium?.let { prefs.enablePremium = it }
+            disableTelemetry?.let { prefs.disableTelemetry = it }
+            customFirebaseApp?.let { prefs.customFirebaseApp = it }
+            googleAppId?.let { prefs.googleAppId = it }
+            googleApiKey?.let { prefs.googleApiKey = it }
+            firebaseDatabaseUrl?.let { prefs.firebaseDatabaseUrl = it }
+            gcmDefaultSenderId?.let { prefs.gcmDefaultSenderId = it }
+            googleStorageBucket?.let { prefs.googleStorageBucket = it }
+            projectId?.let { prefs.projectId = it }
+            clientId?.let { prefs.clientId = it }
         }
     }
 }
