@@ -4,7 +4,7 @@ import android.content.ContentResolver
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import io.github.s1ddhants1.swiftbackupprem.Consts
+import io.github.s1ddhants1.swiftbackupprem.util.GoogleServicesJson
 import io.github.s1ddhants1.swiftbackupprem.util.PreferencesManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -64,26 +64,7 @@ class MainViewModel : ViewModel() {
                         prefs.clientId = json.optString("clientId", "")
                     } else if (json.has("client") && json.has("project_info")) {
                         prefs.customFirebaseApp = true
-                        val clientArray = json.getJSONArray("client")
-                        if (clientArray.length() > 0) {
-                            val clientObj = clientArray.getJSONObject(0)
-                            val clientInfo = clientObj.optJSONObject("client_info")
-                            if (clientInfo != null) prefs.googleAppId = clientInfo.optString("mobilesdk_app_id", "")
-
-                            val apiKeyArray = clientObj.optJSONArray("api_key")
-                            if (apiKeyArray != null && apiKeyArray.length() > 0) {
-                                prefs.googleApiKey = apiKeyArray.getJSONObject(0).optString("current_key", "")
-                            }
-                        }
-                        val projectInfo = json.getJSONObject("project_info")
-                        prefs.firebaseDatabaseUrl = projectInfo.optString("firebase_url", "")
-                        prefs.gcmDefaultSenderId = projectInfo.optString("project_number", "")
-                        prefs.googleStorageBucket = projectInfo.optString("storage_bucket", "")
-                        prefs.projectId = projectInfo.optString(Consts.projectId, "")
-
-                        if (json.has(Consts.oauthClientId)) {
-                            prefs.clientId = json.getString(Consts.oauthClientId)
-                        }
+                        GoogleServicesJson.applyToPrefs(json, prefs)
                     }
                 }
             } catch (_: Throwable) {

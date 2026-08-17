@@ -8,12 +8,21 @@ import androidx.annotation.Keep
 import org.luckypray.dexkit.DexKitBridge
 import java.lang.reflect.Modifier
 
-private val classesClientId = mapOf(561 to "kf.s0", 569 to "rf.r0", 590 to "eh.u", 620 to "defpackage.gn5")
-private val classesBackupApk = mapOf(561 to "org.swiftapps.swiftbackup.common.w1", 569 to "org.swiftapps.swiftbackup.common.n2", 590 to "org.swiftapps.swiftbackup.common.c2", 620 to "defpackage.qm")
-private val classesPaths = mapOf(561 to "me.b", 569 to "te.c", 590 to "org.swiftapps.swiftbackup.a", 620 to "defpackage.ry5")
-private val classesHomeViewModel = mapOf(561 to "org.swiftapps.swiftbackup.home.a", 569 to "org.swiftapps.swiftbackup.home.a", 590 to "org.swiftapps.swiftbackup.home.a", 620 to "defpackage.c64")
-private val classesAuthUser = mapOf(561 to "org.swiftapps.swiftbackup.common.a3", 569 to "org.swiftapps.swiftbackup.common.a3", 590 to "org.swiftapps.swiftbackup.common.a3", 620 to "defpackage.d45")
-private val classesAnonUser = mapOf(561 to "org.swiftapps.swiftbackup.anonymous.a", 569 to "org.swiftapps.swiftbackup.anonymous.a", 590 to "org.swiftapps.swiftbackup.anonymous.a", 620 to "defpackage.b45")
+private data class VersionClasses(
+    val clientId: String,
+    val backupApk: String,
+    val paths: String,
+    val homeViewModel: String,
+    val authUser: String,
+    val anonUser: String
+)
+
+private val versionMap = mapOf(
+    561 to VersionClasses("kf.s0", "org.swiftapps.swiftbackup.common.w1", "me.b", "org.swiftapps.swiftbackup.home.a", "org.swiftapps.swiftbackup.common.a3", "org.swiftapps.swiftbackup.anonymous.a"),
+    569 to VersionClasses("rf.r0", "org.swiftapps.swiftbackup.common.n2", "te.c", "org.swiftapps.swiftbackup.home.a", "org.swiftapps.swiftbackup.common.a3", "org.swiftapps.swiftbackup.anonymous.a"),
+    590 to VersionClasses("eh.u", "org.swiftapps.swiftbackup.common.c2", "org.swiftapps.swiftbackup.a", "org.swiftapps.swiftbackup.home.a", "org.swiftapps.swiftbackup.common.a3", "org.swiftapps.swiftbackup.anonymous.a"),
+    620 to VersionClasses("defpackage.gn5", "defpackage.qm", "defpackage.ry5", "defpackage.c64", "defpackage.d45", "defpackage.b45"),
+)
 
 @Keep
 @JvmField
@@ -44,13 +53,13 @@ var anonUserClass: Class<*>? = null
 @Suppress("DEPRECATION")
 fun findObfuscatedClasses(ctx: Context, cl: ClassLoader, sourceDir: String) {
     val ver = Integer.valueOf(ctx.packageManager.getPackageInfo(Consts.packageName, 0).versionCode)
-    if (classesClientId.containsKey(ver)) {
-        try { clientIdClass = cl.loadClass(classesClientId[ver]) } catch (_: Throwable) {}
-        try { backupApkClass = cl.loadClass(classesBackupApk[ver]) } catch (_: Throwable) {}
-        try { pathsClass = cl.loadClass(classesPaths[ver]) } catch (_: Throwable) {}
-        try { homeViewModelClass = cl.loadClass(classesHomeViewModel[ver]) } catch (_: Throwable) {}
-        try { authUserClass = cl.loadClass(classesAuthUser[ver]) } catch (_: Throwable) {}
-        try { anonUserClass = cl.loadClass(classesAnonUser[ver]) } catch (_: Throwable) {}
+    versionMap[ver]?.let { classes ->
+        try { clientIdClass = cl.loadClass(classes.clientId) } catch (_: Throwable) {}
+        try { backupApkClass = cl.loadClass(classes.backupApk) } catch (_: Throwable) {}
+        try { pathsClass = cl.loadClass(classes.paths) } catch (_: Throwable) {}
+        try { homeViewModelClass = cl.loadClass(classes.homeViewModel) } catch (_: Throwable) {}
+        try { authUserClass = cl.loadClass(classes.authUser) } catch (_: Throwable) {}
+        try { anonUserClass = cl.loadClass(classes.anonUser) } catch (_: Throwable) {}
     }
 
     try {

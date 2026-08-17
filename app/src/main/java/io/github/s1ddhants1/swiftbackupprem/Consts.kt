@@ -10,8 +10,4 @@ object Consts {
     const val googleStorageBucket = "google_storage_bucket"
     const val projectId = "project_id"
     const val oauthClientId = "oauth_client_id"
-
-    @JvmStatic
-    val classNames = mapOf(561 to "kf.s0", 569 to "rf.r0", 620 to "defpackage.gn5")
 }
-

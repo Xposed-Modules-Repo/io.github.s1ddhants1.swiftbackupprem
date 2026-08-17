@@ -43,89 +43,40 @@ object AppUtils {
         } catch (_: Throwable) {}
     }
 
-    fun getSwiftBackupSha1(context: Context): String {
-        // Try obtaining SHA-1 from installed Swift Backup package first
-        try {
+    fun getSwiftBackupSha1(context: Context): String =
+        getSha1ForPackage(context, Consts.packageName)
+            ?: getSha1ForPackage(context, context.packageName)
+            ?: ""
+
+    private fun getSha1ForPackage(context: Context, packageName: String): String? {
+        return try {
             val packageInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 context.packageManager.getPackageInfo(
-                    Consts.packageName,
+                    packageName,
                     android.content.pm.PackageManager.GET_SIGNING_CERTIFICATES
                 )
             } else {
                 @Suppress("DEPRECATION")
                 context.packageManager.getPackageInfo(
-                    Consts.packageName,
+                    packageName,
                     android.content.pm.PackageManager.GET_SIGNATURES
                 )
             }
 
             val signatures = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                val signingInfo = packageInfo.signingInfo
-                if (signingInfo != null) {
-                    if (signingInfo.hasMultipleSigners()) {
-                        signingInfo.apkContentsSigners
-                    } else {
-                        signingInfo.signingCertificateHistory
-                    }
-                } else null
+                packageInfo.signingInfo?.let {
+                    if (it.hasMultipleSigners()) it.apkContentsSigners
+                    else it.signingCertificateHistory
+                }
             } else {
                 @Suppress("DEPRECATION")
                 packageInfo.signatures
             }
 
-            val cert = signatures?.firstOrNull()?.toByteArray()
-            if (cert != null) {
-                val md = MessageDigest.getInstance("SHA-1")
-                val digest = md.digest(cert)
-                val sha1 = digest.joinToString(":") { "%02X".format(it) }
-                Log.d("SBP", "Found Swift Backup SHA-1: $sha1")
-                return sha1
+            signatures?.firstOrNull()?.toByteArray()?.let { cert ->
+                MessageDigest.getInstance("SHA-1").digest(cert)
+                    .joinToString(":") { "%02X".format(it) }
             }
-        } catch (e: Throwable) {
-            Log.w("SBP", "Could not get Swift Backup package signing cert: ${e.localizedMessage}")
-        }
-
-        // Fallback: Try obtaining SHA-1 from current app's signing cert if Swift Backup is not installed
-        try {
-            val packageInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                context.packageManager.getPackageInfo(
-                    context.packageName,
-                    android.content.pm.PackageManager.GET_SIGNING_CERTIFICATES
-                )
-            } else {
-                @Suppress("DEPRECATION")
-                context.packageManager.getPackageInfo(
-                    context.packageName,
-                    android.content.pm.PackageManager.GET_SIGNATURES
-                )
-            }
-
-            val signatures = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                val signingInfo = packageInfo.signingInfo
-                if (signingInfo != null) {
-                    if (signingInfo.hasMultipleSigners()) {
-                        signingInfo.apkContentsSigners
-                    } else {
-                        signingInfo.signingCertificateHistory
-                    }
-                } else null
-            } else {
-                @Suppress("DEPRECATION")
-                packageInfo.signatures
-            }
-
-            val cert = signatures?.firstOrNull()?.toByteArray()
-            if (cert != null) {
-                val md = MessageDigest.getInstance("SHA-1")
-                val digest = md.digest(cert)
-                val sha1 = digest.joinToString(":") { "%02X".format(it) }
-                Log.d("SBP", "Found self app SHA-1: $sha1")
-                return sha1
-            }
-        } catch (e: Throwable) {
-            Log.w("SBP", "Could not get self package signing cert: ${e.localizedMessage}")
-        }
-
-        return ""
+        } catch (_: Throwable) { null }
     }
 }

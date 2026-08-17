@@ -1,10 +1,6 @@
 # Preserve line numbers and source file attributes for debugging stack traces
 -keepattributes SourceFile,LineNumberTable,*Annotation*,Signature,InnerClasses,EnclosingMethod,Exceptions
 
-# Keep all module classes, fields, and methods from R8 obfuscation/shrinking
--keep class io.github.s1ddhants1.swiftbackupprem.** { *; }
--keepclassmembers class io.github.s1ddhants1.swiftbackupprem.** { *; }
-
 # LibXposed Modern API rules
 -dontwarn io.github.libxposed.**
 -adaptresourcefilecontents META-INF/xposed/java_init.list

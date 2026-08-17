@@ -240,7 +240,7 @@ class Module : XposedModule() {
     }
 
     private fun hookKnownClasses(cl: ClassLoader, isPremium: Boolean) {
-        // V class hooks
+        // V class hooks (via known class name as fallback)
         try {
             val vClass = cl.loadClass("org.swiftapps.swiftbackup.common.V")
             hookVClass(vClass, isPremium)
@@ -256,12 +256,6 @@ class Module : XposedModule() {
                 }
             }
         } catch (_: Throwable) {}
-
-        // Obfuscated HomeViewModel hook
-        homeViewModelClass?.let { hookHomeViewModelClass(it, isPremium) }
-
-        // Obfuscated AuthUser hook
-        authUserClass?.let { hookAuthUserClass(it, cl) }
 
         // Hook NoGmsSignInActivity to dismiss blocked/failed dialogs and proceed with RESULT_OK
         try {
@@ -491,255 +485,120 @@ class Module : XposedModule() {
     }
 
     private fun hookTelemetrySuppression(cl: ClassLoader, prefs: PreferencesManager) {
-        if (!prefs.disableTelemetry) {
-            Log.d("SBP", "Telemetry blocking disabled by user preference")
-            return
-        }
-
+        if (!prefs.disableTelemetry) return
         Log.d("SBP", "Applying telemetry, analytics, and tracking suppression")
 
-        suppressDataTransport(cl)
-        suppressCrashlytics(cl)
-        suppressAnalytics(cl)
-        suppressSessions(cl)
-        suppressInstallations(cl)
-    }
-
-    private fun suppressDataTransport(cl: ClassLoader) {
-        // 1. Hook TransportRuntime
-        try {
-            val runtimeClass = cl.loadClass("com.google.android.datatransport.runtime.TransportRuntime")
-            for (m in runtimeClass.declaredMethods) {
-                when (m.name) {
-                    "send" -> {
-                        try {
-                            hook(m).intercept {
-                                Log.d("SBP", "Blocked DataTransport.send() request")
-                                null
-                            }
-                        } catch (_: Throwable) {}
-                    }
-                    "schedule" -> {
-                        try {
-                            hook(m).intercept { chain ->
-                                Log.d("SBP", "Intercepted DataTransport.schedule() request")
-                                val callback = chain.args.lastOrNull()
-                                if (callback != null) {
-                                    try {
-                                        val onSchedule = callback.javaClass.getMethod("onSchedule", Exception::class.java)
-                                        onSchedule.invoke(callback, null)
-                                    } catch (_: Throwable) {}
-                                }
-                                null
-                            }
-                        } catch (_: Throwable) {}
-                    }
-                }
-            }
-        } catch (_: Throwable) {}
-
-        // 2. Hook CctTransportBackend
-        try {
-            val cctClass = cl.loadClass("com.google.android.datatransport.cct.CctTransportBackend")
-            for (m in cctClass.declaredMethods) {
-                if (m.name == "send" || (m.parameterCount == 1 && m.returnType.simpleName == "BackendResponse")) {
-                    try {
-                        val backendResponseClass = cl.loadClass("com.google.android.datatransport.runtime.backends.BackendResponse")
-                        val okMethod = backendResponseClass.getMethod("ok", Long::class.javaPrimitiveType)
-                        val dummyResponse = okMethod.invoke(null, 1000L)
-                        hook(m).intercept {
-                            Log.d("SBP", "Blocked CctTransportBackend.send() network request to firebaselogging.googleapis.com")
-                            dummyResponse
-                        }
-                    } catch (_: Throwable) {
-                        try {
-                            hook(m).intercept { null }
-                        } catch (_: Throwable) {}
-                    }
-                }
-            }
-        } catch (_: Throwable) {}
-
-        // 3. Hook Schedulers & Uploaders
-        val transportSchedulers = listOf(
-            "com.google.android.datatransport.runtime.scheduling.jobscheduling.Uploader",
-            "com.google.android.datatransport.runtime.scheduling.jobscheduling.JobInfoScheduler",
-            "com.google.android.datatransport.runtime.scheduling.jobscheduling.AlarmManagerScheduler"
+        // Bulk null-intercept: hook methods and return null
+        val nullTargets = mapOf(
+            // DataTransport
+            "com.google.android.datatransport.runtime.TransportRuntime" to setOf("send"),
+            "com.google.android.datatransport.runtime.scheduling.jobscheduling.Uploader" to setOf("upload", "schedule", "logAndUpdateState"),
+            "com.google.android.datatransport.runtime.scheduling.jobscheduling.JobInfoScheduler" to setOf("upload", "schedule", "logAndUpdateState"),
+            "com.google.android.datatransport.runtime.scheduling.jobscheduling.AlarmManagerScheduler" to setOf("upload", "schedule", "logAndUpdateState"),
+            // Crashlytics
+            "com.google.firebase.crashlytics.FirebaseCrashlytics" to setOf("recordException", "log", "setCustomKey", "setUserId", "sendUnsentReports", "deleteUnsentReports"),
+            "com.google.firebase.crashlytics.internal.common.CrashlyticsCore" to setOf("log", "logException", "logFatalException", "openSession", "writeToLog", "finalizeSessions", "installHandler"),
+            "com.google.firebase.crashlytics.internal.common.CrashlyticsController" to setOf("log", "logException", "logFatalException", "openSession", "writeToLog", "finalizeSessions", "installHandler"),
+            "com.google.firebase.crashlytics.ndk.FirebaseCrashlyticsNdk" to setOf("log", "logException", "logFatalException", "openSession", "writeToLog", "finalizeSessions", "installHandler"),
+            // Analytics
+            "com.google.firebase.analytics.FirebaseAnalytics" to setOf("logEvent", "setUserProperty", "setUserId", "setCurrentScreen", "resetAnalyticsData"),
+            // Sessions
+            "com.google.firebase.sessions.FirebaseSessions" to setOf("register", "appForeground", "appBackground", "logSession", "attemptLoggingSessionEvent"),
+            "com.google.firebase.sessions.SessionFirelogPublisherImpl" to setOf("register", "appForeground", "appBackground", "logSession", "attemptLoggingSessionEvent"),
+            "com.google.firebase.sessions.SessionFirelogPublisher" to setOf("register", "appForeground", "appBackground", "logSession", "attemptLoggingSessionEvent"),
+            // Installations
+            "com.google.firebase.installations.FirebaseInstallations" to setOf("delete"),
+            "com.google.firebase.installations.remote.FirebaseInstallationServiceClient" to setOf("deleteFirebaseInstallation"),
         )
-        for (className in transportSchedulers) {
+        for ((className, methods) in nullTargets) {
             try {
                 val clazz = cl.loadClass(className)
                 for (m in clazz.declaredMethods) {
-                    if (m.name in listOf("upload", "schedule", "logAndUpdateState")) {
-                        try {
-                            hook(m).intercept { null }
-                        } catch (_: Throwable) {}
+                    if (m.name in methods) {
+                        try { hook(m).intercept { null } } catch (_: Throwable) {}
                     }
                 }
             } catch (_: Throwable) {}
         }
-        Log.d("SBP", "Google DataTransport suppressed")
-    }
 
-    private fun suppressCrashlytics(cl: ClassLoader) {
-        // 1. Hook FirebaseCrashlytics main class
-        try {
-            val crashlyticsClass = cl.loadClass("com.google.firebase.crashlytics.FirebaseCrashlytics")
-            for (m in crashlyticsClass.declaredMethods) {
-                when (m.name) {
-                    "setCrashlyticsCollectionEnabled" -> {
-                        try {
-                            hook(m).intercept { chain ->
-                                if (chain.args.isNotEmpty()) {
-                                    chain.proceed(arrayOf(java.lang.Boolean.FALSE))
-                                } else {
-                                    chain.proceed()
-                                }
-                            }
-                        } catch (_: Throwable) {}
-                    }
-                    "recordException", "log", "setCustomKey", "setUserId", "sendUnsentReports", "deleteUnsentReports" -> {
-                        try {
-                            hook(m).intercept {
-                                Log.d("SBP", "Blocked Crashlytics call: ${m.name}")
-                                null
-                            }
-                        } catch (_: Throwable) {}
-                    }
-                    "checkForUnsentReports" -> {
-                        try {
-                            val tasksClass = cl.loadClass("com.google.android.gms.tasks.Tasks")
-                            val forResult = tasksClass.getMethod("forResult", Any::class.java)
-                            val falseTask = forResult.invoke(null, java.lang.Boolean.FALSE)
-                            hook(m).intercept { falseTask }
-                        } catch (_: Throwable) {}
-                    }
-                }
-            }
-        } catch (_: Throwable) {}
-
-        // 2. Hook CrashlyticsCore / CrashlyticsController
-        val coreClasses = listOf(
-            "com.google.firebase.crashlytics.internal.common.CrashlyticsCore",
-            "com.google.firebase.crashlytics.internal.common.CrashlyticsController",
-            "com.google.firebase.crashlytics.ndk.FirebaseCrashlyticsNdk"
-        )
-        for (name in coreClasses) {
-            try {
-                val clazz = cl.loadClass(name)
-                for (m in clazz.declaredMethods) {
-                    if (m.name in listOf("log", "logException", "logFatalException", "openSession", "writeToLog", "finalizeSessions", "installHandler")) {
-                        try {
-                            hook(m).intercept { null }
-                        } catch (_: Throwable) {}
-                    }
-                }
-            } catch (_: Throwable) {}
-        }
-        Log.d("SBP", "Firebase Crashlytics suppressed")
-    }
-
-    private fun suppressAnalytics(cl: ClassLoader) {
-        // 1. Hook FirebaseAnalytics
-        try {
-            val analyticsClass = cl.loadClass("com.google.firebase.analytics.FirebaseAnalytics")
-            for (m in analyticsClass.declaredMethods) {
-                when (m.name) {
-                    "setAnalyticsCollectionEnabled" -> {
-                        try {
-                            hook(m).intercept { chain ->
-                                if (chain.args.isNotEmpty()) {
-                                    chain.proceed(arrayOf(java.lang.Boolean.FALSE))
-                                } else {
-                                    chain.proceed()
-                                }
-                            }
-                        } catch (_: Throwable) {}
-                    }
-                    "logEvent" -> {
-                        try {
-                            hook(m).intercept { chain ->
-                                val eventName = chain.args.getOrNull(0)
-                                Log.d("SBP", "Blocked Firebase Analytics logEvent: $eventName")
-                                null
-                            }
-                        } catch (_: Throwable) {}
-                    }
-                    "setUserProperty", "setUserId", "setCurrentScreen", "resetAnalyticsData" -> {
-                        try {
-                            hook(m).intercept { null }
-                        } catch (_: Throwable) {}
-                    }
-                }
-            }
-        } catch (_: Throwable) {}
-
-        // 2. Hook AppMeasurement
-        val measurementClasses = listOf(
+        // Prefix-match for AppMeasurement variants
+        for (name in listOf(
             "com.google.android.gms.measurement.AppMeasurement",
             "com.google.android.gms.measurement.internal.zzhd",
             "com.google.android.gms.measurement.internal.zzha"
-        )
-        for (name in measurementClasses) {
+        )) {
             try {
                 val clazz = cl.loadClass(name)
                 for (m in clazz.declaredMethods) {
                     if (m.name.startsWith("logEvent") || m.name.startsWith("setUserProperty")) {
-                        try {
-                            hook(m).intercept { null }
-                        } catch (_: Throwable) {}
+                        try { hook(m).intercept { null } } catch (_: Throwable) {}
                     }
                 }
             } catch (_: Throwable) {}
         }
-        Log.d("SBP", "Firebase Analytics suppressed")
-    }
 
-    private fun suppressSessions(cl: ClassLoader) {
-        val sessionClasses = listOf(
-            "com.google.firebase.sessions.FirebaseSessions",
-            "com.google.firebase.sessions.SessionFirelogPublisherImpl",
-            "com.google.firebase.sessions.SessionFirelogPublisher"
-        )
-        for (name in sessionClasses) {
+        // Force-disable collection: override arg to FALSE
+        for ((className, methodName) in listOf(
+            "com.google.firebase.crashlytics.FirebaseCrashlytics" to "setCrashlyticsCollectionEnabled",
+            "com.google.firebase.analytics.FirebaseAnalytics" to "setAnalyticsCollectionEnabled"
+        )) {
             try {
-                val clazz = cl.loadClass(name)
+                val clazz = cl.loadClass(className)
                 for (m in clazz.declaredMethods) {
-                    if (m.name in listOf("register", "appForeground", "appBackground", "logSession", "attemptLoggingSessionEvent")) {
+                    if (m.name == methodName) {
                         try {
-                            hook(m).intercept { null }
+                            hook(m).intercept { chain ->
+                                if (chain.args.isNotEmpty()) chain.proceed(arrayOf(java.lang.Boolean.FALSE))
+                                else chain.proceed()
+                            }
                         } catch (_: Throwable) {}
                     }
                 }
             } catch (_: Throwable) {}
         }
-        Log.d("SBP", "Firebase Sessions suppressed")
-    }
 
-    private fun suppressInstallations(cl: ClassLoader) {
-        // 1. Hook FirebaseInstallations
+        // TransportRuntime.schedule: invoke onSchedule callback to prevent retries
         try {
-            val installationsClass = cl.loadClass("com.google.firebase.installations.FirebaseInstallations")
-            for (m in installationsClass.declaredMethods) {
-                if (m.name == "delete") {
+            val runtimeClass = cl.loadClass("com.google.android.datatransport.runtime.TransportRuntime")
+            for (m in runtimeClass.declaredMethods) {
+                if (m.name == "schedule") {
                     try {
-                        hook(m).intercept { null }
+                        hook(m).intercept { chain ->
+                            chain.args.lastOrNull()?.let { callback ->
+                                try {
+                                    callback.javaClass.getMethod("onSchedule", Exception::class.java)
+                                        .invoke(callback, null)
+                                } catch (_: Throwable) {}
+                            }
+                            null
+                        }
                     } catch (_: Throwable) {}
                 }
             }
         } catch (_: Throwable) {}
 
-        // 2. Hook FirebaseInstallationServiceClient
+        // CctTransportBackend.send: return BackendResponse.ok(1000L) instead of making network call
         try {
-            val clientClass = cl.loadClass("com.google.firebase.installations.remote.FirebaseInstallationServiceClient")
-            for (m in clientClass.declaredMethods) {
-                if (m.name in listOf("deleteFirebaseInstallation")) {
-                    try {
-                        hook(m).intercept { null }
-                    } catch (_: Throwable) {}
+            val cctClass = cl.loadClass("com.google.android.datatransport.cct.CctTransportBackend")
+            val backendResponseClass = cl.loadClass("com.google.android.datatransport.runtime.backends.BackendResponse")
+            val dummyResponse = backendResponseClass.getMethod("ok", Long::class.javaPrimitiveType).invoke(null, 1000L)
+            for (m in cctClass.declaredMethods) {
+                if (m.name == "send" || (m.parameterCount == 1 && m.returnType.simpleName == "BackendResponse")) {
+                    try { hook(m).intercept { dummyResponse } } catch (_: Throwable) {}
                 }
             }
         } catch (_: Throwable) {}
-        Log.d("SBP", "Firebase Installations suppressed")
+
+        // checkForUnsentReports: return Tasks.forResult(false) to prevent report uploads
+        try {
+            val crashlyticsClass = cl.loadClass("com.google.firebase.crashlytics.FirebaseCrashlytics")
+            val tasksClass = cl.loadClass("com.google.android.gms.tasks.Tasks")
+            val falseTask = tasksClass.getMethod("forResult", Any::class.java).invoke(null, java.lang.Boolean.FALSE)
+            for (m in crashlyticsClass.declaredMethods) {
+                if (m.name == "checkForUnsentReports") {
+                    try { hook(m).intercept { falseTask } } catch (_: Throwable) {}
+                }
+            }
+        } catch (_: Throwable) {}
     }
 }

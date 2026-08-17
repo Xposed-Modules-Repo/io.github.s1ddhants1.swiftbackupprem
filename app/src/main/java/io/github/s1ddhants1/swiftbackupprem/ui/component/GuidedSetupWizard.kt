@@ -43,6 +43,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.s1ddhants1.swiftbackupprem.Consts
 import io.github.s1ddhants1.swiftbackupprem.util.AppUtils
+import io.github.s1ddhants1.swiftbackupprem.util.GoogleServicesJson
 import io.github.s1ddhants1.swiftbackupprem.util.PreferencesManager
 import org.json.JSONObject
 
@@ -81,30 +82,8 @@ fun GuidedSetupWizard(
             context.contentResolver.openInputStream(uri)?.use { inputStream ->
                 try {
                     val json = JSONObject(inputStream.bufferedReader().use { r -> r.readText() })
-                    with(prefs) {
-                        if (json.has("client")) {
-                            val clientArray = json.getJSONArray("client")
-                            if (clientArray.length() > 0) {
-                                val clientObj = clientArray.getJSONObject(0)
-                                val clientInfo = clientObj.optJSONObject("client_info")
-                                if (clientInfo != null) googleAppId = clientInfo.optString("mobilesdk_app_id", "")
-
-                                val apiKeyArray = clientObj.optJSONArray("api_key")
-                                if (apiKeyArray != null && apiKeyArray.length() > 0) {
-                                    googleApiKey = apiKeyArray.getJSONObject(0).optString("current_key", "")
-                                }
-                            }
-                        }
-                        if (json.has("project_info")) {
-                            val projInfo = json.getJSONObject("project_info")
-                            firebaseDatabaseUrl = projInfo.optString("firebase_url", "")
-                            gcmDefaultSenderId = projInfo.optString("project_number", "")
-                            googleStorageBucket = projInfo.optString("storage_bucket", "")
-                            projectId = projInfo.optString(Consts.projectId, "")
-                        }
-                        if (json.has(Consts.oauthClientId)) clientId = json.optString(Consts.oauthClientId, "")
-                        userOverrodeCollapse = null
-                    }
+                    GoogleServicesJson.applyToPrefs(json, prefs)
+                    userOverrodeCollapse = null
                 } catch (_: Throwable) {
                 }
             }
@@ -453,26 +432,7 @@ private fun Step2Database(
             onPrefChange = { prefs.firebaseDatabaseUrl = it }
         )
 
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            OutlinedButton(
-                onClick = onBack,
-                modifier = Modifier.heightIn(min = 40.dp),
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-            ) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(modifier = Modifier.width(4.dp))
-                Text("Back", textAlign = TextAlign.Center, softWrap = true)
-            }
-            Button(
-                onClick = onNext,
-                modifier = Modifier.heightIn(min = 40.dp),
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-            ) {
-                Text("Next", textAlign = TextAlign.Center, softWrap = true)
-                Spacer(modifier = Modifier.width(4.dp))
-                Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, modifier = Modifier.size(18.dp))
-            }
-        }
+        WizardNavRow(onBack = onBack, onNext = onNext)
     }
 }
 
@@ -518,26 +478,7 @@ private fun Step3AuthAndStorage(
             onPrefChange = { prefs.googleStorageBucket = it }
         )
 
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            OutlinedButton(
-                onClick = onBack,
-                modifier = Modifier.heightIn(min = 40.dp),
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-            ) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(modifier = Modifier.width(4.dp))
-                Text("Back", textAlign = TextAlign.Center, softWrap = true)
-            }
-            Button(
-                onClick = onNext,
-                modifier = Modifier.heightIn(min = 40.dp),
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-            ) {
-                Text("Next", textAlign = TextAlign.Center, softWrap = true)
-                Spacer(modifier = Modifier.width(4.dp))
-                Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, modifier = Modifier.size(18.dp))
-            }
-        }
+        WizardNavRow(onBack = onBack, onNext = onNext)
     }
 }
 
@@ -600,26 +541,7 @@ private fun Step4AndroidOAuth(
             onPrefChange = { prefs.clientId = it }
         )
 
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            OutlinedButton(
-                onClick = onBack,
-                modifier = Modifier.heightIn(min = 40.dp),
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-            ) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(modifier = Modifier.width(4.dp))
-                Text("Back", textAlign = TextAlign.Center, softWrap = true)
-            }
-            Button(
-                onClick = onNext,
-                modifier = Modifier.heightIn(min = 40.dp),
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-            ) {
-                Text("Review", textAlign = TextAlign.Center, softWrap = true)
-                Spacer(modifier = Modifier.width(4.dp))
-                Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, modifier = Modifier.size(18.dp))
-            }
-        }
+        WizardNavRow(onBack = onBack, onNext = onNext, nextLabel = "Review")
     }
 }
 
@@ -756,6 +678,34 @@ private fun Step5ReviewFinish(
                 Spacer(modifier = Modifier.width(6.dp))
                 Text("Finish & Save", textAlign = TextAlign.Center, softWrap = true)
             }
+        }
+    }
+}
+
+@Composable
+private fun WizardNavRow(
+    onBack: () -> Unit,
+    onNext: () -> Unit,
+    nextLabel: String = "Next"
+) {
+    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        OutlinedButton(
+            onClick = onBack,
+            modifier = Modifier.heightIn(min = 40.dp),
+            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+        ) {
+            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(modifier = Modifier.width(4.dp))
+            Text("Back", textAlign = TextAlign.Center, softWrap = true)
+        }
+        Button(
+            onClick = onNext,
+            modifier = Modifier.heightIn(min = 40.dp),
+            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+        ) {
+            Text(nextLabel, textAlign = TextAlign.Center, softWrap = true)
+            Spacer(modifier = Modifier.width(4.dp))
+            Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, modifier = Modifier.size(18.dp))
         }
     }
 }

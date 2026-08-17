@@ -4,9 +4,8 @@ import android.content.Context
 import android.util.Log
 import androidx.annotation.Keep
 import io.github.libxposed.api.XposedModule
+import io.github.s1ddhants1.swiftbackupprem.util.GoogleServicesJson
 import io.github.s1ddhants1.swiftbackupprem.util.PreferencesManager
-import org.json.JSONArray
-import org.json.JSONObject
 import java.io.File
 
 @Keep
@@ -64,21 +63,7 @@ fun XposedModule.hookBackupApk(cl: ClassLoader, ctx: Context, customFirebaseApp:
                 }
 
                 if (customFirebaseApp) {
-                    val json = JSONObject().apply {
-                        put("client", JSONArray().apply {
-                            put(JSONObject().apply {
-                                put("client_info", JSONObject().apply { put("mobilesdk_app_id", prefs.googleAppId) })
-                                put("api_key", JSONArray().apply { put(JSONObject().apply { put("current_key", prefs.googleApiKey) }) })
-                            })
-                        })
-                        put("project_info", JSONObject().apply {
-                            put("firebase_url", prefs.firebaseDatabaseUrl)
-                            put("project_number", prefs.gcmDefaultSenderId)
-                            put("storage_bucket", prefs.googleStorageBucket)
-                            put(Consts.projectId, prefs.projectId)
-                        })
-                        put(Consts.oauthClientId, prefs.clientId)
-                    }.toString(2)
+                    val json = GoogleServicesJson.buildFromPrefs(prefs).toString(2)
 
                     try {
                         File(dir, "google-services.json").run { if (!exists() || readText() != json) writeText(json) }
