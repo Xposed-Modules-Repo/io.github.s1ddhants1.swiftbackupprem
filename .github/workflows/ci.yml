@@ -44,10 +44,20 @@ jobs:
       - name: Assemble Debug and Release APK
         run: ./gradlew assembleDebug assembleRelease --no-daemon
 
-      - name: Upload APK Artifacts
+      - name: Upload Release APK (R8 Optimized)
         uses: actions/upload-artifact@v6
         if: always()
         with:
-          name: apks
-          path: app/build/outputs/apk/**/*.apk
+          name: SwiftBackupPrem-release
+          path: |
+            app/build/outputs/apk/release/app-release.apk
+            app/build/outputs/mapping/release/mapping.txt
+          if-no-files-found: warn
+
+      - name: Upload Debug APK
+        uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: SwiftBackupPrem-debug
+          path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: warn
