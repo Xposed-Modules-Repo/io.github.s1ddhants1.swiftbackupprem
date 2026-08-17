@@ -1,6 +1,9 @@
 package io.github.s1ddhants1.swiftbackupprem
 
+import android.content.Context
+import android.content.SharedPreferences
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -16,6 +19,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Launch
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Info
@@ -31,6 +35,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import io.github.libxposed.service.XposedService
+import io.github.libxposed.service.XposedServiceHelper
 import io.github.s1ddhants1.swiftbackupprem.ui.MainViewModel
 import io.github.s1ddhants1.swiftbackupprem.ui.component.AboutScreen
 import io.github.s1ddhants1.swiftbackupprem.ui.component.GuidedSetupWizard
@@ -38,7 +44,6 @@ import io.github.s1ddhants1.swiftbackupprem.ui.component.SettingsSwitch
 import io.github.s1ddhants1.swiftbackupprem.ui.theme.Theme
 import io.github.s1ddhants1.swiftbackupprem.util.AppUtils
 import io.github.s1ddhants1.swiftbackupprem.util.PreferencesManager
-import java.io.File
 
 enum class AppScreen {
     Settings, About
@@ -47,20 +52,51 @@ enum class AppScreen {
 class MainActivity : ComponentActivity() {
     private val viewModel: MainViewModel by viewModels()
 
+    private var xposedService by mutableStateOf<XposedService?>(null)
+    private var isFrameworkConnected by mutableStateOf(false)
+    private var frameworkName by mutableStateOf("")
+    private var frameworkVersion by mutableStateOf("")
+
     @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
 
-        val prefs: PreferencesManager? = try {
-            @Suppress("DEPRECATION")
-            PreferencesManager(getSharedPreferences("${BuildConfig.APPLICATION_ID}_preferences", MODE_WORLD_READABLE))
-        } catch (e: Throwable) {
-            null
+        // Initialize local SharedPreferences as fallback
+        val localPrefs: SharedPreferences = getSharedPreferences("settings", Context.MODE_PRIVATE)
+        val prefsState = mutableStateOf(PreferencesManager(localPrefs))
+
+        // Register listener for Modern Xposed API Framework Service
+        try {
+            XposedServiceHelper.registerListener(object : XposedServiceHelper.OnServiceListener {
+                override fun onServiceBind(service: XposedService) {
+                    Log.i("SBP", "XposedService bound: ${service.frameworkName} ${service.frameworkVersion} (API ${service.apiVersion})")
+                    xposedService = service
+                    isFrameworkConnected = true
+                    frameworkName = try { service.frameworkName } catch (_: Throwable) { "LSPosed" }
+                    frameworkVersion = try { service.frameworkVersion } catch (_: Throwable) { "" }
+
+                    try {
+                        val remotePrefs = service.getRemotePreferences("settings")
+                        prefsState.value = PreferencesManager(remotePrefs)
+                    } catch (t: Throwable) {
+                        Log.e("SBP", "Failed to retrieve remote preferences from XposedService", t)
+                    }
+                }
+
+                override fun onServiceDied(service: XposedService) {
+                    Log.w("SBP", "XposedService disconnected")
+                    xposedService = null
+                    isFrameworkConnected = false
+                }
+            })
+        } catch (t: Throwable) {
+            Log.e("SBP", "Failed registering XposedServiceHelper listener", t)
         }
 
         setContent {
             val context = LocalContext.current
+            val prefs = prefsState.value
 
             var currentScreen by remember { mutableStateOf(AppScreen.Settings) }
             var showMenu by remember { mutableStateOf(false) }
@@ -70,13 +106,13 @@ class MainActivity : ComponentActivity() {
             }
 
             val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
-                if (uri != null && prefs != null) {
+                if (uri != null) {
                     viewModel.exportConfig(contentResolver, uri, prefs)
                 }
             }
 
             val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-                if (uri != null && prefs != null) {
+                if (uri != null) {
                     viewModel.importConfig(contentResolver, uri, prefs)
                 }
             }
@@ -153,169 +189,164 @@ class MainActivity : ComponentActivity() {
                             when (screen) {
                                 AppScreen.About -> AboutScreen()
                                 AppScreen.Settings -> {
-                                    if (prefs == null) {
-                                        Card(
+                                    Column(modifier = Modifier.fillMaxSize()) {
+                                        Column(
                                             modifier = Modifier
+                                                .weight(1f)
                                                 .fillMaxWidth()
-                                                .padding(16.dp),
-                                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
+                                                .verticalScroll(rememberScrollState())
+                                                .padding(vertical = 8.dp)
                                         ) {
-                                            Column(
-                                                modifier = Modifier.padding(16.dp),
-                                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                                            // Framework status card
+                                            ElevatedCard(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(horizontal = 16.dp, vertical = 6.dp),
+                                                shape = RoundedCornerShape(16.dp),
+                                                colors = CardDefaults.elevatedCardColors(
+                                                    containerColor = if (isFrameworkConnected)
+                                                        MaterialTheme.colorScheme.primaryContainer
+                                                    else
+                                                        MaterialTheme.colorScheme.surfaceVariant
+                                                )
                                             ) {
                                                 Row(
+                                                    modifier = Modifier.padding(16.dp),
                                                     verticalAlignment = Alignment.CenterVertically,
-                                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                                                 ) {
                                                     Icon(
-                                                        imageVector = Icons.Default.Warning,
+                                                        imageVector = if (isFrameworkConnected) Icons.Default.CheckCircle else Icons.Default.Info,
                                                         contentDescription = null,
-                                                        tint = MaterialTheme.colorScheme.onErrorContainer
+                                                        tint = if (isFrameworkConnected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                                                     )
-                                                    Text(
-                                                        text = "LSPosed Module Not Enabled",
-                                                        style = MaterialTheme.typography.titleMedium,
-                                                        color = MaterialTheme.colorScheme.onErrorContainer
-                                                    )
-                                                }
-                                                Text(
-                                                    text = "Enable SwiftBackupPrem in LSPosed manager and restart device.",
-                                                    style = MaterialTheme.typography.bodyMedium,
-                                                    color = MaterialTheme.colorScheme.onErrorContainer
-                                                )
-                                                Button(
-                                                    onClick = { finishAndRemoveTask() },
-                                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
-                                                ) {
-                                                    Icon(
-                                                        imageVector = Icons.Default.Close,
-                                                        contentDescription = null,
-                                                        modifier = Modifier.size(18.dp)
-                                                    )
-                                                    Spacer(modifier = Modifier.width(6.dp))
-                                                    Text("Close App")
+                                                    Column {
+                                                        Text(
+                                                            text = if (isFrameworkConnected) "Modern Xposed API Active" else "Modern Xposed Module",
+                                                            style = MaterialTheme.typography.titleSmall,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = if (isFrameworkConnected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
+                                                        )
+                                                        Text(
+                                                            text = if (isFrameworkConnected)
+                                                                "Connected to $frameworkName $frameworkVersion"
+                                                            else
+                                                                "Ensure module is enabled in your LSPosed/Xposed manager.",
+                                                            style = MaterialTheme.typography.bodySmall,
+                                                            color = if (isFrameworkConnected) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                                                        )
+                                                    }
                                                 }
                                             }
-                                        }
-                                    } else {
-                                        Column(modifier = Modifier.fillMaxSize()) {
-                                            Column(
+
+                                            ElevatedCard(
                                                 modifier = Modifier
-                                                    .weight(1f)
                                                     .fillMaxWidth()
-                                                    .verticalScroll(rememberScrollState())
-                                                    .padding(vertical = 8.dp)
+                                                    .padding(horizontal = 16.dp, vertical = 6.dp),
+                                                shape = RoundedCornerShape(16.dp),
+                                                colors = CardDefaults.elevatedCardColors(
+                                                    containerColor = MaterialTheme.colorScheme.surface
+                                                )
                                             ) {
-                                                ElevatedCard(
-                                                    modifier = Modifier
-                                                        .fillMaxWidth()
-                                                        .padding(horizontal = 16.dp, vertical = 6.dp),
-                                                    shape = RoundedCornerShape(16.dp),
-                                                    colors = CardDefaults.elevatedCardColors(
-                                                        containerColor = MaterialTheme.colorScheme.surface
-                                                    )
-                                                ) {
+                                                SettingsSwitch(
+                                                    label = "Enable Premium",
+                                                    secondaryLabel = "Unlock Swift Backup premium features and bypass license checks",
+                                                    pref = prefs.enablePremium,
+                                                    onPrefChange = { prefs.enablePremium = it }
+                                                )
+                                            }
+
+                                            ElevatedCard(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(horizontal = 16.dp, vertical = 6.dp),
+                                                shape = RoundedCornerShape(16.dp),
+                                                colors = CardDefaults.elevatedCardColors(
+                                                    containerColor = MaterialTheme.colorScheme.surface
+                                                )
+                                            ) {
+                                                SettingsSwitch(
+                                                    label = "Disable Telemetry & Tracking",
+                                                    secondaryLabel = "Block Firebase Analytics, Crashlytics, Sessions, Installations, and DataTransport",
+                                                    pref = prefs.disableTelemetry,
+                                                    onPrefChange = { prefs.disableTelemetry = it }
+                                                )
+                                            }
+
+                                            ElevatedCard(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(horizontal = 16.dp, vertical = 6.dp),
+                                                shape = RoundedCornerShape(16.dp),
+                                                colors = CardDefaults.elevatedCardColors(
+                                                    containerColor = if (prefs.customFirebaseApp)
+                                                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                                                    else
+                                                        MaterialTheme.colorScheme.surface
+                                                )
+                                            ) {
+                                                Column {
                                                     SettingsSwitch(
-                                                        label = "Enable Premium",
-                                                        secondaryLabel = "Unlock Swift Backup premium features and bypass license checks",
-                                                        pref = prefs.enablePremium,
-                                                        onPrefChange = { prefs.enablePremium = it }
+                                                        label = "Custom firebase app",
+                                                        secondaryLabel = "Recommended, forces Swift Backup to use your own firebase credentials",
+                                                        pref = prefs.customFirebaseApp,
+                                                        onPrefChange = { prefs.customFirebaseApp = it }
                                                     )
-                                                }
 
-                                                 ElevatedCard(
-                                                    modifier = Modifier
-                                                        .fillMaxWidth()
-                                                        .padding(horizontal = 16.dp, vertical = 6.dp),
-                                                    shape = RoundedCornerShape(16.dp),
-                                                    colors = CardDefaults.elevatedCardColors(
-                                                        containerColor = MaterialTheme.colorScheme.surface
-                                                    )
-                                                ) {
-                                                    SettingsSwitch(
-                                                        label = "Disable Telemetry & Tracking",
-                                                        secondaryLabel = "Block Firebase Analytics, Crashlytics, Sessions, Installations, and DataTransport",
-                                                        pref = prefs.disableTelemetry,
-                                                        onPrefChange = { prefs.disableTelemetry = it }
-                                                    )
-                                                }
-
-                                                ElevatedCard(
-                                                    modifier = Modifier
-                                                        .fillMaxWidth()
-                                                        .padding(horizontal = 16.dp, vertical = 6.dp),
-                                                    shape = RoundedCornerShape(16.dp),
-                                                    colors = CardDefaults.elevatedCardColors(
-                                                        containerColor = if (prefs.customFirebaseApp)
-                                                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                                                        else
-                                                            MaterialTheme.colorScheme.surface
-                                                    )
-                                                ) {
-                                                    Column {
-                                                        SettingsSwitch(
-                                                            label = "Custom firebase app",
-                                                            secondaryLabel = "Recommended, forces Swift Backup to use your own firebase credentials",
-                                                            pref = prefs.customFirebaseApp,
-                                                            onPrefChange = { prefs.customFirebaseApp = it }
-                                                        )
-
-                                                        AnimatedVisibility(
-                                                            visible = prefs.customFirebaseApp,
-                                                            enter = expandVertically() + fadeIn(),
-                                                            exit = shrinkVertically() + fadeOut()
+                                                    AnimatedVisibility(
+                                                        visible = prefs.customFirebaseApp,
+                                                        enter = expandVertically() + fadeIn(),
+                                                        exit = shrinkVertically() + fadeOut()
+                                                    ) {
+                                                        Column(
+                                                            modifier = Modifier
+                                                                .fillMaxWidth()
+                                                                .padding(bottom = 8.dp)
                                                         ) {
-                                                            Column(
-                                                                modifier = Modifier
-                                                                    .fillMaxWidth()
-                                                                    .padding(bottom = 8.dp)
-                                                            ) {
-                                                                HorizontalDivider(
-                                                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                                                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-                                                                )
-                                                                GuidedSetupWizard(
-                                                                    prefs = prefs
-                                                                )
-                                                            }
+                                                            HorizontalDivider(
+                                                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                                                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                                                            )
+                                                            GuidedSetupWizard(
+                                                                prefs = prefs
+                                                            )
                                                         }
                                                     }
                                                 }
                                             }
+                                        }
 
-                                            Surface(
-                                                tonalElevation = 3.dp,
-                                                shadowElevation = 4.dp,
-                                                modifier = Modifier.fillMaxWidth()
+                                        Surface(
+                                            tonalElevation = 3.dp,
+                                            shadowElevation = 4.dp,
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(16.dp),
+                                                horizontalArrangement = Arrangement.spacedBy(10.dp)
                                             ) {
-                                                Row(
-                                                    modifier = Modifier
-                                                        .fillMaxWidth()
-                                                        .padding(16.dp),
-                                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                                Button(
+                                                    onClick = { AppUtils.forceStopSwiftBackup(context) },
+                                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                                                    modifier = Modifier.weight(1f).heightIn(min = 46.dp),
+                                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
                                                 ) {
-                                                    Button(
-                                                        onClick = { AppUtils.forceStopSwiftBackup(context) },
-                                                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
-                                                        modifier = Modifier.weight(1f).heightIn(min = 46.dp),
-                                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
-                                                    ) {
-                                                        Icon(Icons.Default.PowerSettingsNew, contentDescription = null, modifier = Modifier.size(18.dp))
-                                                        Spacer(Modifier.width(6.dp))
-                                                        Text("Force Stop", fontWeight = FontWeight.Bold, textAlign = TextAlign.Center, softWrap = true)
-                                                    }
+                                                    Icon(Icons.Default.PowerSettingsNew, contentDescription = null, modifier = Modifier.size(18.dp))
+                                                    Spacer(Modifier.width(6.dp))
+                                                    Text("Force Stop", fontWeight = FontWeight.Bold, textAlign = TextAlign.Center, softWrap = true)
+                                                }
 
-                                                    Button(
-                                                        onClick = { AppUtils.openSwiftBackup(context) },
-                                                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                                                        modifier = Modifier.weight(1f).heightIn(min = 46.dp),
-                                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
-                                                    ) {
-                                                        Icon(Icons.AutoMirrored.Filled.Launch, contentDescription = null, modifier = Modifier.size(18.dp))
-                                                        Spacer(Modifier.width(6.dp))
-                                                        Text("Open App", fontWeight = FontWeight.Bold, textAlign = TextAlign.Center, softWrap = true)
-                                                    }
+                                                Button(
+                                                    onClick = { AppUtils.openSwiftBackup(context) },
+                                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                                                    modifier = Modifier.weight(1f).heightIn(min = 46.dp),
+                                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
+                                                ) {
+                                                    Icon(Icons.AutoMirrored.Filled.Launch, contentDescription = null, modifier = Modifier.size(18.dp))
+                                                    Spacer(Modifier.width(6.dp))
+                                                    Text("Open App", fontWeight = FontWeight.Bold, textAlign = TextAlign.Center, softWrap = true)
                                                 }
                                             }
                                         }
@@ -327,25 +358,5 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
-    }
-
-    override fun onPause() {
-        super.onPause()
-        makeWorldReadable()
-    }
-
-    private fun makeWorldReadable() {
-        try {
-            @Suppress("DEPRECATION")
-            val prefsDir = File(applicationInfo.dataDir, "shared_prefs")
-            val prefsFile = File(prefsDir, "${BuildConfig.APPLICATION_ID}_preferences.xml")
-            if (prefsDir.exists()) {
-                prefsDir.setReadable(true, false)
-                prefsDir.setExecutable(true, false)
-            }
-            if (prefsFile.exists()) {
-                prefsFile.setReadable(true, false)
-            }
-        } catch (_: Throwable) {}
     }
 }

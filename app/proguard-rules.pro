@@ -5,10 +5,13 @@
 -keep class io.github.s1ddhants1.swiftbackupprem.** { *; }
 -keepclassmembers class io.github.s1ddhants1.swiftbackupprem.** { *; }
 
-# Keep Xposed API framework classes provided at runtime via compileOnly
--dontwarn de.robv.android.xposed.**
--keep class de.robv.android.xposed.** { *; }
--keepclassmembers class de.robv.android.xposed.** { *; }
+# LibXposed Modern API rules
+-dontwarn io.github.libxposed.**
+-adaptresourcefilecontents META-INF/xposed/java_init.list
+-adaptresourcefilecontents META-INF/xposed/native_init.list
+-keep,allowoptimization,allowobfuscation public class * extends io.github.libxposed.api.XposedModule {
+    public <init>();
+}
 
 # Keep DexKit bridge classes used by native C++ (libdexkit.so) JNI reflection
 -keep class org.luckypray.dexkit.** { *; }

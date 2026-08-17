@@ -42,7 +42,8 @@ android {
 }
 
 dependencies {
-    compileOnly files('libs/api-82.jar')
+    compileOnly libs.libxposed.api
+    implementation libs.libxposed.service
     implementation libs.dexkit
 
     // AndroidX
@@ -57,4 +58,8 @@ dependencies {
     implementation libs.androidx.compose.ui.tooling
     implementation libs.androidx.compose.material3
     implementation libs.androidx.compose.material.icons.extended
+
+    testImplementation libs.libxposed.api
+    testImplementation libs.libxposed.service
+    testImplementation 'junit:junit:4.13.2'
 }

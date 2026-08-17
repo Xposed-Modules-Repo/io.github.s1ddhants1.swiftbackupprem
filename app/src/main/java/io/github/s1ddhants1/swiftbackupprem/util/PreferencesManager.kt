@@ -7,7 +7,7 @@ import io.github.s1ddhants1.swiftbackupprem.Consts
 import kotlin.reflect.KProperty
 
 class PreferencesManager(
-    private val prefs: SharedPreferences,
+    private val prefs: SharedPreferences?,
     private val isDynamic: Boolean = false
 ) {
     private class Preference<T>(
@@ -34,11 +34,19 @@ class PreferencesManager(
         }
     }
 
-    private fun getString(key: String, defaultValue: String) = prefs.getString(key, defaultValue) ?: defaultValue
-    private fun getBoolean(key: String, defaultValue: Boolean) = prefs.getBoolean(key, defaultValue)
+    private fun getString(key: String, defaultValue: String) = prefs?.getString(key, defaultValue) ?: defaultValue
+    private fun getBoolean(key: String, defaultValue: Boolean) = prefs?.getBoolean(key, defaultValue) ?: defaultValue
 
-    private fun putString(key: String, value: String?) = prefs.edit(commit = true) { putString(key, value) }
-    private fun putBoolean(key: String, value: Boolean) = prefs.edit(commit = true) { putBoolean(key, value) }
+    private fun putString(key: String, value: String?) {
+        try {
+            prefs?.edit(commit = true) { putString(key, value) }
+        } catch (_: Throwable) {}
+    }
+    private fun putBoolean(key: String, value: Boolean) {
+        try {
+            prefs?.edit(commit = true) { putBoolean(key, value) }
+        } catch (_: Throwable) {}
+    }
 
     private fun stringPreference(
         key: String
@@ -75,4 +83,3 @@ class PreferencesManager(
 
     var customFirebaseApp by booleanPreference("custom_firebase_app")
 }
-
