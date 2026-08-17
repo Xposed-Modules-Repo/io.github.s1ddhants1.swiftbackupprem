@@ -6,6 +6,7 @@ import androidx.core.content.edit
 import io.github.s1ddhants1.swiftbackupprem.Consts
 import kotlin.reflect.KProperty
 
+@Stable
 class PreferencesManager(
     private val prefs: SharedPreferences?,
     private val isDynamic: Boolean = false
@@ -39,12 +40,12 @@ class PreferencesManager(
 
     private fun putString(key: String, value: String?) {
         try {
-            prefs?.edit(commit = true) { putString(key, value) }
+            prefs?.edit(commit = false) { putString(key, value) }
         } catch (_: Throwable) {}
     }
     private fun putBoolean(key: String, value: Boolean) {
         try {
-            prefs?.edit(commit = true) { putBoolean(key, value) }
+            prefs?.edit(commit = false) { putBoolean(key, value) }
         } catch (_: Throwable) {}
     }
 

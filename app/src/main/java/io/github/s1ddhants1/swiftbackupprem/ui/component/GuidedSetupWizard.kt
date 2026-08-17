@@ -3,9 +3,12 @@ package io.github.s1ddhants1.swiftbackupprem.ui.component
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -38,6 +41,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -45,7 +51,20 @@ import io.github.s1ddhants1.swiftbackupprem.Consts
 import io.github.s1ddhants1.swiftbackupprem.util.AppUtils
 import io.github.s1ddhants1.swiftbackupprem.util.GoogleServicesJson
 import io.github.s1ddhants1.swiftbackupprem.util.PreferencesManager
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import org.json.JSONObject
+
+private const val FIREBASE_DATABASE_RULES = "{\n" +
+        "  \"rules\": {\n" +
+        "    \"users\": {\n" +
+        "      \"\$uid\": {\n" +
+        "        \".read\": \"\$uid === auth.uid\",\n" +
+        "        \".write\": \"\$uid === auth.uid\"\n" +
+        "      }\n" +
+        "    }\n" +
+        "  }\n" +
+        "}"
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -53,20 +72,15 @@ fun GuidedSetupWizard(
     prefs: PreferencesManager,
     onFinish: () -> Unit = {}
 ) {
-    val hasExistingConfig = remember(
-        prefs.googleAppId,
-        prefs.googleApiKey,
-        prefs.firebaseDatabaseUrl,
-        prefs.gcmDefaultSenderId,
-        prefs.projectId,
-        prefs.clientId
-    ) {
-        prefs.googleAppId.isNotBlank() &&
-                prefs.googleApiKey.isNotBlank() &&
-                prefs.firebaseDatabaseUrl.isNotBlank() &&
-                prefs.gcmDefaultSenderId.isNotBlank() &&
-                prefs.projectId.isNotBlank() &&
-                prefs.clientId.isNotBlank()
+    val hasExistingConfig by remember {
+        derivedStateOf {
+            prefs.googleAppId.isNotBlank() &&
+                    prefs.googleApiKey.isNotBlank() &&
+                    prefs.firebaseDatabaseUrl.isNotBlank() &&
+                    prefs.gcmDefaultSenderId.isNotBlank() &&
+                    prefs.projectId.isNotBlank() &&
+                    prefs.clientId.isNotBlank()
+        }
     }
     var userOverrodeCollapse by remember { mutableStateOf<Boolean?>(null) }
     val isCollapsed = userOverrodeCollapse ?: hasExistingConfig
@@ -76,14 +90,18 @@ fun GuidedSetupWizard(
     val context = LocalContext.current
     val uriHandler = LocalUriHandler.current
     val clipboardManager = LocalClipboardManager.current
+    val coroutineScope = rememberCoroutineScope()
 
     val pickJsonLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) {
-            context.contentResolver.openInputStream(uri)?.use { inputStream ->
+            coroutineScope.launch(Dispatchers.IO) {
                 try {
-                    val json = JSONObject(inputStream.bufferedReader().use { r -> r.readText() })
-                    GoogleServicesJson.applyToPrefs(json, prefs)
-                    userOverrodeCollapse = null
+                    context.contentResolver.openInputStream(uri)?.use { inputStream ->
+                        val jsonStr = inputStream.bufferedReader().use { r -> r.readText() }
+                        val json = JSONObject(jsonStr)
+                        GoogleServicesJson.applyToPrefs(json, prefs)
+                        userOverrodeCollapse = null
+                    }
                 } catch (_: Throwable) {
                 }
             }
@@ -198,8 +216,13 @@ fun GuidedSetupWizard(
                                 )
                             }
                         }
+                        val animatedProgress by animateFloatAsState(
+                            targetValue = currentStep.toFloat() / totalSteps.toFloat(),
+                            animationSpec = tween(durationMillis = 300),
+                            label = "WizardProgress"
+                        )
                         LinearProgressIndicator(
-                            progress = { currentStep.toFloat() / totalSteps.toFloat() },
+                            progress = { animatedProgress },
                             modifier = Modifier.fillMaxWidth().height(6.dp),
                             trackColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.15f)
                         )
@@ -220,20 +243,7 @@ fun GuidedSetupWizard(
                             prefs = prefs,
                             onOpenConsole = { uriHandler.openUri("https://console.firebase.google.com/u/0/") },
                             onCopyRules = {
-                                clipboardManager.setText(
-                                    AnnotatedString(
-                                        "{\n" +
-                                                "  \"rules\": {\n" +
-                                                "    \"users\": {\n" +
-                                                "      \"\$uid\": {\n" +
-                                                "        \".read\": \"\$uid === auth.uid\",\n" +
-                                                "        \".write\": \"\$uid === auth.uid\"\n" +
-                                                "      }\n" +
-                                                "    }\n" +
-                                                "  }\n" +
-                                                "}"
-                                    )
-                                )
+                                clipboardManager.setText(AnnotatedString(FIREBASE_DATABASE_RULES))
                             },
                             onBack = { currentStep = 1 },
                             onNext = { currentStep = 3 }
@@ -423,13 +433,25 @@ private fun Step2Database(
         SettingsTextField(
             label = "Project ID",
             pref = prefs.projectId,
-            onPrefChange = { prefs.projectId = it }
+            onPrefChange = { prefs.projectId = it },
+            keyboardOptions = KeyboardOptions(
+                capitalization = KeyboardCapitalization.None,
+                autoCorrectEnabled = false,
+                keyboardType = KeyboardType.Ascii,
+                imeAction = ImeAction.Next
+            )
         )
 
         SettingsTextField(
             label = "Firebase Database URL",
             pref = prefs.firebaseDatabaseUrl,
-            onPrefChange = { prefs.firebaseDatabaseUrl = it }
+            onPrefChange = { prefs.firebaseDatabaseUrl = it },
+            keyboardOptions = KeyboardOptions(
+                capitalization = KeyboardCapitalization.None,
+                autoCorrectEnabled = false,
+                keyboardType = KeyboardType.Uri,
+                imeAction = ImeAction.Done
+            )
         )
 
         WizardNavRow(onBack = onBack, onNext = onNext)
@@ -457,25 +479,49 @@ private fun Step3AuthAndStorage(
         SettingsTextField(
             label = "Google App ID",
             pref = prefs.googleAppId,
-            onPrefChange = { prefs.googleAppId = it }
+            onPrefChange = { prefs.googleAppId = it },
+            keyboardOptions = KeyboardOptions(
+                capitalization = KeyboardCapitalization.None,
+                autoCorrectEnabled = false,
+                keyboardType = KeyboardType.Ascii,
+                imeAction = ImeAction.Next
+            )
         )
 
         SettingsTextField(
             label = "Google Api Key",
             pref = prefs.googleApiKey,
-            onPrefChange = { prefs.googleApiKey = it }
+            onPrefChange = { prefs.googleApiKey = it },
+            keyboardOptions = KeyboardOptions(
+                capitalization = KeyboardCapitalization.None,
+                autoCorrectEnabled = false,
+                keyboardType = KeyboardType.Ascii,
+                imeAction = ImeAction.Next
+            )
         )
 
         SettingsTextField(
             label = "GCM Sender ID (Project Number)",
             pref = prefs.gcmDefaultSenderId,
-            onPrefChange = { prefs.gcmDefaultSenderId = it }
+            onPrefChange = { prefs.gcmDefaultSenderId = it },
+            keyboardOptions = KeyboardOptions(
+                capitalization = KeyboardCapitalization.None,
+                autoCorrectEnabled = false,
+                keyboardType = KeyboardType.Number,
+                imeAction = ImeAction.Next
+            )
         )
 
         SettingsTextField(
             label = "Google Storage Bucket (Optional)",
             pref = prefs.googleStorageBucket,
-            onPrefChange = { prefs.googleStorageBucket = it }
+            onPrefChange = { prefs.googleStorageBucket = it },
+            keyboardOptions = KeyboardOptions(
+                capitalization = KeyboardCapitalization.None,
+                autoCorrectEnabled = false,
+                keyboardType = KeyboardType.Ascii,
+                imeAction = ImeAction.Done
+            )
         )
 
         WizardNavRow(onBack = onBack, onNext = onNext)
@@ -538,7 +584,13 @@ private fun Step4AndroidOAuth(
         SettingsTextField(
             label = "Client ID",
             pref = prefs.clientId,
-            onPrefChange = { prefs.clientId = it }
+            onPrefChange = { prefs.clientId = it },
+            keyboardOptions = KeyboardOptions(
+                capitalization = KeyboardCapitalization.None,
+                autoCorrectEnabled = false,
+                keyboardType = KeyboardType.Ascii,
+                imeAction = ImeAction.Done
+            )
         )
 
         WizardNavRow(onBack = onBack, onNext = onNext, nextLabel = "Review")
@@ -552,16 +604,27 @@ private fun Step5ReviewFinish(
     onBack: () -> Unit,
     onFinish: () -> Unit
 ) {
-    val requiredFields = listOf(
-        "Google App ID" to prefs.googleAppId,
-        "Google Api Key" to prefs.googleApiKey,
-        "Firebase Database URL" to prefs.firebaseDatabaseUrl,
-        "GCM Sender ID" to prefs.gcmDefaultSenderId,
-        "Project ID" to prefs.projectId,
-        "Client ID" to prefs.clientId
-    )
+    val requiredFields = remember(
+        prefs.googleAppId,
+        prefs.googleApiKey,
+        prefs.firebaseDatabaseUrl,
+        prefs.gcmDefaultSenderId,
+        prefs.projectId,
+        prefs.clientId
+    ) {
+        listOf(
+            "Google App ID" to prefs.googleAppId,
+            "Google Api Key" to prefs.googleApiKey,
+            "Firebase Database URL" to prefs.firebaseDatabaseUrl,
+            "GCM Sender ID" to prefs.gcmDefaultSenderId,
+            "Project ID" to prefs.projectId,
+            "Client ID" to prefs.clientId
+        )
+    }
 
-    val allFilled = requiredFields.all { it.second.isNotBlank() }
+    val allFilled by remember {
+        derivedStateOf { requiredFields.all { it.second.isNotBlank() } }
+    }
 
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Card(
@@ -655,7 +718,6 @@ private fun Step5ReviewFinish(
             Text("Import google-services.json", textAlign = TextAlign.Center, softWrap = true)
         }
 
-        val context = LocalContext.current
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             OutlinedButton(
                 onClick = onBack,
