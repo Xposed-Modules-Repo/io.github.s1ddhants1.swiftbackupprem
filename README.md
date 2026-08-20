@@ -25,7 +25,7 @@
   - [Step 2: Set Up Realtime Database & Security Rules](#step-2-set-up-realtime-database--security-rules)
   - [Step 3: Configure Authentication](#step-3-configure-authentication)
   - [Step 4: Register Android App & OAuth Client](#step-4-register-android-app--oauth-client)
-  - [Step 5: Enable Google Drive API](#step-5-enable-google-drive-api)
+  - [Step 5: Enable Google Drive API & OAuth Scopes](#step-5-enable-google-drive-api--oauth-scopes)
   - [Step 6: Import or Enter Credentials in SwiftBackupPrem](#step-6-import-or-enter-credentials-in-swiftbackupprem)
 - [🔄 Configuration Export & Migration](#-configuration-export--migration)
 - [🛠️ Building from Source](#️-building-from-source)
@@ -191,13 +191,25 @@ Watch the complete step-by-step video guide below for visual reference:
 
 ---
 
-### Step 5: Enable Google Drive API
+### Step 5: Enable Google Drive API & OAuth Scopes
 
 If you plan to use Google Drive for cloud backups:
 
+#### 1. Enable Google Drive API
 1. Visit the [Google Cloud Drive API Console](https://console.cloud.google.com/apis/library/drive.googleapis.com).
-2. Select your Firebase project.
+2. Select your Firebase / Google Cloud project at the top.
 3. Click **Enable** to allow Swift Backup to interact with Google Drive via your project.
+
+#### 2. Add Google Drive OAuth Scope
+1. Open the [Google Cloud OAuth Scopes Console](https://console.cloud.google.com/auth/scopes).
+2. Ensure your project is selected at the top.
+3. Navigate to **Data Access** > click **Add or remove scopes**.
+4. In the filter box, search for:
+   ```
+   https://www.googleapis.com/auth/drive.file
+   ```
+5. Check / turn on the `.../auth/drive.file` scope.
+6. Click **Update**, then click **Save** (or **Save and continue**).
 
 ---
 
@@ -263,7 +275,7 @@ The built APK will be located in `app/build/outputs/apk/release/app-release.apk`
 <ol>
   <li>Verify that the <b>SHA-1 fingerprint</b> entered in Firebase Console matches your installed Swift Backup app (use the "Copy Fingerprint" button in SwiftBackupPrem).</li>
   <li>Ensure <b>Enable custom URI scheme</b> is checked in Google Cloud Console OAuth Client settings.</li>
-  <li>Ensure <b>Google Drive API</b> is enabled in Google Cloud Console if using Google Drive cloud backup.</li>
+  <li>Ensure <b>Google Drive API</b> is enabled and the <code>.../auth/drive.file</code> scope is added in Google Cloud Console if using Google Drive cloud backup.</li>
   <li>Wait 5–10 minutes after creating OAuth credentials for Google's servers to propagate changes.</li>
 </ol>
 </details>

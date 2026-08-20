@@ -14,7 +14,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
@@ -42,7 +41,6 @@ fun GuidedSetupWizard(
     val isCollapsed = userOverrodeCollapse ?: hasExistingConfig
     var currentStep by remember { mutableIntStateOf(1) }
 
-    val context = LocalContext.current
     val uriHandler = LocalUriHandler.current
     @Suppress("DEPRECATION")
     val clipboardManager = LocalClipboardManager.current
@@ -150,7 +148,7 @@ fun GuidedSetupWizard(
                                 clipboardManager.setText(AnnotatedString(Consts.packageName))
                             },
                             onCopyFingerprint = {
-                                clipboardManager.setText(AnnotatedString(AppUtils.getSwiftBackupSha1(context)))
+                                clipboardManager.setText(AnnotatedString(AppUtils.randomFingerprint()))
                             },
                             onOpenCloudConsole = { uriHandler.openUri("https://console.developers.google.com/") },
                             onEnableDriveApi = {
