@@ -16,12 +16,12 @@
 ---
 
 ## 📖 Table of Contents
+
 - [✨ Features](#-features)
 - [📱 Compatibility & Prerequisites](#-compatibility--prerequisites)
 - [🚀 Installation & Activation](#-installation--activation)
 - [🔥 Custom Firebase Setup Guide](#-custom-firebase-setup-guide)
   - [Why Use Your Own Firebase Instance?](#why-use-your-own-firebase-instance)
-  - [Video Walkthrough](#video-walkthrough)
   - [Step 1: Create a Firebase Project](#step-1-create-a-firebase-project)
   - [Step 2: Set Up Realtime Database & Security Rules](#step-2-set-up-realtime-database--security-rules)
   - [Step 3: Configure Authentication](#step-3-configure-authentication)
@@ -53,13 +53,13 @@
 
 ## 📱 Compatibility & Prerequisites
 
-| Requirement | Details |
-| :--- | :--- |
-| **Root Solution** | Magisk, KernelSU, or APatch |
-| **Xposed Framework** | [LSPosed](https://github.com/LSPosed/LSPosed) (Zygisk / Riru) v1.9.0+ or compatible framework |
-| **Android Version** | Android 8.1 (Oreo MR1 / API 27) up to Android 15 / 16 (API 37+) |
-| **Target Application** | [Swift Backup](https://play.google.com/store/apps/details?id=org.swiftapps.swiftbackup) (`org.swiftapps.swiftbackup`) |
-| **Tested App Versions** | v4.2.3, v4.2.5, v5.0.4, v5.1.0, and newer releases |
+| Requirement             | Details                                                                                                               |
+| :---------------------- | :-------------------------------------------------------------------------------------------------------------------- |
+| **Root Solution**       | Magisk, KernelSU, or APatch                                                                                           |
+| **Xposed Framework**    | [LSPosed](https://github.com/LSPosed/LSPosed) (Zygisk / Riru) v1.9.0+ or compatible framework                         |
+| **Android Version**     | Android 8.1 (Oreo MR1 / API 27) up to Android 15 / 16 (API 37+)                                                       |
+| **Target Application**  | [Swift Backup](https://play.google.com/store/apps/details?id=org.swiftapps.swiftbackup) (`org.swiftapps.swiftbackup`) |
+| **Tested App Versions** | v4.2.3, v4.2.5, v5.0.4, v5.1.0, and newer releases                                                                    |
 
 ---
 
@@ -76,6 +76,7 @@ Automatically download and receive updates by adding SwiftBackupPrem to [Obtaini
 </p>
 
 Or add the repository URL manually in Obtainium:
+
 ```
 https://github.com/s1ddhants1/SwiftBackupPrem
 ```
@@ -102,17 +103,9 @@ https://github.com/s1ddhants1/SwiftBackupPrem
 
 ### Why Use Your Own Firebase Instance?
 
-By default, Swift Backup authenticates against the app developer's Firebase project. If the developer blocks or bans your account on their Firebase instance, cloud authentication and cloud sync in Swift Backup will stop working. 
+By default, Swift Backup authenticates against the app developer's Firebase project. If the developer blocks or bans your account on their Firebase instance, cloud authentication and cloud sync in Swift Backup will stop working.
 
 Connecting your own personal Firebase project gives you complete isolation, ensures data privacy, and prevents remote bans.
-
----
-
-### Video Walkthrough
-
-Watch the complete step-by-step video guide below for visual reference:
-
-> **[▶ Watch Firebase Setup Video Guide](https://user-images.githubusercontent.com/31005896/203136303-36079018-3199-4863-864b-40293342f262.mp4)**
 
 ---
 
@@ -124,11 +117,29 @@ Watch the complete step-by-step video guide below for visual reference:
 4. Google Analytics can be disabled (optional) to speed up creation.
 5. Click **Create project** and wait for provisioning to finish.
 
+<details>
+<summary>📸 <b>View Step 1 Screenshots</b></summary>
+<br>
+
+<p align="center">
+  <img src="Screenshots/step1_01_project_name_prompt.webp" alt="Enter project name" width="700" /><br>
+  <em>1. Enter project name</em><br><br>
+  <img src="Screenshots/step1_02_project_name_entered.webp" alt="Confirm project name" width="700" /><br>
+  <em>2. Confirm project name</em><br><br>
+  <img src="Screenshots/step1_03_google_analytics_toggle.webp" alt="Google Analytics option" width="700" /><br>
+  <em>3. Configure Analytics and click Create project</em><br><br>
+  <img src="Screenshots/step1_04_project_provisioning.webp" alt="Provisioning project" width="700" /><br>
+  <em>4. Provisioning Firebase project</em><br><br>
+  <img src="Screenshots/step1_05_project_ready.webp" alt="Project ready" width="700" /><br>
+  <em>5. Project is ready</em>
+</p>
+</details>
+
 ---
 
 ### Step 2: Set Up Realtime Database & Security Rules
 
-1. In your Firebase project sidebar, go to **Build > Realtime Database**.
+1. In your Firebase project sidebar, go to **Databases & Storage > Realtime Database**.
 2. Click **Create Database**, select a region close to you (e.g., `United States` or `Belgium`), and choose **Start in locked mode**.
 3. Once created, switch to the **Rules** tab at the top.
 4. Replace the existing rules with the following user-isolated security rules:
@@ -147,49 +158,125 @@ Watch the complete step-by-step video guide below for visual reference:
 ```
 
 5. Click **Publish** to save the rules.
-6. Copy your **Realtime Database URL** from the *Data* tab (e.g., `https://your-project-id-default-rtdb.firebaseio.com/`).
+6. Copy your **Realtime Database URL** from the _Data_ tab (e.g., `https://your-project-id-default-rtdb.firebaseio.com/`).
+
+<details>
+<summary>📸 <b>View Step 2 Screenshots</b></summary>
+<br>
+
+<p align="center">
+  <img src="Screenshots/step2_01_navigate_realtime_database.webp" alt="Navigate to Realtime Database" width="700" /><br>
+  <em>1. Select Databases &amp; Storage &gt; Realtime Database</em><br><br>
+  <img src="Screenshots/step2_02_database_location.webp" alt="Select Database Location" width="700" /><br>
+  <em>2. Choose database region / location</em><br><br>
+  <img src="Screenshots/step2_03_start_locked_mode.webp" alt="Start in locked mode" width="700" /><br>
+  <em>3. Select Start in locked mode and Enable</em><br><br>
+  <img src="Screenshots/step2_04_rules_tab_default.webp" alt="Rules tab default" width="700" /><br>
+  <em>4. Switch to the Rules tab</em><br><br>
+  <img src="Screenshots/step2_05_rules_paste_and_publish.webp" alt="Paste security rules" width="700" /><br>
+  <em>5. Replace rules and click Publish</em><br><br>
+  <img src="Screenshots/step2_06_rules_published_success.webp" alt="Rules published" width="700" /><br>
+  <em>6. Security rules published successfully</em><br><br>
+  <img src="Screenshots/step2_07_database_url_copy.webp" alt="Copy Database URL" width="700" /><br>
+  <em>7. Copy your Realtime Database URL from the Data tab</em>
+</p>
+</details>
 
 ---
 
 ### Step 3: Configure Authentication
 
-1. In the Firebase sidebar, navigate to **Build > Authentication**.
-2. Click **Get Started**, then select the **Sign-in method** tab.
-3. Under *Additional providers*, select **Google**.
-4. Toggle **Enable**, choose a Project support email, and click **Save**.
+1. In the Firebase sidebar, navigate to **Security > Authentication**.
+2. Select the **Sign-in method** tab.
+3. Under _Additional providers_, select **Google**.
+4. Toggle **Enable**, enter a **Public-facing name for project** of your choice, choose a **Project support email**, and click **Save**.
 
-> [!NOTE]
-> **Firebase Cloud Storage is Optional (Skip if on Spark Plan)**
-> 
-> Firebase Cloud Storage now requires a paid **Blaze Plan** (linked Cloud Billing account). **You can safely skip enabling Cloud Storage in Firebase Console.**
-> Swift Backup does **not** store your backup files (APKs, app data, call logs) inside Firebase Storage. Firebase is only used for authentication and metadata synchronization. Your actual backups are stored in your configured cloud provider (Google Drive, WebDAV, Nextcloud, SMB, etc.) or local storage.
+<details>
+<summary>📸 <b>View Step 3 Screenshots</b></summary>
+<br>
+
+<p align="center">
+  <img src="Screenshots/step3_01_navigate_authentication.webp" alt="Select Google Sign-in provider" width="700" /><br>
+  <em>1. Navigate to Authentication &gt; Sign-in method and select Google</em><br><br>
+  <img src="Screenshots/step3_02_google_provider_dialog.webp" alt="Configure Google Sign-in dialog" width="700" /><br>
+  <em>2. Google Sign-in provider configuration dialog</em><br><br>
+  <img src="Screenshots/step3_03_enable_google_provider.webp" alt="Enable Google provider" width="700" /><br>
+  <em>3. Toggle Enable, enter public-facing name and support email, then Save</em><br><br>
+  <img src="Screenshots/step3_04_google_provider_enabled.webp" alt="Google Sign-in Enabled" width="700" /><br>
+  <em>4. Google provider enabled successfully</em>
+</p>
+</details>
 
 ---
 
 ### Step 4: Register Android App & OAuth Client
 
-1. In Firebase Console, go to **Project Settings** (gear icon ⚙️ > *Project settings*).
-2. Under the *Your apps* section, click the **Android** icon (Add app).
-3. Enter the package details:
-   - **Android package name**: `org.swiftapps.swiftbackup` *(Tap "Copy Package" in SwiftBackupPrem wizard)*
-   - **Debug signing certificate SHA-1**: Paste your Swift Backup app SHA-1 fingerprint *(Tap "Copy Fingerprint" in SwiftBackupPrem wizard)*
-4. Click **Register app**, then download the `google-services.json` file.
-5. Click through the remaining setup steps until finished.
+#### 1. Register Android App in Firebase Console
 
-> [!IMPORTANT]
-> **Custom URI Scheme Requirement (Google Cloud Console)**
-> 
-> Since October 2023, Google disables Custom URI schemes by default for new OAuth clients.
-> 1. Open the [Google Cloud API Credentials Console](https://console.cloud.google.com/apis/credentials).
-> 2. Select your Firebase project at the top.
-> 3. Under **OAuth 2.0 Client IDs**, edit the auto-generated **Android client for org.swiftapps.swiftbackup**.
-> 4. Ensure **Enable custom URI scheme** is checked / enabled.
-> 
-> <p align="center">
->   <img src="https://github.com/Juby210/SwiftBackupPrem/assets/31005896/8049f7e2-26db-418b-9611-171be77b61f1" alt="Enable custom URI scheme" width="600" />
-> </p>
-> 
-> 5. Copy the **Client ID** string (e.g., `xxxxxxxxxxxx-xxxxxxxxxxxxxxxx.apps.googleusercontent.com`).
+1. In Firebase Console, go to the **Project Overview** page from the sidebar.
+2. Under "Select a platform to get started", click the **Android** icon (Add app).
+3. Enter the package details:
+   - **Android package name**: `org.swiftapps.swiftbackup` _(or tap "Copy Package" in SwiftBackupPrem wizard)_
+   - **App Nickname**: `SwiftBackupPersonal` _(or any name you like)_
+4. Click **Register app**.
+5. Click **Download google-services.json** to save the configuration file.
+6. Click **Next** through the remaining setup steps (Add Firebase SDK is handled automatically by the module), then click **Continue to console**.
+7. On the Project Overview page, click the newly registered app card and select the **Gear icon (Project Settings)**.
+8. Scroll down to the **Your apps** section, click **Add fingerprint**, paste your **SHA-1 fingerprint** _(tap "Copy Fingerprint" in SwiftBackupPrem wizard)_, and click **Save**.
+9. _(Optional)_ Click the **Data privacy** tab on Project Settings and uncheck **Firebase Service Data Sharing**.
+
+<details>
+<summary>📸 <b>View Firebase App Registration Screenshots</b></summary>
+<br>
+
+<p align="center">
+  <img src="Screenshots/step4_01_add_android_app.webp" alt="Add Android App" width="700" /><br>
+  <em>1. Click the Android platform icon on Project Overview</em><br><br>
+  <img src="Screenshots/step4_02_register_app_details.webp" alt="Register Android App" width="700" /><br>
+  <em>2. Enter package name org.swiftapps.swiftbackup and nickname</em><br><br>
+  <img src="Screenshots/step4_03_download_google_services_json.webp" alt="Download google-services.json" width="700" /><br>
+  <em>3. Download google-services.json configuration file</em><br><br>
+  <img src="Screenshots/step4_04_continue_to_console.webp" alt="Continue to console" width="700" /><br>
+  <em>4. Skip SDK setup and continue to console</em><br><br>
+  <img src="Screenshots/step4_06_project_overview_app_card.webp" alt="App registered on Overview" width="700" /><br>
+  <em>5. App is registered on Project Overview</em><br><br>
+  <img src="Screenshots/step4_07_open_project_settings.webp" alt="Open Project Settings" width="700" /><br>
+  <em>6. Click the gear icon to open Project Settings</em><br><br>
+  <img src="Screenshots/step4_08_project_settings_general.webp" alt="Project Settings General Tab" width="700" /><br>
+  <em>7. Project Settings Overview (View in Google Cloud)</em><br><br>
+  <img src="Screenshots/step4_09_add_sha1_fingerprint.webp" alt="Add SHA-1 fingerprint" width="700" /><br>
+  <em>8. Add SHA-1 fingerprint under Your apps</em><br><br>
+  <img src="Screenshots/step4_10_disable_data_sharing.webp" alt="Disable Data Sharing" width="700" /><br>
+  <em>9. Optional: Disable Firebase Service Data Sharing</em>
+</p>
+</details>
+
+#### 2. Configure OAuth 2.0 Client in Google Cloud Console
+
+1. Open the [Google Cloud API Credentials Console](https://console.cloud.google.com/apis/credentials) (or click **View in Google Cloud** on the Firebase Project Settings page).
+2. Ensure your Firebase / Google Cloud project is selected in the top project dropdown.
+3. In the sidebar, navigate to **APIs & Services > Credentials**.
+4. Under **OAuth 2.0 Client IDs**, edit the auto-generated **Android client for org.swiftapps.swiftbackup**
+5. Under **Advanced settings**, check **Enable custom URI scheme** (click **Yes** in the confirmation popup).
+6. Click **Save**.
+7. Copy the generated **Client ID** string (e.g., `xxxxxxxxxxxx-xxxxxxxxxxxxxxxx.apps.googleusercontent.com`).
+<details>
+<summary>📸 <b>View Google Cloud OAuth Client Screenshots</b></summary>
+<br>
+
+<p align="center">
+  <img src="Screenshots/step4_11_gcp_dashboard.webp" alt="Google Cloud Console Dashboard" width="700" /><br>
+  <em>1. Google Cloud Console Dashboard</em><br><br>
+  <img src="Screenshots/step4_12_gcp_navigate_credentials.webp" alt="Navigate to Credentials" width="700" /><br>
+  <em>2. Navigate to APIs &amp; Services &gt; Credentials</em><br><br>
+  <img src="Screenshots/step4_13_gcp_edit_oauth_client.webp" alt="Edit Android OAuth Client" width="700" /><br>
+  <em>3. Under OAuth 2.0 Client IDs, edit the auto-generated Android client</em><br><br>
+  <img src="Screenshots/step4_15_gcp_enable_custom_uri_scheme.webp" alt="Enable Custom URI Scheme" width="700" /><br>
+  <em>4. Under Advanced settings, enable Custom URI scheme</em><br><br>
+  <img src="Screenshots/step4_16_gcp_copy_client_id.webp" alt="Copy Client ID" width="700" /><br>
+  <em>5. Copy your generated OAuth Client ID</em>
+</p>
+</details>
 
 ---
 
@@ -198,11 +285,13 @@ Watch the complete step-by-step video guide below for visual reference:
 If you plan to use Google Drive for cloud backups:
 
 #### 1. Enable Google Drive API
+
 1. Visit the [Google Cloud Drive API Console](https://console.cloud.google.com/apis/library/drive.googleapis.com).
 2. Select your Firebase / Google Cloud project at the top.
 3. Click **Enable** to allow Swift Backup to interact with Google Drive via your project.
 
 #### 2. Add Google Drive OAuth Scope
+
 1. Open the [Google Cloud OAuth Scopes Console](https://console.cloud.google.com/auth/scopes).
 2. Ensure your project is selected at the top.
 3. Navigate to **Data Access** > click **Add or remove scopes**.
@@ -226,6 +315,12 @@ If you plan to use Google Drive for cloud backups:
 5. Tap **Force Stop** at the bottom to kill any running Swift Backup instances, then tap **Open App**.
 6. Sign in to Swift Backup with your Google account.
 
+> [!NOTE]
+> **Firebase Cloud Storage is Optional (Skip if on Spark Plan)**
+>
+> Firebase Cloud Storage now requires a paid **Blaze Plan** (linked Cloud Billing account). **You can safely skip enabling Cloud Storage in Firebase Console.**
+> Swift Backup does **not** store your backup files (APKs, app data, call logs) inside Firebase Storage. Firebase is only used for authentication and metadata synchronization. Your actual backups are stored in your configured cloud provider (Google Drive, WebDAV, Nextcloud, SMB, etc.) or local storage.
+
 ---
 
 ## 🔄 Configuration Export & Migration
@@ -238,6 +333,7 @@ If you plan to use Google Drive for cloud backups:
 ## 🛠️ Building from Source
 
 ### Prerequisites
+
 - JDK 17 or higher
 - Android SDK with Platform 37 (`compileSdk 37`)
 - Android NDK (`25.1.8937393` or higher) & CMake `3.22.1+`
@@ -245,12 +341,14 @@ If you plan to use Google Drive for cloud backups:
 ### Build Steps
 
 1. Clone the repository:
+
    ```bash
    git clone https://github.com/s1ddhants1/SwiftBackupPrem.git
    cd SwiftBackupPrem
    ```
 
 2. Build debug APK:
+
    ```bash
    ./gradlew assembleDebug
    ```
@@ -324,4 +422,3 @@ Join the official Telegram group for discussion, support, release updates, and a
 This project is licensed under the [MIT License](LICENSE).
 
 **Disclaimer**: This project is intended strictly for personal, educational, and backup management purposes. Swift Backup is developed by SwiftApps. If you enjoy Swift Backup, consider supporting the official developers.
-
