@@ -6,6 +6,7 @@
 
 <p align="center">
   <a href="https://github.com/s1ddhants1/SwiftBackupPrem/releases"><img src="https://img.shields.io/github/v/release/s1ddhants1/SwiftBackupPrem?style=for-the-badge&color=6366f1&logo=android" alt="Release Version" /></a>
+  <a href="https://t.me/SwiftBackupPrem"><img src="https://img.shields.io/badge/Telegram-Join%20Chat-2CA5E0?style=for-the-badge&logo=telegram&logoColor=white" alt="Telegram Support Group" /></a>
   <a href="https://github.com/s1ddhants1/SwiftBackupPrem/blob/main/LICENSE"><img src="https://img.shields.io/github/license/s1ddhants1/SwiftBackupPrem?style=for-the-badge&color=10b981" alt="License" /></a>
   <img src="https://img.shields.io/badge/Android-8.1%2B%20(API%2027--37)-f59e0b?style=for-the-badge&logo=android" alt="Android API Support" />
   <img src="https://img.shields.io/badge/Framework-LSPosed%20%2F%20Xposed-8b5cf6?style=for-the-badge" alt="Xposed / LSPosed" />
@@ -29,6 +30,7 @@
   - [Step 6: Import or Enter Credentials in SwiftBackupPrem](#step-6-import-or-enter-credentials-in-swiftbackupprem)
 - [🔄 Configuration Export & Migration](#-configuration-export--migration)
 - [🛠️ Building from Source](#️-building-from-source)
+- [💬 Community & Support](#-community--support)
 - [❓ Frequently Asked Questions (FAQ)](#-frequently-asked-questions-faq)
 - [🤝 Credits & Acknowledgements](#-credits--acknowledgements)
 - [⚖️ License & Disclaimer](#️-license--disclaimer)
@@ -259,6 +261,22 @@ If you plan to use Google Drive for cloud backups:
    ```
 
 The built APK will be located in `app/build/outputs/apk/release/app-release.apk`.
+
+---
+
+## 💬 Community & Support
+
+Join the official Telegram group for discussion, support, release updates, and assistance with custom Firebase configuration:
+
+<p align="center">
+  <a href="https://t.me/SwiftBackupPrem">
+    <img src="https://img.shields.io/badge/Join%20Telegram%20Group-SwiftBackupPrem-2CA5E0?style=for-the-badge&logo=telegram&logoColor=white" alt="Join Telegram Group" />
+  </a>
+</p>
+
+- 📢 **Group Link**: [https://t.me/SwiftBackupPrem](https://t.me/SwiftBackupPrem)
+- ❓ **Get Help**: Ask troubleshooting questions or share setup tips.
+- 📦 **Releases & APKs**: Get direct download links and release notifications directly inside Telegram.
 
 ---
 
