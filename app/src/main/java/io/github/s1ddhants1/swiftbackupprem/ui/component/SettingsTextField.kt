@@ -1,10 +1,15 @@
 package io.github.s1ddhants1.swiftbackupprem.ui.component
 
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
-import androidx.compose.material3.*
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -20,32 +25,33 @@ fun SettingsTextField(
     pref: String,
     onPrefChange: (String) -> Unit,
     modifier: Modifier = Modifier,
-    keyboardOptions: KeyboardOptions = KeyboardOptions(
-        capitalization = KeyboardCapitalization.None,
-        autoCorrectEnabled = false,
-        keyboardType = KeyboardType.Ascii,
-        imeAction = ImeAction.Next
-    )
+    keyboardType: KeyboardType = KeyboardType.Ascii,
+    imeAction: ImeAction = ImeAction.Next
 ) {
-    Box(modifier = modifier.padding(horizontal = 2.dp, vertical = 2.dp)) {
-        OutlinedTextField(
-            modifier = Modifier.fillMaxWidth(),
-            value = pref,
-            onValueChange = onPrefChange,
-            label = { Text(label) },
-            singleLine = true,
-            keyboardOptions = keyboardOptions,
-            trailingIcon = if (pref.isNotBlank()) {
-                {
-                    IconButton(onClick = { onPrefChange("") }) {
-                        Icon(
-                            imageVector = Icons.Default.Clear,
-                            contentDescription = stringResource(R.string.cd_clear_input),
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
+    OutlinedTextField(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 2.dp, vertical = 2.dp),
+        value = pref,
+        onValueChange = onPrefChange,
+        label = { Text(label) },
+        singleLine = true,
+        keyboardOptions = KeyboardOptions(
+            capitalization = KeyboardCapitalization.None,
+            autoCorrectEnabled = false,
+            keyboardType = keyboardType,
+            imeAction = imeAction
+        ),
+        trailingIcon = if (pref.isNotBlank()) {
+            {
+                IconButton(onClick = { onPrefChange("") }) {
+                    Icon(
+                        imageVector = Icons.Default.Clear,
+                        contentDescription = stringResource(R.string.cd_clear_input),
+                        modifier = Modifier.size(18.dp)
+                    )
                 }
-            } else null
-        )
-    }
+            }
+        } else null
+    )
 }

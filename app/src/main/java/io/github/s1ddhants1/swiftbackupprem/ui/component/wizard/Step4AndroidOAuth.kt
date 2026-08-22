@@ -1,18 +1,13 @@
 package io.github.s1ddhants1.swiftbackupprem.ui.component.wizard
 
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Launch
 import androidx.compose.material.icons.filled.ContentCopy
-import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardCapitalization
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.s1ddhants1.swiftbackupprem.R
@@ -31,57 +26,54 @@ fun Step4AndroidOAuth(
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(
+            WizardActionButton(
+                text = stringResource(R.string.btn_copy_package),
                 onClick = onCopyPackageName,
-                modifier = Modifier.weight(1f).heightIn(min = 40.dp),
+                modifier = Modifier.weight(1f),
+                icon = Icons.Default.ContentCopy,
+                fontSize = 12.sp,
+                iconSize = 14.dp,
                 contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp)
-            ) {
-                Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(14.dp))
-                Spacer(modifier = Modifier.width(4.dp))
-                Text(stringResource(R.string.btn_copy_package), fontSize = 12.sp, textAlign = TextAlign.Center, softWrap = true)
-            }
-            OutlinedButton(
+            )
+            WizardActionButton(
+                text = stringResource(R.string.btn_copy_fingerprint),
                 onClick = onCopyFingerprint,
-                modifier = Modifier.weight(1f).heightIn(min = 40.dp),
+                modifier = Modifier.weight(1f),
+                icon = Icons.Default.ContentCopy,
+                fontSize = 12.sp,
+                iconSize = 14.dp,
                 contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp)
-            ) {
-                Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(14.dp))
-                Spacer(modifier = Modifier.width(4.dp))
-                Text(stringResource(R.string.btn_copy_fingerprint), fontSize = 12.sp, textAlign = TextAlign.Center, softWrap = true)
-            }
+            )
         }
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(
+            WizardActionButton(
+                text = stringResource(R.string.btn_cloud_console),
                 onClick = onOpenCloudConsole,
-                modifier = Modifier.weight(1f).heightIn(min = 40.dp),
+                modifier = Modifier.weight(1f),
+                icon = Icons.AutoMirrored.Filled.Launch,
+                isPrimary = true,
+                fontSize = 12.sp,
+                iconSize = 14.dp,
                 contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp)
-            ) {
-                Icon(Icons.AutoMirrored.Filled.Launch, contentDescription = null, modifier = Modifier.size(14.dp))
-                Spacer(modifier = Modifier.width(4.dp))
-                Text(stringResource(R.string.btn_cloud_console), fontSize = 12.sp, textAlign = TextAlign.Center, softWrap = true)
-            }
-            Button(
+            )
+            WizardActionButton(
+                text = stringResource(R.string.btn_enable_drive_api),
                 onClick = onEnableDriveApi,
-                modifier = Modifier.weight(1f).heightIn(min = 40.dp),
+                modifier = Modifier.weight(1f),
+                icon = Icons.AutoMirrored.Filled.Launch,
+                isPrimary = true,
+                fontSize = 12.sp,
+                iconSize = 14.dp,
                 contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp)
-            ) {
-                Icon(Icons.AutoMirrored.Filled.Launch, contentDescription = null, modifier = Modifier.size(14.dp))
-                Spacer(modifier = Modifier.width(4.dp))
-                Text(stringResource(R.string.btn_enable_drive_api), fontSize = 12.sp, textAlign = TextAlign.Center, softWrap = true)
-            }
+            )
         }
 
         SettingsTextField(
             label = stringResource(R.string.label_client_id),
             pref = prefs.clientId,
             onPrefChange = { prefs.clientId = it },
-            keyboardOptions = KeyboardOptions(
-                capitalization = KeyboardCapitalization.None,
-                autoCorrectEnabled = false,
-                keyboardType = KeyboardType.Ascii,
-                imeAction = ImeAction.Done
-            )
+            imeAction = ImeAction.Done
         )
 
         WizardNavRow(onBack = onBack, onNext = onNext, nextLabel = stringResource(R.string.btn_review))

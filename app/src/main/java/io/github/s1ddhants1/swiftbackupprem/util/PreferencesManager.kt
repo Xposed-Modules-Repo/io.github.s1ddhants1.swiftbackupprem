@@ -1,9 +1,13 @@
 package io.github.s1ddhants1.swiftbackupprem.util
 
 import android.content.SharedPreferences
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Stable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.core.content.edit
 import io.github.s1ddhants1.swiftbackupprem.Consts
+import io.github.s1ddhants1.swiftbackupprem.model.SbpConfig
 import kotlin.reflect.KProperty
 
 @Stable
@@ -21,13 +25,8 @@ class PreferencesManager(
         var value by mutableStateOf(getter(key, defaultValue))
             private set
 
-        operator fun getValue(thisRef: Any?, property: KProperty<*>): T {
-            return if (isDynamic) {
-                getter(key, defaultValue)
-            } else {
-                value
-            }
-        }
+        operator fun getValue(thisRef: Any?, property: KProperty<*>): T =
+            if (isDynamic) getter(key, defaultValue) else value
 
         operator fun setValue(thisRef: Any?, property: KProperty<*>, newValue: T) {
             value = newValue
@@ -39,36 +38,17 @@ class PreferencesManager(
     private fun getBoolean(key: String, defaultValue: Boolean) = prefs?.getBoolean(key, defaultValue) ?: defaultValue
 
     private fun putString(key: String, value: String?) {
-        attempt("save preference string $key", silent = true) {
-            prefs?.edit(commit = true) { putString(key, value) }
-        }
+        attempt("save preference string $key", silent = true) { prefs?.edit(commit = true) { putString(key, value) } }
     }
     private fun putBoolean(key: String, value: Boolean) {
-        attempt("save preference boolean $key", silent = true) {
-            prefs?.edit(commit = true) { putBoolean(key, value) }
-        }
+        attempt("save preference boolean $key", silent = true) { prefs?.edit(commit = true) { putBoolean(key, value) } }
     }
 
-    private fun stringPreference(
-        key: String
-    ) = Preference(
-        isDynamic = isDynamic,
-        key = key,
-        defaultValue = "",
-        getter = ::getString,
-        setter = ::putString
-    )
+    private fun stringPreference(key: String) =
+        Preference(isDynamic, key, "", ::getString, ::putString)
 
-    private fun booleanPreference(
-        key: String,
-        defaultValue: Boolean = false
-    ) = Preference(
-        isDynamic = isDynamic,
-        key = key,
-        defaultValue = defaultValue,
-        getter = ::getBoolean,
-        setter = ::putBoolean
-    )
+    private fun booleanPreference(key: String, defaultValue: Boolean = false) =
+        Preference(isDynamic, key, defaultValue, ::getBoolean, ::putBoolean)
 
     var googleAppId by stringPreference(Consts.googleAppId)
     var googleApiKey by stringPreference(Consts.googleApiKey)
@@ -79,14 +59,11 @@ class PreferencesManager(
     var clientId by stringPreference(Consts.oauthClientId)
 
     var enablePremium by booleanPreference("enable_premium", true)
-
     var disableTelemetry by booleanPreference("disable_telemetry", true)
-
     var enableDriveDiscovery by booleanPreference("enable_drive_discovery", false)
-
     var customFirebaseApp by booleanPreference("custom_firebase_app")
 
-    fun toConfig(): io.github.s1ddhants1.swiftbackupprem.model.SbpConfig = io.github.s1ddhants1.swiftbackupprem.model.SbpConfig(
+    fun toConfig(): SbpConfig = SbpConfig(
         enablePremium = enablePremium,
         disableTelemetry = disableTelemetry,
         enableDriveDiscovery = enableDriveDiscovery,
@@ -100,7 +77,7 @@ class PreferencesManager(
         clientId = clientId
     )
 
-    fun applyConfig(config: io.github.s1ddhants1.swiftbackupprem.model.SbpConfig) {
+    fun applyConfig(config: SbpConfig) {
         enablePremium = config.enablePremium
         disableTelemetry = config.disableTelemetry
         enableDriveDiscovery = config.enableDriveDiscovery

@@ -1,6 +1,8 @@
 package io.github.s1ddhants1.swiftbackupprem
 
 object Consts {
+    const val TAG = "SBP"
+    const val PREFS_SETTINGS = "settings"
     const val packageName = "org.swiftapps.swiftbackup"
 
     const val googleAppId = "google_app_id"

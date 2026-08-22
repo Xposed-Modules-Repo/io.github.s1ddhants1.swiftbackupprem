@@ -1,41 +1,30 @@
 package io.github.s1ddhants1.swiftbackupprem.util
 
 import android.util.Log
+import io.github.s1ddhants1.swiftbackupprem.Consts
 
 /**
  * Executes [block] and returns its result, or returns `null` if an exception is thrown.
- *
- * @param operation Description of the operation for logging.
- * @param silent When `true`, suppresses warning logs (reserved for genuinely optional probes).
  */
-inline fun <T> attempt(operation: String, silent: Boolean = false, block: () -> T): T? {
-    return try {
-        block()
-    } catch (t: Throwable) {
-        if (!silent) {
-            Log.w("SBP", "Failed $operation: ${t.message}", t)
-        }
-        null
-    }
+inline fun <T> attempt(operation: String, silent: Boolean = false, block: () -> T): T? = try {
+    block()
+} catch (t: Throwable) {
+    if (!silent) Log.w(Consts.TAG, "Failed $operation: ${t.message}", t)
+    null
 }
 
 /**
  * Executes [block] and returns its result, or returns [default] if an exception is thrown.
  */
-inline fun <T> attemptOrDefault(operation: String, default: T, silent: Boolean = false, block: () -> T): T {
-    return attempt(operation, silent, block) ?: default
-}
+inline fun <T> attemptOrDefault(operation: String, default: T, silent: Boolean = false, block: () -> T): T =
+    attempt(operation, silent, block) ?: default
 
 /**
  * Attempts to load a class by name, with flexible handling for obfuscated defpackage prefix.
  */
 fun loadClassFlexible(cl: ClassLoader, name: String): Class<*>? {
-    val cleanName = if (name.startsWith("defpackage.")) name.substringAfter("defpackage.") else name
-    return attempt("load $cleanName", silent = true) {
-        cl.loadClass(cleanName)
-    } ?: attempt("load defpackage.$cleanName", silent = true) {
-        cl.loadClass("defpackage.$cleanName")
-    } ?: attempt("load $name", silent = true) {
-        cl.loadClass(name)
-    }
+    val clean = name.removePrefix("defpackage.")
+    return attempt("load $clean", silent = true) { cl.loadClass(clean) }
+        ?: attempt("load defpackage.$clean", silent = true) { cl.loadClass("defpackage.$clean") }
+        ?: attempt("load $name", silent = true) { cl.loadClass(name) }
 }

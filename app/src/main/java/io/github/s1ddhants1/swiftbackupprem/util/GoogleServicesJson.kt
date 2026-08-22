@@ -6,35 +6,20 @@ import org.json.JSONObject
 
 object GoogleServicesJson {
 
-    /** Parse a google-services.json and apply Firebase values to [prefs]. */
     fun applyToPrefs(json: JSONObject, prefs: PreferencesManager) {
-        if (json.has("client")) {
-            val clientArray = json.getJSONArray("client")
-            if (clientArray.length() > 0) {
-                val clientObj = clientArray.getJSONObject(0)
-                clientObj.optJSONObject("client_info")?.let { clientInfo ->
-                    prefs.googleAppId = clientInfo.optString("mobilesdk_app_id", "")
-                }
-                clientObj.optJSONArray("api_key")?.let { apiKeyArray ->
-                    if (apiKeyArray.length() > 0) {
-                        prefs.googleApiKey = apiKeyArray.getJSONObject(0).optString("current_key", "")
-                    }
-                }
-            }
+        json.optJSONArray("client")?.optJSONObject(0)?.let { client ->
+            client.optJSONObject("client_info")?.optString("mobilesdk_app_id")?.takeIf { it.isNotBlank() }?.let { prefs.googleAppId = it }
+            client.optJSONArray("api_key")?.optJSONObject(0)?.optString("current_key")?.takeIf { it.isNotBlank() }?.let { prefs.googleApiKey = it }
         }
-        if (json.has("project_info")) {
-            val projInfo = json.getJSONObject("project_info")
-            prefs.firebaseDatabaseUrl = projInfo.optString("firebase_url", "")
-            prefs.gcmDefaultSenderId = projInfo.optString("project_number", "")
-            prefs.googleStorageBucket = projInfo.optString("storage_bucket", "")
-            prefs.projectId = projInfo.optString(Consts.projectId, "")
+        json.optJSONObject("project_info")?.let { proj ->
+            proj.optString("firebase_url").takeIf { it.isNotBlank() }?.let { prefs.firebaseDatabaseUrl = it }
+            proj.optString("project_number").takeIf { it.isNotBlank() }?.let { prefs.gcmDefaultSenderId = it }
+            proj.optString("storage_bucket").takeIf { it.isNotBlank() }?.let { prefs.googleStorageBucket = it }
+            proj.optString(Consts.projectId).takeIf { it.isNotBlank() }?.let { prefs.projectId = it }
         }
-        if (json.has(Consts.oauthClientId)) {
-            prefs.clientId = json.optString(Consts.oauthClientId, "")
-        }
+        json.optString(Consts.oauthClientId).takeIf { it.isNotBlank() }?.let { prefs.clientId = it }
     }
 
-    /** Build a google-services.json [JSONObject] from [prefs] values. */
     fun buildFromPrefs(prefs: PreferencesManager): JSONObject = JSONObject().apply {
         put("client", JSONArray().apply {
             put(JSONObject().apply {

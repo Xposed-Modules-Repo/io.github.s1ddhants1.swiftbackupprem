@@ -5,9 +5,13 @@
 -dontwarn io.github.libxposed.**
 -adaptresourcefilecontents META-INF/xposed/java_init.list
 -adaptresourcefilecontents META-INF/xposed/native_init.list
--keep,allowoptimization,allowobfuscation public class * extends io.github.libxposed.api.XposedModule {
+-keep public class * extends io.github.libxposed.api.XposedModule {
     public <init>();
+    public void on*(...);
 }
+
+# Keep XposedProvider for LSPosed Framework Service IPC
+-keep class io.github.libxposed.service.XposedProvider { *; }
 
 # Keep DexKit bridge classes used by native C++ (libdexkit.so) JNI reflection
 -keep class org.luckypray.dexkit.** { *; }

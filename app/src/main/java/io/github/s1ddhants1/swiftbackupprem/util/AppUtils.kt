@@ -25,9 +25,7 @@ object AppUtils {
                 setPackage(Consts.packageName)
             }
         launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        attempt("launch Swift Backup") {
-            context.startActivity(launchIntent)
-        }
+        attempt("launch Swift Backup") { context.startActivity(launchIntent) }
     }
 
     suspend fun forceStopSwiftBackup(context: Context, ioDispatcher: CoroutineDispatcher = Dispatchers.IO): Boolean {
@@ -37,7 +35,7 @@ object AppUtils {
                 process = Runtime.getRuntime().exec(arrayOf("su", "-c", "am force-stop ${Consts.packageName}"))
                 withTimeoutOrNull(3_000) { process.waitFor() } == 0
             } catch (e: Exception) {
-                Log.w("SBP", "Could not force-stop Swift Backup with su", e)
+                Log.w(Consts.TAG, "Could not force-stop Swift Backup with su", e)
                 false
             } finally {
                 process?.destroy()

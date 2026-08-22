@@ -46,18 +46,18 @@
 
     <!-- Settings Switches -->
     <string name="pref_enable_premium_title">Enable Premium</string>
-    <string name="pref_enable_premium_subtitle">Unlock Swift Backup premium features and bypass license checks</string>
+    <string name="pref_enable_premium_subtitle">Unlock premium features &amp; bypass license checks</string>
     <string name="pref_disable_telemetry_title">Disable Telemetry &amp; Tracking</string>
-    <string name="pref_disable_telemetry_subtitle">Block Firebase Analytics, Crashlytics, Sessions, Installations, and DataTransport</string>
+    <string name="pref_disable_telemetry_subtitle">Block analytics, crash reports, and tracking telemetry</string>
     <string name="pref_custom_firebase_title">Custom firebase app</string>
-    <string name="pref_custom_firebase_subtitle">Recommended, forces Swift Backup to use your own firebase credentials</string>
+    <string name="pref_custom_firebase_subtitle">Use personal Firebase database &amp; credentials</string>
 
     <!-- Advanced & Experimental Section -->
     <string name="section_advanced_features">Advanced &amp; Experimental</string>
-    <string name="section_advanced_features_subtitle">Google Drive full access, cloud discovery &amp; scope upgrade</string>
+    <string name="section_advanced_features_subtitle">Cloud backup discovery &amp; Drive scope upgrade</string>
     <string name="pref_enable_drive_discovery_title">Google Drive Full Access &amp; Cloud Restore</string>
-    <string name="pref_enable_drive_discovery_subtitle">Upgrades Drive scope to discover all cloud backups, decodes metadata (.extra), and indexes cloud backups without original Firebase catalog</string>
-    <string name="pref_enable_drive_discovery_note">Note: Dynamically upgrades OAuth scope to full Google Drive access in order to discover backups across multiple devices or past Firebase projects.</string>
+    <string name="pref_enable_drive_discovery_subtitle">Discover, decode (.extra), and index cloud backups</string>
+    <string name="pref_enable_drive_discovery_note">Upgrades OAuth scope to discover backups from other accounts and projects.</string>
 
     <!-- Setup Wizard -->
     <string name="wizard_step_format">Step %1$d of %2$d</string>
@@ -89,13 +89,8 @@
     <string name="label_client_id">Client ID</string>
 
     <!-- About Screen -->
-    <string name="about_app_summary">An Xposed / LSPosed module for Swift Backup providing Premium features and custom Firebase backend integration.</string>
+    <string name="about_app_summary">An advanced Xposed / LSPosed module for Swift Backup providing Premium features, privacy controls, and custom Firebase backend integration.</string>
     <string name="about_version_format">Version %1$s (%2$d)</string>
-    <string name="about_core_features">Core Features</string>
-    <string name="about_feature_premium_title">Premium Unlocked</string>
-    <string name="about_feature_premium_desc">Enables full access to Swift Backup premium capabilities.</string>
-    <string name="about_feature_firebase_title">Custom Firebase Backend</string>
-    <string name="about_feature_firebase_desc">Optionally connect your personal Firebase database &amp; credentials.</string>
     <string name="about_authors_maintainers">Authors &amp; Maintainers</string>
     <string name="about_original_author_role">Original Author</string>
     <string name="about_maintainer_role">Maintainer</string>
@@ -103,8 +98,12 @@
     <string name="about_lib_dexkit">DexKit by LuckyPray</string>
     <string name="about_lib_libxposed">LibXposed / Xposed API</string>
     <string name="about_lib_compose">AndroidX Jetpack Compose &amp; Material 3</string>
+    <string name="about_lib_serialization">Kotlinx Serialization JSON</string>
 
     <!-- Accessibility Content Descriptions -->
     <string name="cd_clear_input">Clear input</string>
     <string name="cd_app_icon">SwiftBackupPrem App Icon</string>
+    <string name="cd_author_avatar">Author Avatar</string>
+    <string name="cd_maintainer_avatar">Maintainer Avatar</string>
+    <string name="cd_github_icon">GitHub Icon</string>
 </resources>

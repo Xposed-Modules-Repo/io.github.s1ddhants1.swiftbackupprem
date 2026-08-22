@@ -49,20 +49,14 @@ class ConfigRepositoryImpl(
                 inputStream.bufferedReader().use { it.readText() }
             } ?: error("Could not open selected import file")
 
-            val parsedConfig = parseConfig(jsonStr, prefs)
-            parsedConfig
+            parseConfig(jsonStr, prefs)
         }
     }
 
     override fun parseConfig(jsonStr: String, prefs: PreferencesManager): SbpConfig {
         val rawJson = JSONObject(jsonStr)
         val isGoogleServices = rawJson.has("client") && rawJson.has("project_info")
-        val hasSbpKeys = rawJson.has("enablePremium") ||
-                rawJson.has("disableTelemetry") ||
-                rawJson.has("suppressTelemetry") ||
-                rawJson.has("customFirebaseApp") ||
-                rawJson.has("googleAppId") ||
-                rawJson.has("projectId")
+        val hasSbpKeys = listOf("enablePremium", "disableTelemetry", "suppressTelemetry", "enableDriveDiscovery", "customFirebaseApp", "googleAppId", "projectId").any { rawJson.has(it) }
 
         if (!isGoogleServices && !hasSbpKeys) {
             throw IllegalArgumentException("Unrecognized or invalid configuration file format")
@@ -74,12 +68,7 @@ class ConfigRepositoryImpl(
             return prefs.toConfig()
         }
 
-        // Try kotlinx.serialization first
-        val baseConfig = runCatching {
-            json.decodeFromString(SbpConfig.serializer(), jsonStr)
-        }.getOrDefault(prefs.toConfig())
-
-        // Handle legacy alias `suppressTelemetry` if present
+        val baseConfig = runCatching { json.decodeFromString(SbpConfig.serializer(), jsonStr) }.getOrDefault(prefs.toConfig())
         val effectiveDisableTelemetry = when {
             rawJson.has("disableTelemetry") -> rawJson.optBoolean("disableTelemetry", true)
             rawJson.has("suppressTelemetry") -> rawJson.optBoolean("suppressTelemetry", true)
@@ -88,15 +77,16 @@ class ConfigRepositoryImpl(
 
         val updatedConfig = baseConfig.copy(
             disableTelemetry = effectiveDisableTelemetry,
-            enablePremium = if (rawJson.has("enablePremium")) rawJson.optBoolean("enablePremium", baseConfig.enablePremium) else baseConfig.enablePremium,
-            customFirebaseApp = if (rawJson.has("customFirebaseApp")) rawJson.optBoolean("customFirebaseApp", baseConfig.customFirebaseApp) else baseConfig.customFirebaseApp,
-            googleAppId = if (rawJson.has("googleAppId")) rawJson.optString("googleAppId", baseConfig.googleAppId) else baseConfig.googleAppId,
-            googleApiKey = if (rawJson.has("googleApiKey")) rawJson.optString("googleApiKey", baseConfig.googleApiKey) else baseConfig.googleApiKey,
-            firebaseDatabaseUrl = if (rawJson.has("firebaseDatabaseUrl")) rawJson.optString("firebaseDatabaseUrl", baseConfig.firebaseDatabaseUrl) else baseConfig.firebaseDatabaseUrl,
-            gcmDefaultSenderId = if (rawJson.has("gcmDefaultSenderId")) rawJson.optString("gcmDefaultSenderId", baseConfig.gcmDefaultSenderId) else baseConfig.gcmDefaultSenderId,
-            googleStorageBucket = if (rawJson.has("googleStorageBucket")) rawJson.optString("googleStorageBucket", baseConfig.googleStorageBucket) else baseConfig.googleStorageBucket,
-            projectId = if (rawJson.has("projectId")) rawJson.optString("projectId", baseConfig.projectId) else baseConfig.projectId,
-            clientId = if (rawJson.has("clientId")) rawJson.optString("clientId", baseConfig.clientId) else baseConfig.clientId
+            enablePremium = rawJson.optBoolean("enablePremium", baseConfig.enablePremium),
+            enableDriveDiscovery = rawJson.optBoolean("enableDriveDiscovery", baseConfig.enableDriveDiscovery),
+            customFirebaseApp = rawJson.optBoolean("customFirebaseApp", baseConfig.customFirebaseApp),
+            googleAppId = rawJson.optString("googleAppId", baseConfig.googleAppId),
+            googleApiKey = rawJson.optString("googleApiKey", baseConfig.googleApiKey),
+            firebaseDatabaseUrl = rawJson.optString("firebaseDatabaseUrl", baseConfig.firebaseDatabaseUrl),
+            gcmDefaultSenderId = rawJson.optString("gcmDefaultSenderId", baseConfig.gcmDefaultSenderId),
+            googleStorageBucket = rawJson.optString("googleStorageBucket", baseConfig.googleStorageBucket),
+            projectId = rawJson.optString("projectId", baseConfig.projectId),
+            clientId = rawJson.optString("clientId", baseConfig.clientId)
         )
 
         prefs.applyConfig(updatedConfig)

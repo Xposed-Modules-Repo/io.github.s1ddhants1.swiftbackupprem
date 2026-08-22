@@ -1,12 +1,15 @@
 package io.github.s1ddhants1.swiftbackupprem.hook.advanced
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.os.Environment
 import android.util.Log
 import androidx.annotation.Keep
 import io.github.libxposed.api.XposedModule
+import io.github.s1ddhants1.swiftbackupprem.Consts
 import io.github.s1ddhants1.swiftbackupprem.hook.HookHandler
 import io.github.s1ddhants1.swiftbackupprem.hook.ResolvedTargets
+import io.github.s1ddhants1.swiftbackupprem.hook.hookTracked
 import io.github.s1ddhants1.swiftbackupprem.util.PreferencesManager
 import io.github.s1ddhants1.swiftbackupprem.util.attempt
 import io.github.s1ddhants1.swiftbackupprem.util.loadClassFlexible
@@ -22,39 +25,24 @@ import javax.crypto.spec.SecretKeySpec
 /**
  * Hook and engine that automatically detects, decrypts, and reconstructs missing
  * `<packageName>.xml` metadata files for cloud-downloaded and orphaned backups.
- *
- * This enables 100% predictable, 1-click restoration of past cloud backups
- * without relying on dirty workarounds or fragile manual steps.
  */
 @Keep
 object BackupRebuilderHook : HookHandler {
 
-    private const val TAG = "SBP"
+    private const val TAG = Consts.TAG
     private const val CONCEAL_ENTITY = "SwiftBackup_Entity"
 
-    private fun logI(msg: String) {
-        try {
-            Log.i(TAG, "[BackupRebuilder] $msg")
-        } catch (_: Throwable) {
-            println("[$TAG] [BackupRebuilder] $msg")
-        }
-    }
+    private fun logI(msg: String) { try { Log.i(TAG, "[BackupRebuilder] $msg") } catch (_: Throwable) {} }
+    private fun logE(msg: String) { try { Log.e(TAG, "[BackupRebuilder] $msg") } catch (_: Throwable) {} }
+    private fun logD(msg: String) { try { Log.d(TAG, "[BackupRebuilder] $msg") } catch (_: Throwable) {} }
 
-    private fun logE(msg: String) {
-        try {
-            Log.e(TAG, "[BackupRebuilder] $msg")
-        } catch (_: Throwable) {
-            System.err.println("[$TAG] [BackupRebuilder] $msg")
-        }
-    }
-
-    private fun logD(msg: String) {
-        try {
-            Log.d(TAG, "[BackupRebuilder] $msg")
-        } catch (_: Throwable) {
-            println("[$TAG] [BackupRebuilder] $msg")
-        }
-    }
+    private data class BackupSlice(
+        val suffix: String,
+        val dateKey: String? = null,
+        val sizeKey: String,
+        val encryptedKey: String? = null,
+        val encryptionMethodKey: String? = null
+    )
 
     override fun apply(
         module: XposedModule,
@@ -68,11 +56,9 @@ object BackupRebuilderHook : HookHandler {
             return
         }
 
-        // Hook hk.E() (backup validity check) to trigger auto-rebuild if .xml is missing
         val appBackupClass = targets.appBackupClass ?: attempt("load hk class", silent = true) {
             loadClassFlexible(classLoader, "defpackage.hk")
         }
-
         logD("Applying BackupRebuilderHook (appBackupClass: ${appBackupClass?.name})")
 
         if (appBackupClass != null) {
@@ -80,7 +66,6 @@ object BackupRebuilderHook : HookHandler {
             hookAppBackupMetadata(module, appBackupClass, classLoader, targets)
         }
 
-        // Run an asynchronous background scan on startup to repair all existing backup folders
         Thread {
             try {
                 Thread.sleep(2000)
@@ -91,10 +76,6 @@ object BackupRebuilderHook : HookHandler {
         }.start()
     }
 
-    /**
-     * Hooks `hk.E()` (boolean check for whether a backup directory is valid).
-     * If the XML file is missing but data/apk slices exist, auto-rebuilds the XML before proceeding.
-     */
     private fun hookAppBackupValidity(
         module: XposedModule,
         appBackupClass: Class<*>,
@@ -103,15 +84,12 @@ object BackupRebuilderHook : HookHandler {
     ) {
         val isValidMethod = attempt("find hk.E", silent = true) {
             appBackupClass.declaredMethods.firstOrNull {
-                it.returnType == Boolean::class.javaPrimitiveType &&
-                        it.parameterTypes.isEmpty() &&
-                        it.name == "E"
+                it.returnType == Boolean::class.javaPrimitiveType && it.parameterTypes.isEmpty() && it.name == "E"
             }
         } ?: return
 
-        module.hook(isValidMethod).intercept { chain ->
-            val backupInstance = chain.thisObject
-            if (backupInstance != null) {
+        module.hookTracked(isValidMethod).intercept { chain ->
+            chain.thisObject?.let { backupInstance ->
                 attempt("auto-rebuild on isValid check", silent = true) {
                     rebuildFromBackupInstance(backupInstance, classLoader, targets)
                 }
@@ -120,10 +98,6 @@ object BackupRebuilderHook : HookHandler {
         }
     }
 
-    /**
-     * Hooks `hk.u()` (retrieves LocalMetadata).
-     * If the metadata is null/missing, attempts auto-rebuild and reload.
-     */
     private fun hookAppBackupMetadata(
         module: XposedModule,
         appBackupClass: Class<*>,
@@ -132,85 +106,64 @@ object BackupRebuilderHook : HookHandler {
     ) {
         val getMetadataMethod = attempt("find hk.u", silent = true) {
             appBackupClass.declaredMethods.firstOrNull {
-                it.parameterTypes.isEmpty() &&
-                        (it.returnType.name.contains("LocalMetadata") || it.name == "u")
+                it.parameterTypes.isEmpty() && (it.returnType.name.contains("LocalMetadata") || it.name == "u")
             }
         } ?: return
 
-        module.hook(getMetadataMethod).intercept { chain ->
+        module.hookTracked(getMetadataMethod).intercept { chain ->
             val initialResult = chain.proceed()
             if (initialResult == null && chain.thisObject != null) {
                 val repaired = attempt("auto-rebuild on getMetadata", silent = true) {
                     rebuildFromBackupInstance(chain.thisObject, classLoader, targets)
                 }
-                if (repaired == true) {
-                    return@intercept chain.proceed()
-                }
+                if (repaired == true) return@intercept chain.proceed()
             }
             initialResult
         }
     }
 
-    /**
-     * Rebuilds metadata for a single `hk` backup model instance.
-     */
     fun rebuildFromBackupInstance(
         backupInstance: Any,
         classLoader: ClassLoader,
         targets: ResolvedTargets
-    ): Boolean {
-        return try {
-            val backupIdField = backupInstance.javaClass.getDeclaredField("a").apply { isAccessible = true }
-            val pkgNameField = backupInstance.javaClass.getDeclaredField("b").apply { isAccessible = true }
+    ): Boolean = attempt("rebuildFromBackupInstance", silent = true) {
+        val backupId = backupInstance.javaClass.getDeclaredField("a").apply { isAccessible = true }.get(backupInstance) as? String ?: return false
+        val pkgName = backupInstance.javaClass.getDeclaredField("b").apply { isAccessible = true }.get(backupInstance) as? String ?: return false
 
-            val backupId = backupIdField.get(backupInstance) as? String ?: return false
-            val pkgName = pkgNameField.get(backupInstance) as? String ?: return false
+        val accountsDir = File(Environment.getExternalStorageDirectory(), "SwiftBackup/accounts")
+        if (!accountsDir.exists()) return false
 
-            val accountsDir = File(Environment.getExternalStorageDirectory(), "SwiftBackup/accounts")
-            if (!accountsDir.exists()) return false
+        val candidateUids = CloudDiscoveryHook.resolveCandidateUids(null, classLoader, targets)
+        val primaryUid = candidateUids.firstOrNull() ?: "default_uid"
+        var rebuilt = false
 
-            val candidateUids = CloudDiscoveryHook.resolveCandidateUids(null, classLoader, targets)
-            val primaryUid = candidateUids.firstOrNull() ?: "default_uid"
-
-            var rebuilt = false
-            accountsDir.listFiles { file -> file.isDirectory }?.forEach { accountFolder ->
-                val backupDir = File(accountFolder, "backups/apps/local/$pkgName/$backupId")
-                if (backupDir.exists() && backupDir.isDirectory) {
-                    if (rebuildBackupDirectory(backupDir, pkgName, backupId, classLoader, targets, primaryUid)) {
-                        rebuilt = true
-                    }
-                }
+        accountsDir.listFiles { file -> file.isDirectory }?.forEach { accountFolder ->
+            val backupDir = File(accountFolder, "backups/apps/local/$pkgName/$backupId")
+            if (backupDir.isDirectory && rebuildBackupDirectory(backupDir, pkgName, backupId, classLoader, targets, primaryUid)) {
+                rebuilt = true
             }
-            rebuilt
-        } catch (t: Throwable) {
-            Log.d(TAG, "rebuildFromBackupInstance skipped: ${t.message}")
-            false
         }
-    }
+        rebuilt
+    } ?: false
 
-    /**
-     * Scans and rebuilds all local backup directories across all accounts.
-     */
     fun rebuildAllLocalBackups(
         context: Context,
         classLoader: ClassLoader,
         targets: ResolvedTargets
     ): Int {
         val accountsDir = File(Environment.getExternalStorageDirectory(), "SwiftBackup/accounts")
-        if (!accountsDir.exists() || !accountsDir.isDirectory) return 0
+        if (!accountsDir.isDirectory) return 0
 
         val candidateUids = CloudDiscoveryHook.resolveCandidateUids(context, classLoader, targets)
         val primaryUid = candidateUids.firstOrNull() ?: "default_uid"
         var totalRebuilt = 0
 
-        accountsDir.listFiles { f -> f.isDirectory }?.forEach { accountFolder ->
-            val appsLocalDir = File(accountFolder, "backups/apps/local")
-            if (appsLocalDir.exists() && appsLocalDir.isDirectory) {
+        accountsDir.listFiles { f -> f.isDirectory }?.forEach { account ->
+            val appsLocalDir = File(account, "backups/apps/local")
+            if (appsLocalDir.isDirectory) {
                 appsLocalDir.listFiles { f -> f.isDirectory }?.forEach { pkgFolder ->
-                    val pkgName = pkgFolder.name
                     pkgFolder.listFiles { f -> f.isDirectory }?.forEach { backupDir ->
-                        val backupId = backupDir.name
-                        if (rebuildBackupDirectory(backupDir, pkgName, backupId, classLoader, targets, primaryUid)) {
+                        if (rebuildBackupDirectory(backupDir, pkgFolder.name, backupDir.name, classLoader, targets, primaryUid)) {
                             totalRebuilt++
                         }
                     }
@@ -218,15 +171,11 @@ object BackupRebuilderHook : HookHandler {
             }
         }
 
-        if (totalRebuilt > 0) {
-            logI("Rebuilt $totalRebuilt missing backup metadata files across storage")
-        }
+        if (totalRebuilt > 0) logI("Rebuilt $totalRebuilt missing backup metadata files across storage")
         return totalRebuilt
     }
 
-    /**
-     * Inspects a specific backup folder and creates `<pkgName>.xml` if missing.
-     */
+    @SuppressLint("SetWorldReadable", "SetWorldWritable")
     fun rebuildBackupDirectory(
         backupDir: File,
         pkgName: String,
@@ -236,23 +185,18 @@ object BackupRebuilderHook : HookHandler {
         activeUid: String
     ): Boolean {
         val xmlFile = File(backupDir, "$pkgName.xml")
-        if (xmlFile.exists() && xmlFile.length() > 0) {
-            return false // Already valid
-        }
+        if (xmlFile.exists() && xmlFile.length() > 0) return false
 
-        val appFile = File(backupDir, "$pkgName.app")
-        val datFile = File(backupDir, "$pkgName.dat")
-        val extDatFile = File(backupDir, "$pkgName.extdat")
-        val splitsFile = File(backupDir, "$pkgName.splits")
+        val slices = listOf(
+            BackupSlice("app", "apkBackupDate", "apkBackupSize"),
+            BackupSlice("dat", "dataBackupDate", "dataBackupSize", "isDataEncrypted", "dataEncryptionMethod"),
+            BackupSlice("extdat", "extDataBackupDate", "extDataBackupSize", "isExtDataEncrypted", "extDataEncryptionMethod"),
+            BackupSlice("splits", sizeKey = "splitsBackupSize"),
+            BackupSlice("med", "mediaBackupDate", "mediaBackupSize", "isMediaEncrypted", "mediaEncryptionMethod")
+        ).map { it to File(backupDir, "$pkgName.${it.suffix}") }
         val extraFile = File(backupDir, "$pkgName.extra")
-        val medFile = File(backupDir, "$pkgName.med")
 
-        val hasAnySlice = appFile.exists() || datFile.exists() || extDatFile.exists() ||
-                splitsFile.exists() || extraFile.exists() || medFile.exists()
-
-        if (!hasAnySlice) {
-            return false
-        }
+        if (slices.none { (_, file) -> file.exists() } && !extraFile.exists()) return false
 
         logI("Found backup slices without .xml at ${backupDir.absolutePath}. Auto-reconstructing metadata...")
 
@@ -261,11 +205,9 @@ object BackupRebuilderHook : HookHandler {
         var notificationPolicyXml: String? = null
         var resolvedUid = activeUid
 
-        // If .extra exists, decrypt it using Conceal AES-GCM + Zstandard
         if (extraFile.exists() && extraFile.length() > 0) {
             attempt("decrypt .extra file") {
-                val extraContent = extraFile.readText(StandardCharsets.UTF_8).trim()
-                val parts = extraContent.split(":::").filter { it.isNotBlank() }
+                val parts = extraFile.readText(StandardCharsets.UTF_8).trim().split(":::").filter { it.isNotBlank() }
                 if (parts.size >= 3) {
                     val candidateUids = CloudDiscoveryHook.resolveCandidateUids(null, classLoader, targets)
                     for (candUid in candidateUids) {
@@ -296,30 +238,13 @@ object BackupRebuilderHook : HookHandler {
             put("dateBackup", now)
             put("dateBackupUpdated", now)
 
-            if (appFile.exists()) {
-                put("apkBackupDate", now)
-                put("apkBackupSize", appFile.length())
-            }
-            if (datFile.exists()) {
-                put("dataBackupDate", now)
-                put("dataBackupSize", datFile.length())
-                put("isDataEncrypted", true)
-                put("dataEncryptionMethod", "StandardEncryption")
-            }
-            if (extDatFile.exists()) {
-                put("extDataBackupDate", now)
-                put("extDataBackupSize", extDatFile.length())
-                put("isExtDataEncrypted", true)
-                put("extDataEncryptionMethod", "StandardEncryption")
-            }
-            if (splitsFile.exists()) {
-                put("splitsBackupSize", splitsFile.length())
-            }
-            if (medFile.exists()) {
-                put("mediaBackupDate", now)
-                put("mediaBackupSize", medFile.length())
-                put("isMediaEncrypted", true)
-                put("mediaEncryptionMethod", "StandardEncryption")
+            slices.forEach { (slice, file) ->
+                if (file.exists()) {
+                    slice.dateKey?.let { put(it, now) }
+                    put(slice.sizeKey, file.length())
+                    slice.encryptedKey?.let { put(it, true) }
+                    slice.encryptionMethodKey?.let { put(it, "StandardEncryption") }
+                }
             }
 
             ssaid?.let { put("ssaid", it) }
@@ -331,8 +256,7 @@ object BackupRebuilderHook : HookHandler {
         val encUid = concealEncrypt(resolvedUid, key)
         val encMeta = concealEncrypt(metaJson.toString(), key)
 
-        val xmlContent = "v1:::$encUid:::$encMeta"
-        xmlFile.writeText(xmlContent, StandardCharsets.UTF_8)
+        xmlFile.writeText("v1:::$encUid:::$encMeta", StandardCharsets.UTF_8)
         xmlFile.setReadable(true, false)
         xmlFile.setWritable(true, false)
 
@@ -340,21 +264,11 @@ object BackupRebuilderHook : HookHandler {
         return true
     }
 
-    /**
-     * Derives Facebook Conceal 32-byte AES key from Firebase UID.
-     */
     fun deriveConcealKey(uid: String): ByteArray {
-        val repeated = StringBuilder(uid)
-        while (repeated.length < 32) {
-            repeated.append(uid)
-        }
-        val padded = repeated.substring(0, 32)
-        return padded.toByteArray(StandardCharsets.UTF_8)
+        val repeated = uid.repeat((32 / uid.length) + 1).take(32)
+        return repeated.toByteArray(StandardCharsets.UTF_8)
     }
 
-    /**
-     * Conceal AES-GCM-256 Decrypt.
-     */
     fun concealDecrypt(base64Payload: String, key: ByteArray): ByteArray {
         val raw = Base64.getDecoder().decode(base64Payload.trim().replace("\n", "").replace("\r", ""))
         val version = raw[0]
@@ -363,28 +277,18 @@ object BackupRebuilderHook : HookHandler {
         val cipherTextAndTag = raw.copyOfRange(14, raw.size)
 
         val aad = byteArrayOf(version, cipherId) + CONCEAL_ENTITY.toByteArray(StandardCharsets.UTF_8)
-
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        val spec = GCMParameterSpec(128, iv)
-        val secretKey = SecretKeySpec(key, "AES")
-
-        cipher.init(Cipher.DECRYPT_MODE, secretKey, spec)
+        cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(key, "AES"), GCMParameterSpec(128, iv))
         cipher.updateAAD(aad)
         return cipher.doFinal(cipherTextAndTag)
     }
 
-    /**
-     * Conceal AES-GCM-256 Encrypt.
-     */
     fun concealEncrypt(plaintext: String, key: ByteArray): String {
         val iv = ByteArray(12).apply { SecureRandom().nextBytes(this) }
         val aad = byteArrayOf(1, 2) + CONCEAL_ENTITY.toByteArray(StandardCharsets.UTF_8)
 
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        val spec = GCMParameterSpec(128, iv)
-        val secretKey = SecretKeySpec(key, "AES")
-
-        cipher.init(Cipher.ENCRYPT_MODE, secretKey, spec)
+        cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(key, "AES"), GCMParameterSpec(128, iv))
         cipher.updateAAD(aad)
         val cipherTextAndTag = cipher.doFinal(plaintext.toByteArray(StandardCharsets.UTF_8))
 
@@ -392,34 +296,19 @@ object BackupRebuilderHook : HookHandler {
         return Base64.getEncoder().encodeToString(output)
     }
 
-    /**
-     * Decompresses Zstandard or Base64-Zstd payload if present.
-     */
     fun decompressZstdOrRaw(bytes: ByteArray, classLoader: ClassLoader): String? {
-        // Try decoding as direct UTF-8 first
         try {
             val str = String(bytes, StandardCharsets.UTF_8)
-            if (str.startsWith("{") && str.endsWith("}")) {
-                return str
-            }
+            if (str.startsWith("{") && str.endsWith("}")) return str
         } catch (_: Throwable) {}
 
-        // Try Base64 unwrap then Zstandard
-        try {
+        return attempt("decompress Zstandard payload", silent = true) {
             val unb64 = Base64.getDecoder().decode(bytes)
-            val zstdClass = attempt("load SbaZstdNative", silent = true) {
-                loadClassFlexible(classLoader, "com.swiftapps.sba.SbaZstdNative")
-            }
-            if (zstdClass != null) {
-                val nativeInstance = zstdClass.getDeclaredField("a").apply { isAccessible = true }.get(null)
-                val decompressMethod = zstdClass.getDeclaredMethod("decompressZstdBytes", ByteArray::class.java)
-                val decompressed = decompressMethod.invoke(nativeInstance, unb64) as? ByteArray
-                if (decompressed != null) {
-                    return String(decompressed, StandardCharsets.UTF_8)
-                }
-            }
-        } catch (_: Throwable) {}
-
-        return null
+            val zstdClass = loadClassFlexible(classLoader, "com.swiftapps.sba.SbaZstdNative") ?: return@attempt null
+            val nativeInstance = zstdClass.getDeclaredField("a").apply { isAccessible = true }.get(null)
+            val decompressMethod = zstdClass.getDeclaredMethod("decompressZstdBytes", ByteArray::class.java)
+            val decompressed = decompressMethod.invoke(nativeInstance, unb64) as? ByteArray
+            decompressed?.let { String(it, StandardCharsets.UTF_8) }
+        }
     }
 }

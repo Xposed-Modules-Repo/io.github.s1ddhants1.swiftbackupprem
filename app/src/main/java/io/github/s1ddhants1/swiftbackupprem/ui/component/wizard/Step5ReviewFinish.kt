@@ -14,9 +14,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import io.github.s1ddhants1.swiftbackupprem.R
 import io.github.s1ddhants1.swiftbackupprem.util.PreferencesManager
@@ -28,21 +28,26 @@ fun Step5ReviewFinish(
     onBack: () -> Unit,
     onFinish: () -> Unit
 ) {
+    val googleAppIdLabel = stringResource(R.string.label_google_app_id)
+    val googleApiKeyLabel = stringResource(R.string.label_google_api_key)
+    val firebaseDbUrlLabel = stringResource(R.string.label_firebase_db_url)
+    val gcmSenderIdLabel = stringResource(R.string.label_gcm_sender_id)
+    val projectIdLabel = stringResource(R.string.label_project_id)
+    val clientIdLabel = stringResource(R.string.label_client_id)
+
     val requiredFields = remember(
-        prefs.googleAppId,
-        prefs.googleApiKey,
-        prefs.firebaseDatabaseUrl,
-        prefs.gcmDefaultSenderId,
-        prefs.projectId,
-        prefs.clientId
+        prefs.googleAppId, prefs.googleApiKey, prefs.firebaseDatabaseUrl,
+        prefs.gcmDefaultSenderId, prefs.projectId, prefs.clientId,
+        googleAppIdLabel, googleApiKeyLabel, firebaseDbUrlLabel,
+        gcmSenderIdLabel, projectIdLabel, clientIdLabel
     ) {
         listOf(
-            "Google App ID" to prefs.googleAppId,
-            "Google Api Key" to prefs.googleApiKey,
-            "Firebase Database URL" to prefs.firebaseDatabaseUrl,
-            "GCM Sender ID" to prefs.gcmDefaultSenderId,
-            "Project ID" to prefs.projectId,
-            "Client ID" to prefs.clientId
+            googleAppIdLabel to prefs.googleAppId,
+            googleApiKeyLabel to prefs.googleApiKey,
+            firebaseDbUrlLabel to prefs.firebaseDatabaseUrl,
+            gcmSenderIdLabel to prefs.gcmDefaultSenderId,
+            projectIdLabel to prefs.projectId,
+            clientIdLabel to prefs.clientId
         )
     }
 
@@ -66,7 +71,7 @@ fun Step5ReviewFinish(
                     tint = if (allFilled) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSecondaryContainer
                 )
                 Text(
-                    text = if (allFilled) stringResource(R.string.wizard_credentials_complete) else stringResource(R.string.wizard_checklist_title),
+                    text = stringResource(if (allFilled) R.string.wizard_credentials_complete else R.string.wizard_checklist_title),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
@@ -76,90 +81,67 @@ fun Step5ReviewFinish(
         ElevatedCard(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 requiredFields.forEach { (label, value) ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(label, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            Icon(
-                                imageVector = if (value.isNotBlank()) Icons.Default.CheckCircle else Icons.Default.Error,
-                                contentDescription = null,
-                                tint = if (value.isNotBlank()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Text(
-                                text = if (value.isNotBlank()) stringResource(R.string.wizard_status_ok) else stringResource(R.string.wizard_status_missing),
-                                style = MaterialTheme.typography.bodySmall,
-                                fontWeight = FontWeight.Bold,
-                                color = if (value.isNotBlank()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
-                            )
-                        }
-                    }
+                    val ok = value.isNotBlank()
+                    ReviewStatusRow(
+                        label = label,
+                        statusText = stringResource(if (ok) R.string.wizard_status_ok else R.string.wizard_status_missing),
+                        statusColor = if (ok) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+                        icon = if (ok) Icons.Default.CheckCircle else Icons.Default.Error
+                    )
                     HorizontalDivider(modifier = Modifier.padding(vertical = 2.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
                 }
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(stringResource(R.string.wizard_storage_bucket_optional), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Icon(
-                            imageVector = if (prefs.googleStorageBucket.isNotBlank()) Icons.Default.CheckCircle else Icons.Default.AutoAwesome,
-                            contentDescription = null,
-                            tint = if (prefs.googleStorageBucket.isNotBlank()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Text(
-                            text = if (prefs.googleStorageBucket.isNotBlank()) stringResource(R.string.wizard_status_ok) else stringResource(R.string.wizard_status_auto_default),
-                            style = MaterialTheme.typography.bodySmall,
-                            fontWeight = FontWeight.Bold,
-                            color = if (prefs.googleStorageBucket.isNotBlank()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary
-                        )
-                    }
-                }
+                val hasBucket = prefs.googleStorageBucket.isNotBlank()
+                ReviewStatusRow(
+                    label = stringResource(R.string.wizard_storage_bucket_optional),
+                    statusText = stringResource(if (hasBucket) R.string.wizard_status_ok else R.string.wizard_status_auto_default),
+                    statusColor = if (hasBucket) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary,
+                    icon = if (hasBucket) Icons.Default.CheckCircle else Icons.Default.AutoAwesome
+                )
             }
         }
 
-        OutlinedButton(
+        WizardActionButton(
+            text = stringResource(R.string.btn_import_json),
             onClick = onImportClick,
-            modifier = Modifier.fillMaxWidth().heightIn(min = 42.dp),
-            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
-        ) {
-            Icon(Icons.Default.UploadFile, contentDescription = null, modifier = Modifier.size(18.dp))
-            Spacer(modifier = Modifier.width(6.dp))
-            Text(stringResource(R.string.btn_import_json), textAlign = TextAlign.Center, softWrap = true)
-        }
+            modifier = Modifier.fillMaxWidth(),
+            icon = Icons.Default.UploadFile
+        )
 
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            OutlinedButton(
+            WizardActionButton(
+                text = stringResource(R.string.btn_back),
                 onClick = onBack,
-                modifier = Modifier.heightIn(min = 40.dp),
+                icon = Icons.AutoMirrored.Filled.ArrowBack,
                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-            ) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(modifier = Modifier.width(4.dp))
-                Text(stringResource(R.string.btn_back), textAlign = TextAlign.Center, softWrap = true)
-            }
-            Button(
+            )
+            WizardActionButton(
+                text = stringResource(R.string.btn_finish_save),
                 onClick = onFinish,
-                modifier = Modifier.heightIn(min = 40.dp),
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
-            ) {
-                Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(stringResource(R.string.btn_finish_save), textAlign = TextAlign.Center, softWrap = true)
-            }
+                icon = Icons.Default.Save,
+                isPrimary = true,
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun ReviewStatusRow(
+    label: String,
+    statusText: String,
+    statusColor: Color,
+    icon: androidx.compose.ui.graphics.vector.ImageVector
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(label, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            Icon(icon, contentDescription = null, tint = statusColor, modifier = Modifier.size(16.dp))
+            Text(statusText, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = statusColor)
         }
     }
 }

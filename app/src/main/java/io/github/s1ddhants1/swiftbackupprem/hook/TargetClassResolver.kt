@@ -1,5 +1,6 @@
 package io.github.s1ddhants1.swiftbackupprem.hook
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.util.Log
 import androidx.annotation.Keep
@@ -8,11 +9,17 @@ import io.github.s1ddhants1.swiftbackupprem.util.attempt
 import io.github.s1ddhants1.swiftbackupprem.util.loadClassFlexible
 import io.github.s1ddhants1.swiftbackupprem.versionMap
 import org.luckypray.dexkit.DexKitBridge
-import android.annotation.SuppressLint
+import org.luckypray.dexkit.query.FindClass
+import org.luckypray.dexkit.result.ClassData
 import java.lang.reflect.Modifier
 
 @Keep
 object TargetClassResolver {
+
+    private val EXCLUDE_PACKAGES = listOf(
+        "android", "androidx", "com", "iammert", "java", "javax", "kotlin", "kotlinx", "moe", "nz.mega",
+        "okhttp3", "okio", "retrofit", "rikka"
+    )
 
     @SuppressLint("NonUniqueDexKitData")
     @Suppress("DEPRECATION")
@@ -29,15 +36,15 @@ object TargetClassResolver {
         var appMetadataXml: Class<*>? = null
 
         val ver = Integer.valueOf(ctx.packageManager.getPackageInfo(Consts.packageName, 0).versionCode)
-        versionMap[ver]?.let { classes ->
-            clientId = loadClassFlexible(cl, classes.clientId)
-            homeVm = loadClassFlexible(cl, classes.homeViewModel)
-            authUser = loadClassFlexible(cl, classes.authUser)
-            anonUser = loadClassFlexible(cl, classes.anonUser)
-            oauthHelper = classes.oauthHelper?.let { loadClassFlexible(cl, it) }
-            authRequestBuilder = classes.authRequestBuilder?.let { loadClassFlexible(cl, it) }
-            appBackup = classes.appBackup?.let { loadClassFlexible(cl, it) }
-            appMetadataXml = classes.appMetadataXml?.let { loadClassFlexible(cl, it) }
+        versionMap[ver]?.let { c ->
+            clientId = loadClassFlexible(cl, c.clientId)
+            homeVm = loadClassFlexible(cl, c.homeViewModel)
+            authUser = loadClassFlexible(cl, c.authUser)
+            anonUser = loadClassFlexible(cl, c.anonUser)
+            oauthHelper = c.oauthHelper?.let { loadClassFlexible(cl, it) }
+            authRequestBuilder = c.authRequestBuilder?.let { loadClassFlexible(cl, it) }
+            appBackup = c.appBackup?.let { loadClassFlexible(cl, it) }
+            appMetadataXml = c.appMetadataXml?.let { loadClassFlexible(cl, it) }
         }
 
         attempt("load V class fallback", silent = true) {
@@ -45,171 +52,63 @@ object TargetClassResolver {
         }
 
         for (name in listOf("org.swiftapps.swiftbackup.cloud.d0", "org.swiftapps.swiftbackup.cloud.d")) {
-            val loaded = attempt("load cloud Gms class ($name)", silent = true) {
-                cl.loadClass(name)
-            }
-            if (loaded != null) {
-                cloudGms = loaded
-                break
-            }
+            cloudGms = attempt("load cloud Gms class ($name)", silent = true) { cl.loadClass(name) }
+            if (cloudGms != null) break
         }
 
         if (clientId != null && v != null && homeVm != null && authUser != null && oauthHelper != null && authRequestBuilder != null) {
-            Log.d("SBP", "Resolved Swift Backup hook classes without DexKit scan")
+            Log.d(Consts.TAG, "Resolved Swift Backup hook classes without DexKit scan")
             return ResolvedTargets(clientId, v, cloudGms, homeVm, authUser, anonUser, oauthHelper, authRequestBuilder, appBackup, appMetadataXml)
         }
 
-        attempt("load dexkit native library") {
-            System.loadLibrary("dexkit")
-        }
-
-        val excludePackages = listOf(
-            "android", "androidx", "com", "iammert", "java", "javax", "kotlin", "kotlinx", "moe", "nz.mega",
-            "okhttp3", "okio", "retrofit", "rikka"
-        )
+        attempt("load dexkit native library") { System.loadLibrary("dexkit") }
 
         try {
             DexKitBridge.create(sourceDir).use { bridge ->
                 if (clientId == null) {
-                    val oauthCandidates = bridge.findClass {
-                        excludePackages(excludePackages)
+                    clientId = bridge.findSingle(cl, "clientIdClass", filterInner = false) {
+                        matcher { usingStrings("org.swiftapps.swiftbackup:/oauth") }
+                    } ?: bridge.findSingle(cl, "clientIdClass by structure", filterInner = false) {
                         matcher {
-                            usingStrings("org.swiftapps.swiftbackup:/oauth")
-                        }
-                    }
-                    Log.d("SBP", "Found ${oauthCandidates.size} candidate(s) for clientIdClass by oauth string")
-                    val selected = when (oauthCandidates.size) {
-                        0 -> {
-                            val structuralCandidates = bridge.findClass {
-                                excludePackages(excludePackages)
-                                matcher {
-                                    fields {
-                                        add {
-                                            modifiers(Modifier.PUBLIC or Modifier.STATIC or Modifier.FINAL)
-                                            name("a")
-                                        }
-                                        add {
-                                            modifiers(Modifier.PRIVATE or Modifier.STATIC or Modifier.FINAL)
-                                            name("b")
-                                        }
-                                        add {
-                                            modifiers(Modifier.PRIVATE or Modifier.STATIC or Modifier.FINAL)
-                                            name("c")
-                                            type("java.lang.String")
-                                        }
-                                        add {
-                                            modifiers(Modifier.PRIVATE or Modifier.STATIC or Modifier.FINAL)
-                                            name("d")
-                                            type("android.net.Uri")
-                                        }
-                                        count(4)
-                                    }
-                                    addMethod {
-                                        modifiers(Modifier.PUBLIC or Modifier.FINAL)
-                                        returnType("android.content.Intent")
-                                        name("f")
-                                        addParamType("boolean")
-                                    }
-                                }
+                            fields {
+                                add { modifiers(Modifier.PUBLIC or Modifier.STATIC or Modifier.FINAL); name("a") }
+                                add { modifiers(Modifier.PRIVATE or Modifier.STATIC or Modifier.FINAL); name("b") }
+                                add { modifiers(Modifier.PRIVATE or Modifier.STATIC or Modifier.FINAL); name("c"); type("java.lang.String") }
+                                add { modifiers(Modifier.PRIVATE or Modifier.STATIC or Modifier.FINAL); name("d"); type("android.net.Uri") }
+                                count(4)
                             }
-                            Log.d("SBP", "Found ${structuralCandidates.size} candidate(s) for clientIdClass by structure")
-                            structuralCandidates.singleOrNull() ?: structuralCandidates.firstOrNull()
+                            addMethod {
+                                modifiers(Modifier.PUBLIC or Modifier.FINAL)
+                                returnType("android.content.Intent")
+                                name("f")
+                                addParamType("boolean")
+                            }
                         }
-                        1 -> oauthCandidates.single()
-                        else -> {
-                            Log.w("SBP", "Multiple clientIdClass candidates (${oauthCandidates.size}): ${oauthCandidates.map { it.name }}")
-                            oauthCandidates.firstOrNull()
-                        }
-                    }
-                    selected?.let {
-                        clientId = it.getInstance(cl)
-                        Log.d("SBP", "Found client id class: ${it.name}")
                     }
                 }
 
                 if (v == null) {
-                    val candidates = bridge.findClass {
-                        excludePackages(excludePackages)
-                        matcher {
-                            usingStrings("f4s6woi0e98")
-                        }
-                    }
-                    Log.d("SBP", "Found ${candidates.size} candidate(s) for vClass")
-                    val selected = when (candidates.size) {
-                        0 -> null
-                        1 -> candidates.single()
-                        else -> {
-                            Log.w("SBP", "Multiple vClass candidates (${candidates.size}): ${candidates.map { it.name }}")
-                            candidates.firstOrNull()
-                        }
-                    }
-                    selected?.let {
-                        v = it.getInstance(cl)
-                        Log.d("SBP", "Found V class: ${it.name}")
+                    v = bridge.findSingle(cl, "vClass", filterInner = false) {
+                        matcher { usingStrings("f4s6woi0e98") }
                     }
                 }
 
                 if (cloudGms == null) {
-                    val candidates = bridge.findClass {
-                        excludePackages(excludePackages)
-                        matcher {
-                            usingStrings("nogms_access_token")
-                        }
-                    }
-                    Log.d("SBP", "Found ${candidates.size} candidate(s) for cloudGmsClass")
-                    val selected = when (candidates.size) {
-                        0 -> null
-                        1 -> candidates.single()
-                        else -> {
-                            Log.w("SBP", "Multiple cloudGmsClass candidates (${candidates.size}): ${candidates.map { it.name }}")
-                            candidates.firstOrNull()
-                        }
-                    }
-                    selected?.let {
-                        cloudGms = it.getInstance(cl)
-                        Log.d("SBP", "Found cloud GMS class: ${it.name}")
+                    cloudGms = bridge.findSingle(cl, "cloudGmsClass", filterInner = false) {
+                        matcher { usingStrings("nogms_access_token") }
                     }
                 }
 
                 if (homeVm == null) {
-                    val candidates1 = bridge.findClass {
-                        excludePackages(excludePackages)
-                        matcher {
-                            usingStrings("setup_cloud_first_startup", "KEY_SCHEDULE_ENABLED")
-                        }
-                    }
-                    val filtered1 = candidates1.filter { !it.name.contains("$") && !it.name.contains("AlarmReceiver") }
-                    Log.d("SBP", "Found ${candidates1.size} candidate(s) (${filtered1.size} filtered) for homeViewModelClass (primary)")
-
-                    val selected = if (filtered1.isNotEmpty()) {
-                        if (filtered1.size > 1) {
-                            Log.w("SBP", "Multiple homeViewModelClass primary candidates: ${filtered1.map { it.name }}")
-                        }
-                        filtered1.first()
-                    } else {
-                        val candidates2 = bridge.findClass {
-                            excludePackages(excludePackages)
-                            matcher {
-                                usingStrings("checkCloudConnectPromptNeeded=")
-                            }
-                        }
-                        val filtered2 = candidates2.filter { !it.name.contains("$") }
-                        Log.d("SBP", "Found ${candidates2.size} candidate(s) (${filtered2.size} filtered) for homeViewModelClass (fallback)")
-                        if (filtered2.size > 1) {
-                            Log.w("SBP", "Multiple homeViewModelClass fallback candidates: ${filtered2.map { it.name }}")
-                        }
-                        filtered2.firstOrNull()
-                    }
-
-                    selected?.let {
-                        homeVm = it.getInstance(cl)
-                        Log.d("SBP", "Found HomeViewModel class: ${it.name}")
+                    homeVm = bridge.findSingle(cl, "homeViewModelClass (primary)", extraFilter = { !it.name.contains("AlarmReceiver") }) {
+                        matcher { usingStrings("setup_cloud_first_startup", "KEY_SCHEDULE_ENABLED") }
+                    } ?: bridge.findSingle(cl, "homeViewModelClass (fallback)") {
+                        matcher { usingStrings("checkCloudConnectPromptNeeded=") }
                     }
                 }
 
                 if (authUser == null) {
-                    val candidates = bridge.findClass {
-                        excludePackages(excludePackages)
+                    authUser = bridge.findSingle(cl, "authUserClass") {
                         matcher {
                             usingStrings("clearAnonymousSignIn")
                             addMethod {
@@ -219,17 +118,10 @@ object TargetClassResolver {
                             }
                         }
                     }
-                    val filtered = candidates.filter { !it.name.contains("$") }
-                    val selected = filtered.firstOrNull()
-                    selected?.let {
-                        authUser = it.getInstance(cl)
-                        Log.d("SBP", "Found AuthUser class: ${it.name}")
-                    }
                 }
 
                 if (anonUser == null) {
-                    val candidates = bridge.findClass {
-                        excludePackages(excludePackages)
+                    anonUser = bridge.findSingle(cl, "anonUserClass") {
                         matcher {
                             usingStrings("anonymous@swiftbackup.app")
                             addMethod {
@@ -239,50 +131,57 @@ object TargetClassResolver {
                             }
                         }
                     }
-                    val filtered = candidates.filter { !it.name.contains("$") }
-                    val selected = filtered.firstOrNull()
-                    selected?.let {
-                        anonUser = it.getInstance(cl)
-                        Log.d("SBP", "Found AnonUser class: ${it.name}")
-                    }
                 }
 
                 if (oauthHelper == null) {
-                    val candidates = bridge.findClass {
-                        excludePackages(excludePackages)
-                        matcher {
-                            usingStrings("org.swiftapps.swiftbackup:/oauth")
-                        }
-                    }
-                    Log.d("SBP", "Found ${candidates.size} candidate(s) for oauthHelperClass")
-                    candidates.firstOrNull()?.let {
-                        oauthHelper = it.getInstance(cl)
-                        Log.d("SBP", "Found OAuth helper class: ${it.name}")
+                    oauthHelper = bridge.findSingle(cl, "oauthHelperClass", filterInner = false) {
+                        matcher { usingStrings("org.swiftapps.swiftbackup:/oauth") }
                     }
                 }
 
                 if (authRequestBuilder == null) {
-                    val candidates = bridge.findClass {
-                        excludePackages(excludePackages)
-                        matcher {
-                            usingStrings("client ID cannot be null or empty")
-                        }
-                    }
-                    Log.d("SBP", "Found ${candidates.size} candidate(s) for authRequestBuilderClass")
-                    candidates.firstOrNull()?.let {
-                        authRequestBuilder = it.getInstance(cl)
-                        Log.d("SBP", "Found AuthRequestBuilder class: ${it.name}")
+                    authRequestBuilder = bridge.findSingle(cl, "authRequestBuilderClass", filterInner = false) {
+                        matcher { usingStrings("client ID cannot be null or empty") }
                     }
                 }
             }
         } catch (t: Throwable) {
-            Log.e("SBP", "DexKit search encountered an error", t)
+            Log.e(Consts.TAG, "DexKit search encountered an error", t)
         }
 
         if (clientId == null || homeVm == null) {
-            Log.w("SBP", "Couldn't fully hook Swift Backup.")
+            Log.w(Consts.TAG, "Couldn't fully hook Swift Backup.")
         }
 
-        return ResolvedTargets(clientId, v, cloudGms, homeVm, authUser, anonUser, oauthHelper, authRequestBuilder, appBackup)
+        return ResolvedTargets(clientId, v, cloudGms, homeVm, authUser, anonUser, oauthHelper, authRequestBuilder, appBackup, appMetadataXml)
+    }
+
+    private fun DexKitBridge.findSingle(
+        cl: ClassLoader,
+        label: String,
+        filterInner: Boolean = true,
+        extraFilter: ((ClassData) -> Boolean)? = null,
+        builder: FindClass.() -> Unit
+    ): Class<*>? {
+        val candidates = findClass {
+            excludePackages(EXCLUDE_PACKAGES)
+            builder()
+        }
+        var filtered = if (filterInner) candidates.filter { !it.name.contains("$") } else candidates
+        if (extraFilter != null) {
+            filtered = filtered.filter(extraFilter)
+        }
+        Log.d(Consts.TAG, "Found ${candidates.size} candidate(s) (${filtered.size} filtered) for $label")
+        val selected = when (filtered.size) {
+            0 -> null
+            1 -> filtered.single()
+            else -> {
+                Log.w(Consts.TAG, "Multiple $label candidates: ${filtered.map { it.name }}")
+                filtered.firstOrNull()
+            }
+        }
+        return selected?.getInstance(cl)?.also {
+            Log.d(Consts.TAG, "Found $label: ${it.name}")
+        }
     }
 }

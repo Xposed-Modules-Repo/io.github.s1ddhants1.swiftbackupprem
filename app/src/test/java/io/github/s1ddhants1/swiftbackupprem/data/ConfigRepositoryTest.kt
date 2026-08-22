@@ -16,6 +16,7 @@ class ConfigRepositoryTest {
             {
               "enablePremium": true,
               "disableTelemetry": false,
+              "enableDriveDiscovery": true,
               "customFirebaseApp": true,
               "googleAppId": "1:888:android:999",
               "googleApiKey": "repo-api-key",
@@ -31,6 +32,7 @@ class ConfigRepositoryTest {
 
         assertTrue(result.enablePremium)
         assertFalse(result.disableTelemetry)
+        assertTrue(result.enableDriveDiscovery)
         assertTrue(result.customFirebaseApp)
         assertEquals("1:888:android:999", result.googleAppId)
         assertEquals("repo-api-key", result.googleApiKey)
@@ -41,6 +43,7 @@ class ConfigRepositoryTest {
         assertEquals("repo-client-id", result.clientId)
 
         // Verify preferences mutated
+        assertTrue(prefs.enableDriveDiscovery)
         assertEquals("repo-project", prefs.projectId)
         assertEquals("repo-client-id", prefs.clientId)
     }

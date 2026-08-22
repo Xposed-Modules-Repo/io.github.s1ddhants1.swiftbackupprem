@@ -3,9 +3,8 @@ package io.github.s1ddhants1.swiftbackupprem.ui.component
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.*
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Edit
@@ -18,7 +17,6 @@ import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import io.github.s1ddhants1.swiftbackupprem.Consts
 import io.github.s1ddhants1.swiftbackupprem.R
@@ -32,11 +30,7 @@ fun GuidedSetupWizard(
     onImportGoogleServices: (Uri) -> Unit,
     onFinish: () -> Unit = {}
 ) {
-    val hasExistingConfig by remember {
-        derivedStateOf {
-            prefs.toConfig().isCompleteFirebaseConfig
-        }
-    }
+    val hasExistingConfig by remember { derivedStateOf { prefs.toConfig().isCompleteFirebaseConfig } }
     var userOverrodeCollapse by remember { mutableStateOf<Boolean?>(null) }
     val isCollapsed = userOverrodeCollapse ?: hasExistingConfig
     var currentStep by remember { mutableIntStateOf(1) }
@@ -52,76 +46,54 @@ fun GuidedSetupWizard(
         }
     }
 
-    AnimatedContent(
-        targetState = isCollapsed,
-        label = "CollapseAnimation"
-    ) { collapsed ->
+    AnimatedContent(targetState = isCollapsed, label = "CollapseAnimation") { collapsed ->
         if (collapsed) {
-            ElevatedCard(
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.CheckCircle,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(24.dp)
+                    Icon(
+                        Icons.Default.CheckCircle,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Column {
+                        Text(
+                            text = stringResource(R.string.wizard_firebase_configured_title),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
                         )
-                        Column {
-                            Text(
-                                text = stringResource(R.string.wizard_firebase_configured_title),
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                text = stringResource(R.string.wizard_firebase_configured_desc),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-
-                    OutlinedButton(
-                        onClick = { userOverrodeCollapse = false },
-                        modifier = Modifier.fillMaxWidth().heightIn(min = 42.dp),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Edit,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp)
+                        Text(
+                            text = stringResource(R.string.wizard_firebase_configured_desc),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(stringResource(R.string.btn_edit_setup), textAlign = TextAlign.Center, softWrap = true)
                     }
                 }
+                WizardActionButton(
+                    text = stringResource(R.string.btn_edit_setup),
+                    onClick = { userOverrodeCollapse = false },
+                    modifier = Modifier.fillMaxWidth(),
+                    icon = Icons.Default.Edit
+                )
             }
         } else {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp),
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                // Progress Header
                 WizardProgressHeader(currentStep = currentStep)
 
-                // Animated Step Body
-                AnimatedContent(
-                    targetState = currentStep,
-                    label = "StepAnimation"
-                ) { step ->
+                AnimatedContent(targetState = currentStep, label = "StepAnimation") { step ->
                     when (step) {
                         1 -> Step1WelcomeImport(
                             onImportClick = { pickJsonLauncher.launch("application/json") },
@@ -130,9 +102,7 @@ fun GuidedSetupWizard(
                         2 -> Step2Database(
                             prefs = prefs,
                             onOpenConsole = { uriHandler.openUri("https://console.firebase.google.com/u/0/") },
-                            onCopyRules = {
-                                clipboardManager.setText(AnnotatedString(FIREBASE_DATABASE_RULES))
-                            },
+                            onCopyRules = { clipboardManager.setText(AnnotatedString(FIREBASE_DATABASE_RULES)) },
                             onBack = { currentStep = 1 },
                             onNext = { currentStep = 3 }
                         )
@@ -144,16 +114,10 @@ fun GuidedSetupWizard(
                         )
                         4 -> Step4AndroidOAuth(
                             prefs = prefs,
-                            onCopyPackageName = {
-                                clipboardManager.setText(AnnotatedString(Consts.packageName))
-                            },
-                            onCopyFingerprint = {
-                                clipboardManager.setText(AnnotatedString(AppUtils.randomFingerprint()))
-                            },
+                            onCopyPackageName = { clipboardManager.setText(AnnotatedString(Consts.packageName)) },
+                            onCopyFingerprint = { clipboardManager.setText(AnnotatedString(AppUtils.randomFingerprint())) },
                             onOpenCloudConsole = { uriHandler.openUri("https://console.developers.google.com/") },
-                            onEnableDriveApi = {
-                                uriHandler.openUri("https://console.cloud.google.com/apis/library/drive.googleapis.com?project=${prefs.projectId}")
-                            },
+                            onEnableDriveApi = { uriHandler.openUri("https://console.cloud.google.com/apis/library/drive.googleapis.com?project=${prefs.projectId}") },
                             onBack = { currentStep = 3 },
                             onNext = { currentStep = 5 }
                         )

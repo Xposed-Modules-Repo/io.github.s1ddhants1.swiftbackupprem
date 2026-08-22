@@ -51,4 +51,20 @@ class ResolvedTargetsTest {
         )
         assertFalse(targets4.isFullyResolved)
     }
+
+    @Test
+    fun optionalTargetsDefaultToNull() {
+        val targets = ResolvedTargets()
+        assertNull(targets.clientIdClass)
+        assertNull(targets.vClass)
+        assertNull(targets.cloudGmsClass)
+        assertNull(targets.homeViewModelClass)
+        assertNull(targets.authUserClass)
+        assertNull(targets.anonUserClass)
+        assertNull(targets.oauthHelperClass)
+        assertNull(targets.authRequestBuilderClass)
+        assertNull(targets.appBackupClass)
+        assertNull(targets.appMetadataXmlClass)
+        assertFalse(targets.isFullyResolved)
+    }
 }

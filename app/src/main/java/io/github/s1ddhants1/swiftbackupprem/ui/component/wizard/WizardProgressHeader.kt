@@ -17,19 +17,27 @@ import androidx.compose.ui.unit.dp
 import io.github.s1ddhants1.swiftbackupprem.R
 
 @Composable
-fun WizardProgressHeader(
-    currentStep: Int,
-    totalSteps: Int = TOTAL_WIZARD_STEPS
-) {
+fun WizardProgressHeader(currentStep: Int, totalSteps: Int = TOTAL_WIZARD_STEPS) {
+    val stepIcon = when (currentStep) {
+        1 -> Icons.Default.RocketLaunch
+        2 -> Icons.Default.Storage
+        3 -> Icons.Default.Lock
+        4 -> Icons.Default.VpnKey
+        5 -> Icons.Default.TaskAlt
+        else -> Icons.Default.Tune
+    }
+    val animatedProgress by animateFloatAsState(
+        targetValue = currentStep.toFloat() / totalSteps.toFloat(),
+        animationSpec = tween(durationMillis = 300),
+        label = "WizardProgress"
+    )
+
     ElevatedCard(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
     ) {
-        Column(
-            modifier = Modifier.padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
+        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -41,36 +49,11 @@ fun WizardProgressHeader(
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary
                 )
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    val stepIcon = when (currentStep) {
-                        1 -> Icons.Default.RocketLaunch
-                        2 -> Icons.Default.Storage
-                        3 -> Icons.Default.Lock
-                        4 -> Icons.Default.VpnKey
-                        5 -> Icons.Default.TaskAlt
-                        else -> Icons.Default.Tune
-                    }
-                    Icon(
-                        imageVector = stepIcon,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Text(
-                        text = stringResource(getWizardStepTitleRes(currentStep)),
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold
-                    )
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Icon(stepIcon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                    Text(stringResource(getWizardStepTitleRes(currentStep)), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                 }
             }
-            val animatedProgress by animateFloatAsState(
-                targetValue = currentStep.toFloat() / totalSteps.toFloat(),
-                animationSpec = tween(durationMillis = 300),
-                label = "WizardProgress"
-            )
             LinearProgressIndicator(
                 progress = { animatedProgress },
                 modifier = Modifier.fillMaxWidth().height(6.dp),

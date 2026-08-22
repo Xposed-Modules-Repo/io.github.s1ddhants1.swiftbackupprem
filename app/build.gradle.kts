@@ -43,6 +43,11 @@ android {
         compose = true
         resValues = false
     }
+    packaging {
+        resources {
+            merges += "META-INF/xposed/*"
+        }
+    }
 }
 
 dependencies {

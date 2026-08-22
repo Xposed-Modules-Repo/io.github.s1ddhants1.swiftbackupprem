@@ -2,15 +2,11 @@ package io.github.s1ddhants1.swiftbackupprem.ui
 
 import android.content.ContentResolver
 import android.net.Uri
-import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import io.github.s1ddhants1.swiftbackupprem.data.ConfigRepository
 import io.github.s1ddhants1.swiftbackupprem.data.ConfigRepositoryImpl
-import io.github.s1ddhants1.swiftbackupprem.util.GoogleServicesJson
 import io.github.s1ddhants1.swiftbackupprem.util.PreferencesManager
-import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -18,7 +14,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
 data class MainUiState(
@@ -33,8 +28,7 @@ sealed interface MainUiEvent {
 }
 
 class MainViewModel(
-    private val configRepository: ConfigRepository = ConfigRepositoryImpl(),
-    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
+    private val configRepository: ConfigRepository = ConfigRepositoryImpl()
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(MainUiState())
@@ -56,8 +50,7 @@ class MainViewModel(
     fun exportConfig(
         contentResolver: ContentResolver,
         uri: Uri,
-        prefs: PreferencesManager,
-        onResult: ((Result<Unit>) -> Unit)? = null
+        prefs: PreferencesManager
     ) {
         viewModelScope.launch {
             val result = configRepository.exportConfig(contentResolver, uri, prefs.toConfig())
@@ -67,15 +60,13 @@ class MainViewModel(
                     error = result.exceptionOrNull()?.localizedMessage
                 )
             )
-            onResult?.invoke(result)
         }
     }
 
     fun importConfig(
         contentResolver: ContentResolver,
         uri: Uri,
-        prefs: PreferencesManager,
-        onResult: ((Result<Unit>) -> Unit)? = null
+        prefs: PreferencesManager
     ) {
         viewModelScope.launch {
             val result = configRepository.importConfig(contentResolver, uri, prefs)
@@ -85,7 +76,6 @@ class MainViewModel(
                     error = result.exceptionOrNull()?.localizedMessage
                 )
             )
-            onResult?.invoke(result.map { })
         }
     }
 
@@ -94,19 +84,7 @@ class MainViewModel(
         uri: Uri,
         prefs: PreferencesManager
     ) {
-        viewModelScope.launch {
-            try {
-                withContext(ioDispatcher) {
-                    contentResolver.openInputStream(uri)?.use { inputStream ->
-                        val jsonStr = inputStream.bufferedReader().use { it.readText() }
-                        val json = JSONObject(jsonStr)
-                        GoogleServicesJson.applyToPrefs(json, prefs)
-                    }
-                }
-            } catch (e: Exception) {
-                Log.e("SBP", "Failed importing google-services.json", e)
-            }
-        }
+        importConfig(contentResolver, uri, prefs)
     }
 
     fun parseAndApplyConfig(json: JSONObject, prefs: PreferencesManager) {

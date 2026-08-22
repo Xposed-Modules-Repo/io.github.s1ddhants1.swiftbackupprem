@@ -2,10 +2,6 @@
 
 package io.github.s1ddhants1.swiftbackupprem
 
-import android.content.Context
-import androidx.annotation.Keep
-import io.github.s1ddhants1.swiftbackupprem.hook.TargetClassResolver
-
 data class VersionClasses(
     val clientId: String,
     val homeViewModel: String,

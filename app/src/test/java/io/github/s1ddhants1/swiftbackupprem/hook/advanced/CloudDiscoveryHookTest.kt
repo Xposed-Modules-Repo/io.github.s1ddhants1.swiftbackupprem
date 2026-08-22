@@ -45,4 +45,14 @@ class CloudDiscoveryHookTest {
         assertEquals("comdvadm", app.sanitizedAppId)
         assertEquals(48500000L, app.totalSize)
     }
+
+    @Test
+    fun testFormatBytesFormatting() {
+        assertEquals("0 B", CloudDiscoveryHook.formatBytes(0L))
+        assertEquals("0 B", CloudDiscoveryHook.formatBytes(-100L))
+        assertEquals("500.00 B", CloudDiscoveryHook.formatBytes(500L))
+        assertEquals("1.00 KB", CloudDiscoveryHook.formatBytes(1024L))
+        assertEquals("1.50 MB", CloudDiscoveryHook.formatBytes((1.5 * 1024 * 1024).toLong()))
+        assertEquals("2.00 GB", CloudDiscoveryHook.formatBytes((2.0 * 1024 * 1024 * 1024).toLong()))
+    }
 }
