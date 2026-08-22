@@ -52,6 +52,13 @@
     <string name="pref_custom_firebase_title">Custom firebase app</string>
     <string name="pref_custom_firebase_subtitle">Recommended, forces Swift Backup to use your own firebase credentials</string>
 
+    <!-- Advanced & Experimental Section -->
+    <string name="section_advanced_features">Advanced &amp; Experimental</string>
+    <string name="section_advanced_features_subtitle">Google Drive full access, cloud discovery &amp; scope upgrade</string>
+    <string name="pref_enable_drive_discovery_title">Google Drive Full Access &amp; Cloud Restore</string>
+    <string name="pref_enable_drive_discovery_subtitle">Upgrades Drive scope to discover all cloud backups, decodes metadata (.extra), and indexes cloud backups without original Firebase catalog</string>
+    <string name="pref_enable_drive_discovery_note">Note: Dynamically upgrades OAuth scope to full Google Drive access in order to discover backups across multiple devices or past Firebase projects.</string>
+
     <!-- Setup Wizard -->
     <string name="wizard_step_format">Step %1$d of %2$d</string>
     <string name="wizard_title_step_1">Welcome &amp; Import</string>

@@ -25,3 +25,17 @@ inline fun <T> attempt(operation: String, silent: Boolean = false, block: () -> 
 inline fun <T> attemptOrDefault(operation: String, default: T, silent: Boolean = false, block: () -> T): T {
     return attempt(operation, silent, block) ?: default
 }
+
+/**
+ * Attempts to load a class by name, with flexible handling for obfuscated defpackage prefix.
+ */
+fun loadClassFlexible(cl: ClassLoader, name: String): Class<*>? {
+    val cleanName = if (name.startsWith("defpackage.")) name.substringAfter("defpackage.") else name
+    return attempt("load $cleanName", silent = true) {
+        cl.loadClass(cleanName)
+    } ?: attempt("load defpackage.$cleanName", silent = true) {
+        cl.loadClass("defpackage.$cleanName")
+    } ?: attempt("load $name", silent = true) {
+        cl.loadClass(name)
+    }
+}

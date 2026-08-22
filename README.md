@@ -28,6 +28,8 @@
   - [Step 4: Register Android App & OAuth Client](#step-4-register-android-app--oauth-client)
   - [Step 5: Enable Google Drive API & OAuth Scopes](#step-5-enable-google-drive-api--oauth-scopes)
   - [Step 6: Import or Enter Credentials in SwiftBackupPrem](#step-6-import-or-enter-credentials-in-swiftbackupprem)
+- [🔓 Guide: Migrating & Accessing Backups from Default Firebase](#-guide-migrating--accessing-backups-from-default-firebase)
+- [⚡ Automated 1-Click Backup Rebuilder & Restorer](#-automated-1-click-backup-rebuilder--restorer)
 - [🔄 Configuration Export & Migration](#-configuration-export--migration)
 - [🛠️ Building from Source](#️-building-from-source)
 - [💬 Community & Support](#-community--support)
@@ -42,6 +44,7 @@
 - 🔓 **Premium Toggle & Unlocking**: Enables all Swift Backup Premium functionality on-demand without needing Google Play Store licensing, with active runtime state enforcement.
 - 🚫 **Disable Telemetry & Tracking**: Selectively blocks Firebase Analytics, Crashlytics, Sessions, Installations, and Google DataTransport tracking calls for maximum privacy.
 - 🛡️ **Custom Firebase Backend (Anti-Ban & Privacy)**: Directs Swift Backup to use your personal Firebase instance for user authentication and cloud synchronization metadata, eliminating reliance on the developer's shared backend.
+- ☁️ **Google Drive Full Access & Cloud Restore**: Upgrades Google Drive OAuth scopes to discover backups across accounts, automatically fetches & decodes cloud `.extra` metadata, and indexes cloud backups without relying on original Firebase catalog state.
 - ⚡ **Dynamic DexKit Bytecode Scanning**: Utilizes [DexKit](https://github.com/LuckyPray/DexKit) to dynamically locate obfuscated classes and methods at runtime across versions, ensuring robust compatibility with newer app updates.
 - 🎨 **Modern Material 3 UI**: Clean user interface built with Jetpack Compose, edge-to-edge display, dynamic theme adaptation, and responsive layouts.
 - 🧙 **Interactive 5-Step Guided Wizard**: In-app wizard with 1-click clipboard helpers (package name, SHA-1 signing fingerprint) and direct links to Firebase and Google Cloud consoles.
@@ -295,12 +298,12 @@ If you plan to use Google Drive for cloud backups:
 1. Open the [Google Cloud OAuth Scopes Console](https://console.cloud.google.com/auth/scopes).
 2. Ensure your project is selected at the top.
 3. Navigate to **Data Access** > click **Add or remove scopes**.
-4. In the filter box, search for:
+4. In the filter box, search for and enable:
    ```
    https://www.googleapis.com/auth/drive.file
    ```
-5. Check / turn on the `.../auth/drive.file` scope.
-6. Click **Update**, then click **Save** (or **Save and continue**).
+   _(This provides safe, per-file access for files created or opened by Swift Backup without requiring broad drive permissions)._
+5. Click **Update**, then click **Save** (or **Save and continue**).
 
 ---
 
@@ -320,6 +323,91 @@ If you plan to use Google Drive for cloud backups:
 >
 > Firebase Cloud Storage now requires a paid **Blaze Plan** (linked Cloud Billing account). **You can safely skip enabling Cloud Storage in Firebase Console.**
 > Swift Backup does **not** store your backup files (APKs, app data, call logs) inside Firebase Storage. Firebase is only used for authentication and metadata synchronization. Your actual backups are stored in your configured cloud provider (Google Drive, WebDAV, Nextcloud, SMB, etc.) or local storage.
+
+---
+
+## 🔓 Guide: Migrating & Accessing Backups from Default Firebase
+
+Install Swift Backup with default Firebase and login to pull your UID from `/data/data/org.swiftapps.swiftbackup/shared_prefs/com.google.firebase.auth.api.Store.*.xml`:
+
+```bash
+su -c 'grep -o "GET_TOKEN_RESPONSE\.[^\"]*" /data/data/org.swiftapps.swiftbackup/shared_prefs/com.google.firebase.auth.api.Store.*.xml | cut -d. -f2'
+```
+
+### Verify UID with Backups
+
+Swift Backup takes the MD5 hash of your Firebase UID and uses the first 16 characters for the folder name:
+
+```bash
+echo -n "example uid" | md5sum | cut -c 1-16
+```
+
+**Output**: `example16char` -> `/sdcard/SwiftBackup/accounts/example16char/`  
+or in case of cloud folder: `Swift Backup (example16char)`
+
+---
+
+### Create the User with this UID in your Custom Firebase Project
+
+1. Install Firebase tools using your preferred package manager (e.g., via Node.js):
+
+   ```bash
+   npm install -g firebase-tools
+   ```
+
+2. Run `firebase login` to connect your account:
+
+   ```bash
+   firebase login
+   ```
+
+3. Create a `users.json` file:
+
+   ```json
+   {
+     "users": [
+       {
+         "localId": "example uid",
+         "email": "examplemail@gmail.com",
+         "emailVerified": true,
+         "displayName": "examplename"
+       }
+     ]
+   }
+   ```
+
+4. View your Project ID
+
+   ```bash
+   firebase projects:list
+   ```
+
+5. Run the import command:
+
+   ```bash
+   firebase auth:import users.json --project exampleprojectID
+   ```
+
+6. Re-login in Swift Backup.
+
+---
+
+## ⚡ Automated 1-Click Backup Rebuilder & Restorer
+
+When the **Google Drive Full Access & Cloud Restore** toggle is turned on in SwiftBackupPrem, the module enables automated cloud backup restoration:
+
+1. **Direct In-App Cloud Restore**: Discovers all backups directly from your Google Drive folder, downloads & decodes `.extra` metadata, and indexes them in real-time across the app (Single App Details, Cloud Sync tab, and Batch Restore).
+2. **Local Cloud Backup Rebuilder**: When cloud backup files (`.app`, `.dat`, `.splits`, `.extdat`, `.extra`) are downloaded or copied to your device storage:
+   - Swift Backup typically requires a `<packageName>.xml` metadata file which is absent in raw cloud files.
+   - The module automatically detects missing metadata, decrypts the `.extra` payload on the fly using your active Firebase UID key (Conceal AES-GCM-256 + Zstandard), and generates the authentic `<packageName>.xml`.
+   - The backups immediately appear with all components (APK, App Data, External Data, Splits) and are 100% restorable.
+
+> [!WARNING]
+> **Scope Disclaimer & Security Notice**:
+>
+> - Standard Swift Backup operates under the safe, per-file `https://www.googleapis.com/auth/drive.file` scope configured in [Step 5](#step-5-enable-google-drive-api--oauth-scopes).
+> - Enabling **Google Drive Full Access & Cloud Restore** dynamically expands the runtime OAuth scope to `https://www.googleapis.com/auth/drive` (Full Drive Access) in order to query, discover, and index backups created across different devices, past Firebase projects, or manual cloud transfers.
+> - Because `.../auth/drive` is classified as a sensitive scope by Google, Google may display a standard _"Google hasn't verified this app"_ warning during initial sign-in. This is expected for personal developer projects—click **Advanced > Go to Swift Backup (unsafe)** to proceed safely.
 
 ---
 

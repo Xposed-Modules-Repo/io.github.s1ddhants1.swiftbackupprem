@@ -40,12 +40,12 @@ class PreferencesManager(
 
     private fun putString(key: String, value: String?) {
         attempt("save preference string $key", silent = true) {
-            prefs?.edit(commit = false) { putString(key, value) }
+            prefs?.edit(commit = true) { putString(key, value) }
         }
     }
     private fun putBoolean(key: String, value: Boolean) {
         attempt("save preference boolean $key", silent = true) {
-            prefs?.edit(commit = false) { putBoolean(key, value) }
+            prefs?.edit(commit = true) { putBoolean(key, value) }
         }
     }
 
@@ -82,11 +82,14 @@ class PreferencesManager(
 
     var disableTelemetry by booleanPreference("disable_telemetry", true)
 
+    var enableDriveDiscovery by booleanPreference("enable_drive_discovery", false)
+
     var customFirebaseApp by booleanPreference("custom_firebase_app")
 
     fun toConfig(): io.github.s1ddhants1.swiftbackupprem.model.SbpConfig = io.github.s1ddhants1.swiftbackupprem.model.SbpConfig(
         enablePremium = enablePremium,
         disableTelemetry = disableTelemetry,
+        enableDriveDiscovery = enableDriveDiscovery,
         customFirebaseApp = customFirebaseApp,
         googleAppId = googleAppId,
         googleApiKey = googleApiKey,
@@ -100,6 +103,7 @@ class PreferencesManager(
     fun applyConfig(config: io.github.s1ddhants1.swiftbackupprem.model.SbpConfig) {
         enablePremium = config.enablePremium
         disableTelemetry = config.disableTelemetry
+        enableDriveDiscovery = config.enableDriveDiscovery
         customFirebaseApp = config.customFirebaseApp
         googleAppId = config.googleAppId
         googleApiKey = config.googleApiKey

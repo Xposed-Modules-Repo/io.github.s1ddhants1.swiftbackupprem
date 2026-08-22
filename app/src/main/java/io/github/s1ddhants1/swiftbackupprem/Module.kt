@@ -12,6 +12,9 @@ import io.github.s1ddhants1.swiftbackupprem.hook.PremiumFeatureHook
 import io.github.s1ddhants1.swiftbackupprem.hook.ResolvedTargets
 import io.github.s1ddhants1.swiftbackupprem.hook.TargetClassResolver
 import io.github.s1ddhants1.swiftbackupprem.hook.TelemetrySuppressionHook
+import io.github.s1ddhants1.swiftbackupprem.hook.advanced.BackupRebuilderHook
+import io.github.s1ddhants1.swiftbackupprem.hook.advanced.CloudDiscoveryHook
+import io.github.s1ddhants1.swiftbackupprem.hook.advanced.GoogleDriveScopeHook
 import io.github.s1ddhants1.swiftbackupprem.util.PreferencesManager
 import io.github.s1ddhants1.swiftbackupprem.util.attempt
 
@@ -52,7 +55,6 @@ class Module : XposedModule() {
                 attempt("find obfuscated classes with DexKit") {
                     val appSourceDir = param.applicationInfo.sourceDir
                     targets = TargetClassResolver.resolve(ctx, cl, appSourceDir)
-                    syncLegacyDexKitGlobals(targets)
                 }
 
                 // 1. Initialize Firebase backend (custom or default)
@@ -65,8 +67,17 @@ class Module : XposedModule() {
                 // 3. Apply Authentication bypass
                 AuthBypassHook.apply(this, ctx, cl, targets, prefs)
 
-                // 4. Suppress telemetry and tracking
+                // 4. Upgrade Google Drive OAuth scopes for full cloud backup access
+                GoogleDriveScopeHook.apply(this, ctx, cl, targets, prefs)
+
+                // 5. Suppress telemetry and tracking
                 TelemetrySuppressionHook.apply(this, ctx, cl, targets, prefs)
+
+                // 6. Automated 1-Click Backup Rebuilder & Restorer
+                BackupRebuilderHook.apply(this, ctx, cl, targets, prefs)
+
+                // 7. Google Drive Cloud Discovery & Metadata Indexer
+                CloudDiscoveryHook.apply(this, ctx, cl, targets, prefs)
             }
 
             // Proceed with original SwiftApp.onCreate()
@@ -78,14 +89,5 @@ class Module : XposedModule() {
 
             result
         }
-    }
-
-    private fun syncLegacyDexKitGlobals(targets: ResolvedTargets) {
-        clientIdClass = targets.clientIdClass
-        vClass = targets.vClass
-        cloudGmsClass = targets.cloudGmsClass
-        homeViewModelClass = targets.homeViewModelClass
-        authUserClass = targets.authUserClass
-        anonUserClass = targets.anonUserClass
     }
 }

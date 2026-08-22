@@ -40,6 +40,7 @@ import io.github.libxposed.service.XposedService
 import io.github.libxposed.service.XposedServiceHelper
 import io.github.s1ddhants1.swiftbackupprem.ui.MainViewModel
 import io.github.s1ddhants1.swiftbackupprem.ui.component.AboutScreen
+import io.github.s1ddhants1.swiftbackupprem.ui.component.AdvancedSettingsCard
 import io.github.s1ddhants1.swiftbackupprem.ui.component.GuidedSetupWizard
 import io.github.s1ddhants1.swiftbackupprem.ui.component.SettingsSwitch
 import io.github.s1ddhants1.swiftbackupprem.ui.theme.Theme
@@ -97,6 +98,7 @@ class MainActivity : ComponentActivity() {
 
             var currentScreen by remember { mutableStateOf(AppScreen.Settings) }
             var showMenu by remember { mutableStateOf(false) }
+            var showGuidedWizard by remember { mutableStateOf(false) }
             val snackbarHostState = remember { SnackbarHostState() }
             val coroutineScope = rememberCoroutineScope()
 
@@ -401,6 +403,12 @@ class MainActivity : ComponentActivity() {
                                                 }
                                             }
                                         }
+
+                                        // Advanced & Experimental Section
+                                        AdvancedSettingsCard(
+                                            prefs = prefs,
+                                            isFrameworkConnected = state.isFrameworkConnected
+                                        )
                                     }
                                 }
                             }

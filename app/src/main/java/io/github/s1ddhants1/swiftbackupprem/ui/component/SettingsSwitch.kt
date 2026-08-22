@@ -56,7 +56,7 @@ fun SettingsSwitch(
         Switch(
             checked = if (enabled) pref else false,
             enabled = enabled,
-            onCheckedChange = { onPrefChange(!pref) }
+            onCheckedChange = onPrefChange
         )
     }
 }

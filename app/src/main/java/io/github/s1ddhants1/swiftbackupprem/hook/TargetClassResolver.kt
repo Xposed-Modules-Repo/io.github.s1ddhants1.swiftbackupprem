@@ -5,6 +5,7 @@ import android.util.Log
 import androidx.annotation.Keep
 import io.github.s1ddhants1.swiftbackupprem.Consts
 import io.github.s1ddhants1.swiftbackupprem.util.attempt
+import io.github.s1ddhants1.swiftbackupprem.util.loadClassFlexible
 import io.github.s1ddhants1.swiftbackupprem.versionMap
 import org.luckypray.dexkit.DexKitBridge
 import android.annotation.SuppressLint
@@ -22,13 +23,21 @@ object TargetClassResolver {
         var homeVm: Class<*>? = null
         var authUser: Class<*>? = null
         var anonUser: Class<*>? = null
+        var oauthHelper: Class<*>? = null
+        var authRequestBuilder: Class<*>? = null
+        var appBackup: Class<*>? = null
+        var appMetadataXml: Class<*>? = null
 
         val ver = Integer.valueOf(ctx.packageManager.getPackageInfo(Consts.packageName, 0).versionCode)
         versionMap[ver]?.let { classes ->
-            attempt("load clientIdClass from versionMap", silent = true) { clientId = cl.loadClass(classes.clientId) }
-            attempt("load homeViewModelClass from versionMap", silent = true) { homeVm = cl.loadClass(classes.homeViewModel) }
-            attempt("load authUserClass from versionMap", silent = true) { authUser = cl.loadClass(classes.authUser) }
-            attempt("load anonUserClass from versionMap", silent = true) { anonUser = cl.loadClass(classes.anonUser) }
+            clientId = loadClassFlexible(cl, classes.clientId)
+            homeVm = loadClassFlexible(cl, classes.homeViewModel)
+            authUser = loadClassFlexible(cl, classes.authUser)
+            anonUser = loadClassFlexible(cl, classes.anonUser)
+            oauthHelper = classes.oauthHelper?.let { loadClassFlexible(cl, it) }
+            authRequestBuilder = classes.authRequestBuilder?.let { loadClassFlexible(cl, it) }
+            appBackup = classes.appBackup?.let { loadClassFlexible(cl, it) }
+            appMetadataXml = classes.appMetadataXml?.let { loadClassFlexible(cl, it) }
         }
 
         attempt("load V class fallback", silent = true) {
@@ -45,9 +54,9 @@ object TargetClassResolver {
             }
         }
 
-        if (clientId != null && v != null && homeVm != null && authUser != null) {
+        if (clientId != null && v != null && homeVm != null && authUser != null && oauthHelper != null && authRequestBuilder != null) {
             Log.d("SBP", "Resolved Swift Backup hook classes without DexKit scan")
-            return ResolvedTargets(clientId, v, cloudGms, homeVm, authUser, anonUser)
+            return ResolvedTargets(clientId, v, cloudGms, homeVm, authUser, anonUser, oauthHelper, authRequestBuilder, appBackup, appMetadataXml)
         }
 
         attempt("load dexkit native library") {
@@ -202,6 +211,7 @@ object TargetClassResolver {
                     val candidates = bridge.findClass {
                         excludePackages(excludePackages)
                         matcher {
+                            usingStrings("clearAnonymousSignIn")
                             addMethod {
                                 returnType("org.swiftapps.swiftbackup.anonymous.MFirebaseUser")
                                 modifiers(Modifier.PUBLIC or Modifier.STATIC)
@@ -210,18 +220,58 @@ object TargetClassResolver {
                         }
                     }
                     val filtered = candidates.filter { !it.name.contains("$") }
-                    Log.d("SBP", "Found ${candidates.size} candidate(s) (${filtered.size} filtered) for authUserClass")
-                    val selected = when (filtered.size) {
-                        0 -> null
-                        1 -> filtered.single()
-                        else -> {
-                            Log.w("SBP", "Multiple authUserClass candidates (${filtered.size}): ${filtered.map { it.name }}")
-                            filtered.first()
-                        }
-                    }
+                    val selected = filtered.firstOrNull()
                     selected?.let {
                         authUser = it.getInstance(cl)
                         Log.d("SBP", "Found AuthUser class: ${it.name}")
+                    }
+                }
+
+                if (anonUser == null) {
+                    val candidates = bridge.findClass {
+                        excludePackages(excludePackages)
+                        matcher {
+                            usingStrings("anonymous@swiftbackup.app")
+                            addMethod {
+                                returnType("org.swiftapps.swiftbackup.anonymous.MFirebaseUser")
+                                modifiers(Modifier.PUBLIC or Modifier.STATIC)
+                                paramCount(0)
+                            }
+                        }
+                    }
+                    val filtered = candidates.filter { !it.name.contains("$") }
+                    val selected = filtered.firstOrNull()
+                    selected?.let {
+                        anonUser = it.getInstance(cl)
+                        Log.d("SBP", "Found AnonUser class: ${it.name}")
+                    }
+                }
+
+                if (oauthHelper == null) {
+                    val candidates = bridge.findClass {
+                        excludePackages(excludePackages)
+                        matcher {
+                            usingStrings("org.swiftapps.swiftbackup:/oauth")
+                        }
+                    }
+                    Log.d("SBP", "Found ${candidates.size} candidate(s) for oauthHelperClass")
+                    candidates.firstOrNull()?.let {
+                        oauthHelper = it.getInstance(cl)
+                        Log.d("SBP", "Found OAuth helper class: ${it.name}")
+                    }
+                }
+
+                if (authRequestBuilder == null) {
+                    val candidates = bridge.findClass {
+                        excludePackages(excludePackages)
+                        matcher {
+                            usingStrings("client ID cannot be null or empty")
+                        }
+                    }
+                    Log.d("SBP", "Found ${candidates.size} candidate(s) for authRequestBuilderClass")
+                    candidates.firstOrNull()?.let {
+                        authRequestBuilder = it.getInstance(cl)
+                        Log.d("SBP", "Found AuthRequestBuilder class: ${it.name}")
                     }
                 }
             }
@@ -233,6 +283,6 @@ object TargetClassResolver {
             Log.w("SBP", "Couldn't fully hook Swift Backup.")
         }
 
-        return ResolvedTargets(clientId, v, cloudGms, homeVm, authUser, anonUser)
+        return ResolvedTargets(clientId, v, cloudGms, homeVm, authUser, anonUser, oauthHelper, authRequestBuilder, appBackup)
     }
 }

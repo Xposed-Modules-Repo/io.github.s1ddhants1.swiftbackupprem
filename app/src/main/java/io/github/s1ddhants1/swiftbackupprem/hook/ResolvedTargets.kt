@@ -9,7 +9,11 @@ data class ResolvedTargets(
     val cloudGmsClass: Class<*>? = null,
     val homeViewModelClass: Class<*>? = null,
     val authUserClass: Class<*>? = null,
-    val anonUserClass: Class<*>? = null
+    val anonUserClass: Class<*>? = null,
+    val oauthHelperClass: Class<*>? = null,
+    val authRequestBuilderClass: Class<*>? = null,
+    val appBackupClass: Class<*>? = null,
+    val appMetadataXmlClass: Class<*>? = null
 ) {
     val isFullyResolved: Boolean
         get() = listOf(clientIdClass, vClass, homeViewModelClass, authUserClass).all { it != null }
