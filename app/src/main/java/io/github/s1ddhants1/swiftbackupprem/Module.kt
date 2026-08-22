@@ -31,7 +31,7 @@ class Module : XposedModule() {
         val prefs = PreferencesManager(remotePrefs, isDynamic = true)
         val cl = param.classLoader
 
-        ExitProtectionHook.apply(this)
+        ExitProtectionHook.applyEarly(this, cl)
 
         val swiftAppClass = attempt("load SwiftApp class") { cl.loadClass("org.swiftapps.swiftbackup.SwiftApp") } ?: return
         val onCreateMethod = attempt("find SwiftApp.onCreate") { swiftAppClass.getDeclaredMethod("onCreate") } ?: return
@@ -45,6 +45,7 @@ class Module : XposedModule() {
                     targets = TargetClassResolver.resolve(ctx, cl, param.applicationInfo.sourceDir)
                 }
 
+                ExitProtectionHook.apply(this, ctx, cl, targets, prefs)
                 FirebaseInitHook.apply(this, ctx, cl, targets, prefs)
                 PremiumFeatureHook.apply(this, ctx, cl, targets, prefs)
                 PremiumFeatureHook.hookSwiftAppPremium(this, chain.thisObject, prefs.enablePremium)
