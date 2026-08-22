@@ -21,7 +21,7 @@ import io.github.s1ddhants1.swiftbackupprem.util.PreferencesManager
 @Composable
 fun AdvancedSettingsCard(
     prefs: PreferencesManager,
-    isFrameworkConnected: Boolean,
+    isFrameworkConnected: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     var showAdvancedFeatures by remember { mutableStateOf(false) }
@@ -76,7 +76,6 @@ fun AdvancedSettingsCard(
                         label = stringResource(R.string.pref_enable_drive_discovery_title),
                         secondaryLabel = stringResource(R.string.pref_enable_drive_discovery_subtitle),
                         pref = prefs.enableDriveDiscovery,
-                        enabled = isFrameworkConnected,
                         onPrefChange = { prefs.enableDriveDiscovery = it }
                     )
 

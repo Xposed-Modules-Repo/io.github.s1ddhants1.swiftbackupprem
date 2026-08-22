@@ -74,7 +74,15 @@ class MainActivity : ComponentActivity() {
                         val version = attempt("get frameworkVersion", silent = true) { service.frameworkVersion } ?: ""
                         viewModel.onFrameworkConnected(name, version)
                         attempt("retrieve remote preferences from XposedService") {
-                            prefsState.value = PreferencesManager(service.getRemotePreferences(Consts.PREFS_SETTINGS))
+                            val remotePrefs = service.getRemotePreferences(Consts.PREFS_SETTINGS)
+                            val remoteMgr = PreferencesManager(remotePrefs, backupPrefs = localPrefs)
+                            val localMgr = PreferencesManager(localPrefs)
+                            if (remotePrefs.all.isEmpty()) {
+                                remoteMgr.applyConfig(localMgr.toConfig())
+                            } else {
+                                localMgr.applyConfig(remoteMgr.toConfig())
+                            }
+                            prefsState.value = remoteMgr
                         }
                     } else {
                         viewModel.onFrameworkDisconnected()
@@ -272,7 +280,6 @@ class MainActivity : ComponentActivity() {
                                                 label = stringResource(R.string.pref_enable_premium_title),
                                                 secondaryLabel = stringResource(R.string.pref_enable_premium_subtitle),
                                                 pref = prefs.enablePremium,
-                                                enabled = isConn,
                                                 onPrefChange = { prefs.enablePremium = it }
                                             )
 
@@ -285,7 +292,6 @@ class MainActivity : ComponentActivity() {
                                                 label = stringResource(R.string.pref_disable_telemetry_title),
                                                 secondaryLabel = stringResource(R.string.pref_disable_telemetry_subtitle),
                                                 pref = prefs.disableTelemetry,
-                                                enabled = isConn,
                                                 onPrefChange = { prefs.disableTelemetry = it }
                                             )
 
@@ -298,12 +304,11 @@ class MainActivity : ComponentActivity() {
                                                 label = stringResource(R.string.pref_custom_firebase_title),
                                                 secondaryLabel = stringResource(R.string.pref_custom_firebase_subtitle),
                                                 pref = prefs.customFirebaseApp,
-                                                enabled = isConn,
                                                 onPrefChange = { prefs.customFirebaseApp = it }
                                             )
 
                                             AnimatedVisibility(
-                                                visible = isConn && prefs.customFirebaseApp,
+                                                visible = prefs.customFirebaseApp,
                                                 enter = expandVertically() + fadeIn(),
                                                 exit = shrinkVertically() + fadeOut()
                                             ) {

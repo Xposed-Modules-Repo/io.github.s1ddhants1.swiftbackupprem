@@ -13,7 +13,8 @@ import kotlin.reflect.KProperty
 @Stable
 class PreferencesManager(
     private val prefs: SharedPreferences?,
-    private val isDynamic: Boolean = false
+    private val isDynamic: Boolean = false,
+    private val backupPrefs: SharedPreferences? = null
 ) {
     private class Preference<T>(
         private val isDynamic: Boolean,
@@ -38,10 +39,16 @@ class PreferencesManager(
     private fun getBoolean(key: String, defaultValue: Boolean) = prefs?.getBoolean(key, defaultValue) ?: defaultValue
 
     private fun putString(key: String, value: String?) {
-        attempt("save preference string $key", silent = true) { prefs?.edit(commit = true) { putString(key, value) } }
+        attempt("save preference string $key", silent = true) {
+            prefs?.edit(commit = true) { putString(key, value) }
+            backupPrefs?.edit(commit = true) { putString(key, value) }
+        }
     }
     private fun putBoolean(key: String, value: Boolean) {
-        attempt("save preference boolean $key", silent = true) { prefs?.edit(commit = true) { putBoolean(key, value) } }
+        attempt("save preference boolean $key", silent = true) {
+            prefs?.edit(commit = true) { putBoolean(key, value) }
+            backupPrefs?.edit(commit = true) { putBoolean(key, value) }
+        }
     }
 
     private fun stringPreference(key: String) =

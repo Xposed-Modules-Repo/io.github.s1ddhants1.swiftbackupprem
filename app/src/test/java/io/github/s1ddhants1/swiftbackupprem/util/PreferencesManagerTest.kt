@@ -49,4 +49,49 @@ class PreferencesManagerTest {
         assertEquals("test-project", prefs.projectId)
         assertEquals("test-client-id", prefs.clientId)
     }
+
+    @Test
+    fun mutatingPreferencesWritesToBothPrimaryAndBackupPreferences() {
+        val primary = FakeSharedPreferences()
+        val backup = FakeSharedPreferences()
+        val prefs = PreferencesManager(primary, backupPrefs = backup)
+
+        prefs.enablePremium = false
+        prefs.projectId = "synced-project"
+
+        assertEquals(false, primary.getBoolean("enable_premium", true))
+        assertEquals(false, backup.getBoolean("enable_premium", true))
+        assertEquals("synced-project", primary.getString("project_id", ""))
+        assertEquals("synced-project", backup.getString("project_id", ""))
+    }
+
+    private class FakeSharedPreferences : android.content.SharedPreferences {
+        val map = mutableMapOf<String, Any?>()
+
+        override fun getAll(): Map<String, *> = map
+        override fun getString(key: String, defValue: String?): String? = map[key] as? String ?: defValue
+        override fun getStringSet(key: String, defValues: Set<String>?): Set<String>? = map[key] as? Set<String> ?: defValues
+        override fun getInt(key: String, defValue: Int): Int = map[key] as? Int ?: defValue
+        override fun getLong(key: String, defValue: Long): Long = map[key] as? Long ?: defValue
+        override fun getFloat(key: String, defValue: Float): Float = map[key] as? Float ?: defValue
+        override fun getBoolean(key: String, defValue: Boolean): Boolean = map[key] as? Boolean ?: defValue
+        override fun contains(key: String): Boolean = map.containsKey(key)
+        override fun edit(): android.content.SharedPreferences.Editor = FakeEditor(this)
+        override fun registerOnSharedPreferenceChangeListener(listener: android.content.SharedPreferences.OnSharedPreferenceChangeListener?) {}
+        override fun unregisterOnSharedPreferenceChangeListener(listener: android.content.SharedPreferences.OnSharedPreferenceChangeListener?) {}
+
+        private class FakeEditor(private val sp: FakeSharedPreferences) : android.content.SharedPreferences.Editor {
+            private val temp = mutableMapOf<String, Any?>()
+            override fun putString(key: String, value: String?): android.content.SharedPreferences.Editor { temp[key] = value; return this }
+            override fun putStringSet(key: String, values: Set<String>?): android.content.SharedPreferences.Editor { temp[key] = values; return this }
+            override fun putInt(key: String, value: Int): android.content.SharedPreferences.Editor { temp[key] = value; return this }
+            override fun putLong(key: String, value: Long): android.content.SharedPreferences.Editor { temp[key] = value; return this }
+            override fun putFloat(key: String, value: Float): android.content.SharedPreferences.Editor { temp[key] = value; return this }
+            override fun putBoolean(key: String, value: Boolean): android.content.SharedPreferences.Editor { temp[key] = value; return this }
+            override fun remove(key: String): android.content.SharedPreferences.Editor { temp.remove(key); return this }
+            override fun clear(): android.content.SharedPreferences.Editor { temp.clear(); return this }
+            override fun commit(): Boolean { sp.map.putAll(temp); return true }
+            override fun apply() { sp.map.putAll(temp) }
+        }
+    }
 }
