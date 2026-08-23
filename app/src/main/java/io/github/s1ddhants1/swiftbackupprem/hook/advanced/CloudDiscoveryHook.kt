@@ -575,7 +575,7 @@ object CloudDiscoveryHook : HookHandler {
         val fileList = queryDriveFolderFiles(folderId, token)
         if (fileList.length() == 0) return 0
 
-        val regex = Pattern.compile("^(.*?)\\.([a-z]+)\\s+\\((.*?)\\)\\s+\\(id-(.*?)\\)$")
+        val regex = Pattern.compile("^(.*?)\\.(app|dat|extdat|splits|extra|med)\\s+\\((.*?)\\)\\s+\\(id-(.*?)\\)$")
         val groups = mutableMapOf<Triple<String, String, String>, MutableMap<String, JSONObject>>()
 
         for (i in 0 until fileList.length()) {
@@ -657,7 +657,12 @@ object CloudDiscoveryHook : HookHandler {
                 permissionStatesCsv = permissionStatesCsv,
                 notificationPolicyXml = notificationPolicyXml
             )
-            discoveredBackups[pkg] = discovered
+            val existing = discoveredBackups[pkg]
+            if (existing == null ||
+                (discovered.dataSize > 0L && existing.dataSize == 0L) ||
+                (discovered.totalSize > existing.totalSize && (discovered.dataSize > 0L || existing.dataSize == 0L))) {
+                discoveredBackups[pkg] = discovered
+            }
             syncToFirebaseRealtimeDb(classLoader, tag, sanitizedAppId, backupId, discovered)
             indexedCount++
         }

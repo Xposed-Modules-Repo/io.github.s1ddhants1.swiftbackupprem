@@ -237,13 +237,26 @@ object BackupRebuilderHook : HookHandler {
             put("versionName", "1.0")
             put("dateBackup", now)
             put("dateBackupUpdated", now)
+            put("minSBVersionCodeRequired", 580L)
+            put("keyVersion", 1)
 
             slices.forEach { (slice, file) ->
                 if (file.exists()) {
                     slice.dateKey?.let { put(it, now) }
                     put(slice.sizeKey, file.length())
-                    slice.encryptedKey?.let { put(it, true) }
-                    slice.encryptionMethodKey?.let { put(it, "StandardEncryption") }
+                    if (slice.encryptedKey != null) {
+                        put(slice.encryptedKey, true)
+                        put(slice.encryptionMethodKey!!, "StandardEncryption")
+                        val reqPrefix = when (slice.suffix) {
+                            "app" -> "apk"
+                            "dat" -> "data"
+                            "extdat" -> "extData"
+                            "med" -> "media"
+                            else -> slice.suffix
+                        }
+                        put("${reqPrefix}SBVersionCodeRequired", 580L)
+                        put("${reqPrefix}SBVersionNameRequired", "v4.2.3")
+                    }
                 }
             }
 

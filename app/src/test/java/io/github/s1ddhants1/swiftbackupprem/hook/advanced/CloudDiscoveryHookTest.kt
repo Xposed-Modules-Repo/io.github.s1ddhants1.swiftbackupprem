@@ -8,7 +8,7 @@ class CloudDiscoveryHookTest {
 
     @Test
     fun testDriveBackupFileNameRegex() {
-        val regex = Pattern.compile("^(.*?)\\.([a-z]+)\\s+\\((.*?)\\)\\s+\\(id-(.*?)\\)$")
+        val regex = Pattern.compile("^(.*?)\\.(app|dat|extdat|splits|extra|med)\\s+\\((.*?)\\)\\s+\\(id-(.*?)\\)$")
 
         val fileName1 = "com.dv.adm.app (CPH2573) (id-20260821-232918-NK)"
         val matcher1 = regex.matcher(fileName1)
@@ -25,6 +25,14 @@ class CloudDiscoveryHookTest {
         assertEquals("extra", matcher2.group(2))
         assertEquals("CPH2573", matcher2.group(3))
         assertEquals("20260822-040206-WD", matcher2.group(4))
+
+        val fileName3 = "com.meld.app.app (CPH2573) (id-20260824-012623-FQ)"
+        val matcher3 = regex.matcher(fileName3)
+        assertTrue(matcher3.matches())
+        assertEquals("com.meld.app", matcher3.group(1))
+        assertEquals("app", matcher3.group(2))
+        assertEquals("CPH2573", matcher3.group(3))
+        assertEquals("20260824-012623-FQ", matcher3.group(4))
     }
 
     @Test
