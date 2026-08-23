@@ -122,10 +122,40 @@ object BackupRebuilderHook : HookHandler {
         }
     }
 
+    fun resolveAppLabel(context: Context?, pkgName: String, backupDir: File? = null): String {
+        if (context != null) {
+            attempt("resolve label for installed $pkgName", silent = true) {
+                val pm = context.packageManager
+                val appInfo = pm.getApplicationInfo(pkgName, 0)
+                val label = pm.getApplicationLabel(appInfo).toString()
+                if (label.isNotBlank()) return label
+            }
+            if (backupDir != null && backupDir.exists()) {
+                val apkFile = File(backupDir, "$pkgName.app").takeIf { it.exists() }
+                    ?: File(backupDir, "$pkgName.apk").takeIf { it.exists() }
+                if (apkFile != null) {
+                    attempt("resolve label from apk $pkgName", silent = true) {
+                        val pm = context.packageManager
+                        val info = pm.getPackageArchiveInfo(apkFile.absolutePath, 0)
+                        val appInfo = info?.applicationInfo
+                        if (appInfo != null) {
+                            appInfo.sourceDir = apkFile.absolutePath
+                            appInfo.publicSourceDir = apkFile.absolutePath
+                            val label = pm.getApplicationLabel(appInfo).toString()
+                            if (label.isNotBlank()) return label
+                        }
+                    }
+                }
+            }
+        }
+        return pkgName
+    }
+
     fun rebuildFromBackupInstance(
         backupInstance: Any,
         classLoader: ClassLoader,
-        targets: ResolvedTargets
+        targets: ResolvedTargets,
+        context: Context? = null
     ): Boolean = attempt("rebuildFromBackupInstance", silent = true) {
         val backupId = backupInstance.javaClass.getDeclaredField("a").apply { isAccessible = true }.get(backupInstance) as? String ?: return false
         val pkgName = backupInstance.javaClass.getDeclaredField("b").apply { isAccessible = true }.get(backupInstance) as? String ?: return false
@@ -133,13 +163,13 @@ object BackupRebuilderHook : HookHandler {
         val accountsDir = File(Environment.getExternalStorageDirectory(), "SwiftBackup/accounts")
         if (!accountsDir.exists()) return false
 
-        val candidateUids = CloudDiscoveryHook.resolveCandidateUids(null, classLoader, targets)
+        val candidateUids = CloudDiscoveryHook.resolveCandidateUids(context, classLoader, targets)
         val primaryUid = candidateUids.firstOrNull() ?: "default_uid"
         var rebuilt = false
 
         accountsDir.listFiles { file -> file.isDirectory }?.forEach { accountFolder ->
             val backupDir = File(accountFolder, "backups/apps/local/$pkgName/$backupId")
-            if (backupDir.isDirectory && rebuildBackupDirectory(backupDir, pkgName, backupId, classLoader, targets, primaryUid)) {
+            if (backupDir.isDirectory && rebuildBackupDirectory(backupDir, pkgName, backupId, classLoader, targets, primaryUid, context)) {
                 rebuilt = true
             }
         }
@@ -163,7 +193,7 @@ object BackupRebuilderHook : HookHandler {
             if (appsLocalDir.isDirectory) {
                 appsLocalDir.listFiles { f -> f.isDirectory }?.forEach { pkgFolder ->
                     pkgFolder.listFiles { f -> f.isDirectory }?.forEach { backupDir ->
-                        if (rebuildBackupDirectory(backupDir, pkgFolder.name, backupDir.name, classLoader, targets, primaryUid)) {
+                        if (rebuildBackupDirectory(backupDir, pkgFolder.name, backupDir.name, classLoader, targets, primaryUid, context)) {
                             totalRebuilt++
                         }
                     }
@@ -182,7 +212,8 @@ object BackupRebuilderHook : HookHandler {
         backupId: String,
         classLoader: ClassLoader,
         targets: ResolvedTargets,
-        activeUid: String
+        activeUid: String,
+        context: Context? = null
     ): Boolean {
         val xmlFile = File(backupDir, "$pkgName.xml")
         if (xmlFile.exists() && xmlFile.length() > 0) return false
@@ -204,12 +235,14 @@ object BackupRebuilderHook : HookHandler {
         var permissionStatesCsv: String? = null
         var notificationPolicyXml: String? = null
         var resolvedUid = activeUid
+        var versionCode = 1L
+        var versionName = "1.0"
 
         if (extraFile.exists() && extraFile.length() > 0) {
             attempt("decrypt .extra file") {
                 val parts = extraFile.readText(StandardCharsets.UTF_8).trim().split(":::").filter { it.isNotBlank() }
                 if (parts.size >= 3) {
-                    val candidateUids = CloudDiscoveryHook.resolveCandidateUids(null, classLoader, targets)
+                    val candidateUids = CloudDiscoveryHook.resolveCandidateUids(context, classLoader, targets)
                     for (candUid in candidateUids) {
                         try {
                             val key = deriveConcealKey(candUid)
@@ -220,6 +253,8 @@ object BackupRebuilderHook : HookHandler {
                                 if (json.has("ssaid")) ssaid = json.optString("ssaid")
                                 if (json.has("permissionStatesCsv")) permissionStatesCsv = json.optString("permissionStatesCsv")
                                 if (json.has("notificationPolicyXml")) notificationPolicyXml = json.optString("notificationPolicyXml")
+                                if (json.has("versionCode")) versionCode = json.optLong("versionCode", 1L)
+                                if (json.has("versionName")) versionName = json.optString("versionName", "1.0")
                                 resolvedUid = candUid
                                 break
                             }
@@ -229,12 +264,27 @@ object BackupRebuilderHook : HookHandler {
             }
         }
 
+        if (context != null) {
+            val apkFile = File(backupDir, "$pkgName.app").takeIf { it.exists() }
+                ?: File(backupDir, "$pkgName.apk").takeIf { it.exists() }
+            if (apkFile != null) {
+                attempt("read version info from apk", silent = true) {
+                    val info = context.packageManager.getPackageArchiveInfo(apkFile.absolutePath, 0)
+                    if (info != null) {
+                        versionCode = info.longVersionCode
+                        if (!info.versionName.isNullOrBlank()) versionName = info.versionName!!
+                    }
+                }
+            }
+        }
+
+        val appName = resolveAppLabel(context, pkgName, backupDir)
         val now = System.currentTimeMillis()
         val metaJson = JSONObject().apply {
             put("packageName", pkgName)
-            put("name", pkgName)
-            put("versionCode", 1L)
-            put("versionName", "1.0")
+            put("name", appName)
+            put("versionCode", versionCode)
+            put("versionName", versionName)
             put("dateBackup", now)
             put("dateBackupUpdated", now)
             put("minSBVersionCodeRequired", 580L)
@@ -273,7 +323,7 @@ object BackupRebuilderHook : HookHandler {
         xmlFile.setReadable(true, false)
         xmlFile.setWritable(true, false)
 
-        logI("Successfully generated $pkgName.xml for $pkgName ($backupId)")
+        logI("Successfully generated $pkgName.xml for $appName ($pkgName / $backupId)")
         return true
     }
 

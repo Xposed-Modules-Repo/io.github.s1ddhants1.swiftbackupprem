@@ -32,18 +32,16 @@ object PremiumFeatureHook : HookHandler {
                 val liveDataObj = attempt("read field ${field.name}", silent = true) { field.get(swiftApp) } ?: continue
                 val ldClass = liveDataObj.javaClass
 
-                val isTarget = field.name == "a" || field.name == "mutablePremium" ||
-                        ldClass.name.contains("LiveData") || ldClass.superclass?.name?.contains("LiveData") == true ||
-                        ldClass.name == "defpackage.ex6" || ldClass.name == "el.a"
+                val isTarget = field.name == "a" || field.name == "mutablePremium"
 
                 if (isTarget) {
                     for (m in ldClass.methods) {
-                        if (m.parameterCount == 1 && m.name in listOf("k", "setValue", "postValue", "i", "l", "p")) {
+                        if (m.parameterCount == 1 && m.name in listOf("k", "setValue", "postValue")) {
                             attempt("invoke LiveData setter ${m.name}", silent = true) { m.invoke(liveDataObj, isPremium) }
                         }
                     }
                     for (m in ldClass.declaredMethods) {
-                        if (m.parameterCount == 1) {
+                        if (m.parameterCount == 1 && m.name in listOf("k", "setValue", "postValue")) {
                             attempt("hook LiveData setter ${m.name}") {
                                 module.hookTracked(m).intercept { chain ->
                                     if (chain.thisObject === liveDataObj && (chain.getArg(0) is Boolean || chain.getArg(0) == null)) {
