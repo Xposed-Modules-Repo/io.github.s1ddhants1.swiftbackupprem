@@ -5,13 +5,15 @@ import io.github.libxposed.api.XposedModule
 import io.github.s1ddhants1.swiftbackupprem.Module
 import java.lang.reflect.Executable
 
+private val HOOK_ID_SANITIZER = Regex("[^A-Za-z0-9_.#-]")
+
 fun XposedModule.hookTracked(
     executable: Executable,
     idPrefix: String = "${executable.declaringClass.name}#${executable.name}"
 ): XposedInterface.HookBuilder {
     val params = executable.parameterTypes.joinToString(",") { it.name }
     val sig = "${executable.declaringClass.name}#${executable.name}($params)"
-    val hookId = "${idPrefix.replace(Regex("[^A-Za-z0-9_.#-]"), "_")}:${sig.hashCode().toUInt().toString(16)}"
+    val hookId = "${idPrefix.replace(HOOK_ID_SANITIZER, "_")}:${sig.hashCode().toUInt().toString(16)}"
 
     val builder = hook(executable).setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
     if (apiVersion >= XposedInterface.API_102) builder.setId(hookId)

@@ -13,6 +13,11 @@ object TelemetrySuppressionHook : HookHandler {
     private val CRASH_METHODS = setOf("log", "logException", "logFatalException", "openSession", "writeToLog", "finalizeSessions", "installHandler")
     private val SESSION_METHODS = setOf("register", "appForeground", "appBackground", "logSession", "attemptLoggingSessionEvent")
 
+    private val COMBINED_CLASSES = setOf(
+        "com.google.firebase.crashlytics.FirebaseCrashlytics",
+        "com.google.firebase.analytics.FirebaseAnalytics"
+    )
+
     val nullTargets: Map<String, Set<String>> = mapOf(
         "com.google.android.datatransport.runtime.TransportRuntime" to setOf("send"),
         "com.google.android.datatransport.runtime.scheduling.jobscheduling.Uploader" to SCHEDULER_METHODS,
@@ -41,6 +46,7 @@ object TelemetrySuppressionHook : HookHandler {
         Log.d(Consts.TAG, "Applying telemetry, analytics, and tracking suppression")
 
         for ((className, methods) in nullTargets) {
+            if (className in COMBINED_CLASSES) continue
             hookMethodsNull(module, classLoader, className) { it in methods }
         }
 
@@ -52,15 +58,42 @@ object TelemetrySuppressionHook : HookHandler {
             hookMethodsNull(module, classLoader, name) { it.startsWith("logEvent") || it.startsWith("setUserProperty") }
         }
 
-        for (className in listOf("com.google.firebase.crashlytics.FirebaseCrashlytics", "com.google.firebase.analytics.FirebaseAnalytics")) {
-            attempt("hook collection enable in $className", silent = true) {
-                val clazz = classLoader.loadClass(className)
-                for (m in clazz.declaredMethods) {
-                    if (m.name.startsWith("set") && m.name.endsWith("CollectionEnabled")) {
-                        module.hookTracked(m).intercept { chain ->
-                            if (chain.args.isNotEmpty()) chain.proceed(arrayOf(java.lang.Boolean.FALSE)) else chain.proceed()
+        // Combined: FirebaseCrashlytics — null-return + collection disable + checkForUnsentReports (single class load)
+        val crashlyticsNullMethods = nullTargets["com.google.firebase.crashlytics.FirebaseCrashlytics"] ?: emptySet()
+        attempt("hook FirebaseCrashlytics (combined)", silent = true) {
+            val clazz = classLoader.loadClass("com.google.firebase.crashlytics.FirebaseCrashlytics")
+            val tasksClass = classLoader.loadClass("com.google.android.gms.tasks.Tasks")
+            val falseTask = tasksClass.getMethod("forResult", Any::class.java).invoke(null, java.lang.Boolean.FALSE)
+            for (m in clazz.declaredMethods) {
+                when {
+                    m.name in crashlyticsNullMethods ->
+                        attempt("hook ${m.name}", silent = true) { module.hookTracked(m).intercept { null } }
+                    m.name.startsWith("set") && m.name.endsWith("CollectionEnabled") ->
+                        attempt("hook ${m.name}", silent = true) {
+                            module.hookTracked(m).intercept { chain ->
+                                if (chain.args.isNotEmpty()) chain.proceed(arrayOf(java.lang.Boolean.FALSE)) else chain.proceed()
+                            }
                         }
-                    }
+                    m.name == "checkForUnsentReports" ->
+                        attempt("hook ${m.name}", silent = true) { module.hookTracked(m).intercept { falseTask } }
+                }
+            }
+        }
+
+        // Combined: FirebaseAnalytics — null-return + collection disable (single class load)
+        val analyticsNullMethods = nullTargets["com.google.firebase.analytics.FirebaseAnalytics"] ?: emptySet()
+        attempt("hook FirebaseAnalytics (combined)", silent = true) {
+            val clazz = classLoader.loadClass("com.google.firebase.analytics.FirebaseAnalytics")
+            for (m in clazz.declaredMethods) {
+                when {
+                    m.name in analyticsNullMethods ->
+                        attempt("hook ${m.name}", silent = true) { module.hookTracked(m).intercept { null } }
+                    m.name.startsWith("set") && m.name.endsWith("CollectionEnabled") ->
+                        attempt("hook ${m.name}", silent = true) {
+                            module.hookTracked(m).intercept { chain ->
+                                if (chain.args.isNotEmpty()) chain.proceed(arrayOf(java.lang.Boolean.FALSE)) else chain.proceed()
+                            }
+                        }
                 }
             }
         }
@@ -92,16 +125,7 @@ object TelemetrySuppressionHook : HookHandler {
             }
         }
 
-        attempt("hook checkForUnsentReports", silent = true) {
-            val crashlyticsClass = classLoader.loadClass("com.google.firebase.crashlytics.FirebaseCrashlytics")
-            val tasksClass = classLoader.loadClass("com.google.android.gms.tasks.Tasks")
-            val falseTask = tasksClass.getMethod("forResult", Any::class.java).invoke(null, java.lang.Boolean.FALSE)
-            for (m in crashlyticsClass.declaredMethods) {
-                if (m.name == "checkForUnsentReports") {
-                    module.hookTracked(m).intercept { falseTask }
-                }
-            }
-        }
+
     }
 
     private fun hookMethodsNull(

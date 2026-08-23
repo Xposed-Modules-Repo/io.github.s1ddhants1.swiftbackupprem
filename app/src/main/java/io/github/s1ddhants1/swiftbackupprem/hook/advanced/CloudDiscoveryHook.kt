@@ -39,6 +39,9 @@ object CloudDiscoveryHook : HookHandler {
     val discoveredBackups = ConcurrentHashMap<String, DiscoveredCloudApp>()
     private val mainHandler by lazy { Handler(Looper.getMainLooper()) }
     private val isScanRunning = AtomicBoolean(false)
+    private val scanExecutor = java.util.concurrent.Executors.newSingleThreadExecutor { r ->
+        Thread(r, "SBP-CloudDiscovery").apply { isDaemon = true }
+    }
 
     data class DiscoveredCloudApp(
         val packageName: String,
@@ -136,8 +139,8 @@ object CloudDiscoveryHook : HookHandler {
     }
 
     fun startDriveScanWithRetry(context: Context, classLoader: ClassLoader, targets: ResolvedTargets) {
-        Thread {
-            if (!isScanRunning.compareAndSet(false, true)) return@Thread
+        if (!isScanRunning.compareAndSet(false, true)) return
+        scanExecutor.execute {
             try {
                 for (delay in longArrayOf(500L, 2000L, 5000L, 10000L)) {
                     try {
@@ -154,7 +157,7 @@ object CloudDiscoveryHook : HookHandler {
             } finally {
                 isScanRunning.set(false)
             }
-        }.start()
+        }
     }
 
     private fun ensureScan(context: Context, classLoader: ClassLoader, targets: ResolvedTargets) {
@@ -756,37 +759,6 @@ object CloudDiscoveryHook : HookHandler {
         val uids = LinkedHashSet<String>()
 
         for (className in listOf("d45", "b45")) {
-            attempt("resolve UID via $className", silent = true) {
-                val user = loadClassFlexible(classLoader, className)?.getDeclaredMethod("a")?.invoke(null)
-                val uid = user?.javaClass?.getDeclaredMethod("getUid")?.invoke(user) as? String
-                if (!uid.isNullOrBlank()) uids.add(uid)
-            }
-        }
-
-        attempt("resolve UID via FirebaseAuth", silent = true) {
-            val fbAuthClass = classLoader.loadClass("com.google.firebase.auth.FirebaseAuth")
-            val authInstance = fbAuthClass.getDeclaredMethod("getInstance").invoke(null)
-            val currentUser = authInstance?.let { fbAuthClass.getDeclaredMethod("getCurrentUser").invoke(it) }
-            val uid = currentUser?.let { it.javaClass.getDeclaredMethod("getUid").invoke(it) as? String }
-            if (!uid.isNullOrBlank()) uids.add(uid)
-        }
-
-        attempt("resolve UIDs from shared_prefs Store XMLs", silent = true) {
-            val sharedPrefsDir = if (context != null) File(context.filesDir?.parentFile, "shared_prefs") else File("/data/data/org.swiftapps.swiftbackup/shared_prefs")
-            if (sharedPrefsDir.exists()) {
-                sharedPrefsDir.listFiles { file -> file.name.startsWith("com.google.firebase.auth.api.Store") }?.forEach { storeFile ->
-                    val matcher = Pattern.compile("com\\.google\\.firebase\\.auth\\.GET_TOKEN_RESPONSE\\.([a-zA-Z0-9_-]+)").matcher(storeFile.readText(StandardCharsets.UTF_8))
-                    while (matcher.find()) {
-                        val uid = matcher.group(1)
-                        if (!uid.isNullOrBlank()) uids.add(uid)
-                    }
-                }
-            }
-        }
-
-        return uids.toList()
-    }
-}
             attempt("resolve UID via $className", silent = true) {
                 val user = loadClassFlexible(classLoader, className)?.getDeclaredMethod("a")?.invoke(null)
                 val uid = user?.javaClass?.getDeclaredMethod("getUid")?.invoke(user) as? String

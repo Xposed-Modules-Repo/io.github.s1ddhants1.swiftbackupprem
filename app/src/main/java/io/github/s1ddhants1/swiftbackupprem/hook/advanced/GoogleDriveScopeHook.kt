@@ -83,7 +83,7 @@ object GoogleDriveScopeHook : HookHandler {
         if (clazz == null) return
         attempt("hook AuthRequestBuilder methods (${clazz.name})") {
             for (m in clazz.declaredMethods) {
-                if (m.returnType != Void.TYPE && m.parameterCount == 0) {
+                if (m.returnType != Void.TYPE && m.parameterCount == 0 && m.returnType != clazz) {
                     module.hookTracked(m).intercept { chain ->
                         val target = chain.thisObject
                         if (target != null) {

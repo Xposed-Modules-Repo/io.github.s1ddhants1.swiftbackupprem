@@ -36,6 +36,10 @@ object BackupRebuilderHook : HookHandler {
     private fun logE(msg: String) { try { Log.e(TAG, "[BackupRebuilder] $msg") } catch (_: Throwable) {} }
     private fun logD(msg: String) { try { Log.d(TAG, "[BackupRebuilder] $msg") } catch (_: Throwable) {} }
 
+    private val rebuildExecutor = java.util.concurrent.Executors.newSingleThreadScheduledExecutor { r ->
+        Thread(r, "SBP-BackupRebuilder").apply { isDaemon = true }
+    }
+
     private data class BackupSlice(
         val suffix: String,
         val dateKey: String? = null,
@@ -66,14 +70,13 @@ object BackupRebuilderHook : HookHandler {
             hookAppBackupMetadata(module, appBackupClass, classLoader, targets)
         }
 
-        Thread {
+        rebuildExecutor.schedule({
             try {
-                Thread.sleep(2000)
                 rebuildAllLocalBackups(context, classLoader, targets)
             } catch (t: Throwable) {
                 logE("Startup backup scan error: ${t.message}")
             }
-        }.start()
+        }, 2, java.util.concurrent.TimeUnit.SECONDS)
     }
 
     private fun hookAppBackupValidity(

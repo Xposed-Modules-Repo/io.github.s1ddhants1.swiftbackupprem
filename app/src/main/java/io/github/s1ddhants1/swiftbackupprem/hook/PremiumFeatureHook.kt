@@ -21,7 +21,7 @@ object PremiumFeatureHook : HookHandler {
 
         targets.vClass?.let { hookVClass(module, it, isPremium) }
         targets.homeViewModelClass?.let { hookHomeViewModelClass(module, it, isPremium) }
-        hookKnownClasses(module, classLoader, isPremium)
+        hookKnownClasses(module, classLoader, isPremium, targets.vClass)
     }
 
     fun hookSwiftAppPremium(module: XposedModule, swiftApp: Any?, isPremium: Boolean) {
@@ -62,9 +62,11 @@ object PremiumFeatureHook : HookHandler {
         }
     }
 
-    private fun hookKnownClasses(module: XposedModule, cl: ClassLoader, isPremium: Boolean) {
-        attempt("load and hook known V class fallback", silent = true) {
-            hookVClass(module, cl.loadClass("org.swiftapps.swiftbackup.common.V"), isPremium)
+    private fun hookKnownClasses(module: XposedModule, cl: ClassLoader, isPremium: Boolean, resolvedVClass: Class<*>?) {
+        if (resolvedVClass?.name != "org.swiftapps.swiftbackup.common.V") {
+            attempt("load and hook known V class fallback", silent = true) {
+                hookVClass(module, cl.loadClass("org.swiftapps.swiftbackup.common.V"), isPremium)
+            }
         }
         attempt("load and hook known V\$a class", silent = true) {
             val vClassA = cl.loadClass("org.swiftapps.swiftbackup.common.V\$a")

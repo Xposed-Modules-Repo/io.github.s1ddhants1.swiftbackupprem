@@ -7,9 +7,12 @@ import io.github.libxposed.api.XposedModule
 import io.github.s1ddhants1.swiftbackupprem.Consts
 import io.github.s1ddhants1.swiftbackupprem.util.PreferencesManager
 import io.github.s1ddhants1.swiftbackupprem.util.attempt
+import java.util.concurrent.atomic.AtomicBoolean
 
 @Keep
 object ExitProtectionHook : HookHandler {
+
+    private val hooked = AtomicBoolean(false)
 
     override fun apply(
         module: XposedModule,
@@ -26,6 +29,7 @@ object ExitProtectionHook : HookHandler {
     }
 
     private fun neutralizeSystemExit(module: XposedModule) {
+        if (!hooked.compareAndSet(false, true)) return
         attempt("neutralize System.exit", silent = true) {
             val m = System::class.java.getDeclaredMethod("exit", Int::class.javaPrimitiveType)
             module.hookTracked(m).intercept { chain ->
