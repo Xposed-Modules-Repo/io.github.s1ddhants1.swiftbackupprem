@@ -20,29 +20,28 @@ object FirebaseInitHook : HookHandler {
         prefs: PreferencesManager
     ) {
         val isCustom = prefs.customFirebaseApp && prefs.toConfig().isCompleteFirebaseConfig
+        if (!isCustom) return
 
         attempt("initialize FirebaseApp") {
             val fbAppClass = classLoader.loadClass("com.google.firebase.FirebaseApp")
             val optClass = classLoader.loadClass("com.google.firebase.FirebaseOptions")
             val ctor = optClass.getDeclaredConstructor(*Array(7) { String::class.java })
 
-            val appId = if (isCustom) prefs.googleAppId else getResourceString(context, "google_app_id", "1:65312358122:android:ea39a9e3952e6522")
-            val apiKey = if (isCustom) prefs.googleApiKey else getResourceString(context, "google_api_key", "")
-            val dbUrl = if (isCustom) prefs.firebaseDatabaseUrl else getResourceString(context, "firebase_database_url", "https://swift-backup-31751.firebaseio.com")
-            val senderId = if (isCustom) prefs.gcmDefaultSenderId else getResourceString(context, "gcm_defaultSenderId", "65312358122")
-            val storageBucket = if (isCustom) (prefs.googleStorageBucket.ifBlank { "${prefs.projectId}.appspot.com" }) else getResourceString(context, "google_storage_bucket", "swift-backup-31751.appspot.com")
-            val projectId = if (isCustom) prefs.projectId else getResourceString(context, "project_id", "swift-backup-31751")
+            val appId = prefs.googleAppId
+            val apiKey = prefs.googleApiKey
+            val dbUrl = prefs.firebaseDatabaseUrl
+            val senderId = prefs.gcmDefaultSenderId
+            val storageBucket = prefs.googleStorageBucket.ifBlank { "${prefs.projectId}.appspot.com" }
+            val projectId = prefs.projectId
 
             val optionsInstance = ctor.newInstance(appId, apiKey, dbUrl, null, senderId, storageBucket, projectId)
             fbAppClass.getDeclaredMethod("initializeApp", Context::class.java, optClass).invoke(null, context, optionsInstance)
-            Log.d(Consts.TAG, "Initialized FirebaseApp (custom: $isCustom, project: $projectId)")
+            Log.d(Consts.TAG, "Initialized FirebaseApp (custom: true, project: $projectId)")
         }
 
-        if (isCustom) {
-            attempt("hook getGoogleAuthAndroidClientId") {
-                val swiftAppClass = classLoader.loadClass("org.swiftapps.swiftbackup.SwiftApp")
-                module.hookTracked(swiftAppClass.getDeclaredMethod("getGoogleAuthAndroidClientId")).intercept { prefs.clientId }
-            }
+        attempt("hook getGoogleAuthAndroidClientId") {
+            val swiftAppClass = classLoader.loadClass("org.swiftapps.swiftbackup.SwiftApp")
+            module.hookTracked(swiftAppClass.getDeclaredMethod("getGoogleAuthAndroidClientId")).intercept { prefs.clientId }
         }
     }
 
