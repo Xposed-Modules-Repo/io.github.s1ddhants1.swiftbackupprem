@@ -36,8 +36,19 @@ object BackupRebuilderHook : HookHandler {
     private fun logE(msg: String) { try { Log.e(TAG, "[BackupRebuilder] $msg") } catch (_: Throwable) {} }
     private fun logD(msg: String) { try { Log.d(TAG, "[BackupRebuilder] $msg") } catch (_: Throwable) {} }
 
-    private val rebuildExecutor = java.util.concurrent.Executors.newSingleThreadScheduledExecutor { r ->
-        Thread(r, "SBP-BackupRebuilder").apply { isDaemon = true }
+    @Volatile
+    private var rebuildExecutor: java.util.concurrent.ScheduledExecutorService = createRebuildExecutor()
+
+    private fun createRebuildExecutor(): java.util.concurrent.ScheduledExecutorService =
+        java.util.concurrent.Executors.newSingleThreadScheduledExecutor { r ->
+            Thread(r, "SBP-BackupRebuilder").apply { isDaemon = true }
+        }
+
+    fun shutdown() {
+        try {
+            rebuildExecutor.shutdownNow()
+        } catch (_: Throwable) {}
+        rebuildExecutor = createRebuildExecutor()
     }
 
     private data class BackupSlice(
@@ -91,7 +102,11 @@ object BackupRebuilderHook : HookHandler {
             }
         } ?: return
 
-        module.hookTracked(isValidMethod).intercept { chain ->
+        module.hookTracked(
+            isValidMethod,
+            idPrefix = "backup-rebuilder-validity",
+            deoptimize = true
+        ).intercept { chain ->
             chain.thisObject?.let { backupInstance ->
                 attempt("auto-rebuild on isValid check", silent = true) {
                     rebuildFromBackupInstance(backupInstance, classLoader, targets)
@@ -113,7 +128,10 @@ object BackupRebuilderHook : HookHandler {
             }
         } ?: return
 
-        module.hookTracked(getMetadataMethod).intercept { chain ->
+        module.hookTracked(
+            getMetadataMethod,
+            idPrefix = "backup-rebuilder-metadata"
+        ).intercept { chain ->
             val initialResult = chain.proceed()
             if (initialResult == null && chain.thisObject != null) {
                 val repaired = attempt("auto-rebuild on getMetadata", silent = true) {

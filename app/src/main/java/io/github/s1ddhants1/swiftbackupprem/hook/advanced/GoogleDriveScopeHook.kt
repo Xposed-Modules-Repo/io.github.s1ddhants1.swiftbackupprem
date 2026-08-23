@@ -52,7 +52,10 @@ object GoogleDriveScopeHook : HookHandler {
         if (clazz == null) return
         attempt("hook OAuthHelper constructors (${clazz.name})") {
             for (ctor in clazz.declaredConstructors) {
-                module.hookTracked(ctor).intercept { chain ->
+                module.hookTracked(
+                    ctor,
+                    idPrefix = "drive-scope-oauth-helper"
+                ).intercept { chain ->
                     var modified = false
                     val newArgs = chain.args.map { arg ->
                         when {
@@ -84,7 +87,10 @@ object GoogleDriveScopeHook : HookHandler {
         attempt("hook AuthRequestBuilder methods (${clazz.name})") {
             for (m in clazz.declaredMethods) {
                 if (m.returnType != Void.TYPE && m.parameterCount == 0 && m.returnType != clazz) {
-                    module.hookTracked(m).intercept { chain ->
+                    module.hookTracked(
+                        m,
+                        idPrefix = "drive-scope-auth-builder-${m.name}"
+                    ).intercept { chain ->
                         val target = chain.thisObject
                         if (target != null) {
                             for (field in target.javaClass.declaredFields) {
@@ -109,7 +115,10 @@ object GoogleDriveScopeHook : HookHandler {
     private fun hookUriBuilder(module: XposedModule) {
         attempt("hook Uri.Builder.appendQueryParameter") {
             val m = Uri.Builder::class.java.getDeclaredMethod("appendQueryParameter", String::class.java, String::class.java)
-            module.hookTracked(m).intercept { chain ->
+            module.hookTracked(
+                m,
+                idPrefix = "drive-scope-uri-builder"
+            ).intercept { chain ->
                 val key = chain.getArg(0) as? String
                 val value = chain.getArg(1) as? String
                 when {
@@ -129,7 +138,10 @@ object GoogleDriveScopeHook : HookHandler {
             val activityClass = cl.loadClass("org.swiftapps.swiftbackup.cloud.connect.NoGmsSignInActivity")
             for (m in activityClass.declaredMethods) {
                 if ((m.name == "startActivityForResult" || m.name == "O") && m.parameterTypes.isNotEmpty() && m.parameterTypes[0] == Intent::class.java) {
-                    module.hookTracked(m).intercept { chain ->
+                    module.hookTracked(
+                        m,
+                        idPrefix = "drive-scope-nogms-activity-${m.name}"
+                    ).intercept { chain ->
                         (chain.getArg(0) as? Intent)?.let { upgradeIntentUri(it) }
                         chain.proceed()
                     }
@@ -142,7 +154,10 @@ object GoogleDriveScopeHook : HookHandler {
         attempt("hook Intent.setData / setDataAndNormalize") {
             for (methodName in listOf("setData", "setDataAndNormalize")) {
                 val m = Intent::class.java.getDeclaredMethod(methodName, Uri::class.java)
-                module.hookTracked(m).intercept { chain ->
+                module.hookTracked(
+                    m,
+                    idPrefix = "drive-scope-intent-$methodName"
+                ).intercept { chain ->
                     val uri = chain.getArg(0) as? Uri
                     if (uri != null && (uri.toString().contains("drive.file") || uri.toString().contains("accounts.google.com"))) {
                         chain.proceed(arrayOf(upgradeUri(uri)))
@@ -177,7 +192,10 @@ object GoogleDriveScopeHook : HookHandler {
             val scopeClass = cl.loadClass("com.google.android.gms.common.api.Scope")
             for (ctor in scopeClass.declaredConstructors) {
                 if (ctor.parameterCount == 1 && ctor.parameterTypes[0] == String::class.java) {
-                    module.hookTracked(ctor).intercept { chain ->
+                    module.hookTracked(
+                        ctor,
+                        idPrefix = "drive-scope-gms-scope-ctor"
+                    ).intercept { chain ->
                         if (chain.getArg(0) == DRIVE_FILE_SCOPE) chain.proceed(arrayOf(FULL_DRIVE_SCOPE))
                         else chain.proceed()
                     }

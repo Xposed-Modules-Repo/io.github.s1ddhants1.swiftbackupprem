@@ -23,7 +23,10 @@ object AuthBypassHook : HookHandler {
             for (m in cIdClass.declaredMethods) {
                 if (m.name == "e" && m.parameterCount == 2) {
                     attempt("hook legacy FirebaseAuth bypass method ${m.name}") {
-                        module.hookTracked(m).intercept { chain ->
+                        module.hookTracked(
+                            m,
+                            idPrefix = "auth-bypass-clientid-${m.name}"
+                        ).intercept { chain ->
                             val task = chain.getArg(1)
                             val isSuccessful = attempt("check task isSuccessful", silent = true) {
                                 if (task != null) task.javaClass.getMethod("isSuccessful").invoke(task) as? Boolean ?: true else true

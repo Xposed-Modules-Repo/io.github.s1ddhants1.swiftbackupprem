@@ -14,6 +14,10 @@ object ExitProtectionHook : HookHandler {
 
     private val hooked = AtomicBoolean(false)
 
+    fun reset() {
+        hooked.set(false)
+    }
+
     override fun apply(
         module: XposedModule,
         context: Context,
@@ -32,7 +36,12 @@ object ExitProtectionHook : HookHandler {
         if (!hooked.compareAndSet(false, true)) return
         attempt("neutralize System.exit", silent = true) {
             val m = System::class.java.getDeclaredMethod("exit", Int::class.javaPrimitiveType)
-            module.hookTracked(m).intercept { chain ->
+            module.hookTracked(
+                m,
+                idPrefix = "exit-system-exit",
+                priority = io.github.libxposed.api.XposedInterface.PRIORITY_HIGHEST,
+                deoptimize = true
+            ).intercept { chain ->
                 val code = chain.getArg(0)
                 Log.w(Consts.TAG, "Neutralized System.exit($code)")
                 null
@@ -40,7 +49,12 @@ object ExitProtectionHook : HookHandler {
         }
         attempt("neutralize Runtime.exit", silent = true) {
             val m = Runtime::class.java.getDeclaredMethod("exit", Int::class.javaPrimitiveType)
-            module.hookTracked(m).intercept { chain ->
+            module.hookTracked(
+                m,
+                idPrefix = "exit-runtime-exit",
+                priority = io.github.libxposed.api.XposedInterface.PRIORITY_HIGHEST,
+                deoptimize = true
+            ).intercept { chain ->
                 val code = chain.getArg(0)
                 Log.w(Consts.TAG, "Neutralized Runtime.exit($code)")
                 null
@@ -48,4 +62,5 @@ object ExitProtectionHook : HookHandler {
         }
     }
 }
+
 

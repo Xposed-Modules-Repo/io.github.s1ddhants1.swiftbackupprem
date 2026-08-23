@@ -39,9 +39,22 @@ object CloudDiscoveryHook : HookHandler {
     val discoveredBackups = ConcurrentHashMap<String, DiscoveredCloudApp>()
     private val mainHandler by lazy { Handler(Looper.getMainLooper()) }
     private val isScanRunning = AtomicBoolean(false)
-    private val scanExecutor = java.util.concurrent.Executors.newSingleThreadExecutor { r ->
-        Thread(r, "SBP-CloudDiscovery").apply { isDaemon = true }
+    @Volatile
+    private var scanExecutor: java.util.concurrent.ExecutorService = createScanExecutor()
+
+    private fun createScanExecutor(): java.util.concurrent.ExecutorService =
+        java.util.concurrent.Executors.newSingleThreadExecutor { r ->
+            Thread(r, "SBP-CloudDiscovery").apply { isDaemon = true }
+        }
+
+    fun shutdown() {
+        try {
+            scanExecutor.shutdownNow()
+        } catch (_: Throwable) {}
+        scanExecutor = createScanExecutor()
+        isScanRunning.set(false)
     }
+
 
     data class DiscoveredCloudApp(
         val packageName: String,
@@ -215,7 +228,10 @@ object CloudDiscoveryHook : HookHandler {
         for (m in companionClass.declaredMethods) {
             if (m.name == "fromSnapshot") {
                 attempt("hook fromSnapshot", silent = true) {
-                    module.hookTracked(m).intercept { chain ->
+                    module.hookTracked(
+                        m,
+                        idPrefix = "cloud-discovery-app-backups-fromSnapshot"
+                    ).intercept { chain ->
                         val initialResult = chain.proceed()
                         if (initialResult != null) return@intercept initialResult
 
@@ -244,7 +260,10 @@ object CloudDiscoveryHook : HookHandler {
                 }
             } else if (m.name == "fetchForPackage") {
                 attempt("hook fetchForPackage", silent = true) {
-                    module.hookTracked(m).intercept { chain ->
+                    module.hookTracked(
+                        m,
+                        idPrefix = "cloud-discovery-app-backups-fetchForPackage"
+                    ).intercept { chain ->
                         val initialResult = chain.proceed()
                         val pkgName = chain.args.getOrNull(0) as? String
                         if (pkgName != null && (initialResult == null || isResultEmpty(initialResult))) {
@@ -275,7 +294,10 @@ object CloudDiscoveryHook : HookHandler {
         for (m in lk2Class.declaredMethods) {
             if (m.name == "onDataChange") {
                 attempt("hook lk2.onDataChange", silent = true) {
-                    module.hookTracked(m).intercept { chain ->
+                    module.hookTracked(
+                        m,
+                        idPrefix = "cloud-discovery-detail-listener-onDataChange"
+                    ).intercept { chain ->
                         val lk2Instance = chain.thisObject ?: return@intercept chain.proceed()
                         val aField = lk2Instance.javaClass.getDeclaredField("a").apply { isAccessible = true }
                         val mk2Instance = aField.get(lk2Instance) ?: return@intercept chain.proceed()
@@ -343,7 +365,10 @@ object CloudDiscoveryHook : HookHandler {
             val ua1Class = loadClassFlexible(classLoader, "ua1") ?: return@attempt
             for (m in ua1Class.declaredMethods) {
                 if (m.name == "a" && m.parameterCount == 0) {
-                    module.hookTracked(m).intercept { chain ->
+                    module.hookTracked(
+                        m,
+                        idPrefix = "cloud-discovery-batch-loader"
+                    ).intercept { chain ->
                         val result = chain.proceed()
                         ensureScan(context, classLoader, targets)
 
@@ -389,7 +414,10 @@ object CloudDiscoveryHook : HookHandler {
             val qqClass = loadClassFlexible(classLoader, "qq") ?: return@attempt
             for (m in qqClass.declaredMethods) {
                 if (m.name == "b" && m.parameterCount == 2) {
-                    module.hookTracked(m).intercept { chain ->
+                    module.hookTracked(
+                        m,
+                        idPrefix = "cloud-discovery-filter-helper"
+                    ).intercept { chain ->
                         val listArg = chain.args.getOrNull(0) as? List<*> ?: return@intercept chain.proceed()
                         val ce3Arg = chain.args.getOrNull(1) ?: return@intercept chain.proceed()
 
@@ -437,7 +465,10 @@ object CloudDiscoveryHook : HookHandler {
             val ng1Class = loadClassFlexible(classLoader, "ng1") ?: return@attempt
             for (m in ng1Class.declaredMethods) {
                 if (m.name == "c") {
-                    module.hookTracked(m).intercept { chain ->
+                    module.hookTracked(
+                        m,
+                        idPrefix = "cloud-discovery-sync-tab-vm"
+                    ).intercept { chain ->
                         val result = chain.proceed()
                         ensureScan(context, classLoader, targets)
                         postCloudSyncStats(chain.thisObject, classLoader)
@@ -451,7 +482,10 @@ object CloudDiscoveryHook : HookHandler {
             val jg1Class = loadClassFlexible(classLoader, "jg1") ?: return@attempt
             for (m in jg1Class.declaredMethods) {
                 if (m.name == "onDataChange") {
-                    module.hookTracked(m).intercept { chain ->
+                    module.hookTracked(
+                        m,
+                        idPrefix = "cloud-discovery-sync-tab-listener"
+                    ).intercept { chain ->
                         val jg1Instance = chain.thisObject ?: return@intercept chain.proceed()
                         val qField = jg1Instance.javaClass.getDeclaredField("q").apply { isAccessible = true }
                         val ng1Instance = qField.get(jg1Instance)
@@ -498,7 +532,10 @@ object CloudDiscoveryHook : HookHandler {
             val ob1Class = loadClassFlexible(classLoader, "ob1") ?: return@attempt
             for (m in ob1Class.declaredMethods) {
                 if (m.name == "a") {
-                    module.hookTracked(m).intercept { chain ->
+                    module.hookTracked(
+                        m,
+                        idPrefix = "cloud-discovery-backup-tags"
+                    ).intercept { chain ->
                         val result = chain.proceed() as? List<*> ?: mutableListOf<String>()
                         val tags = result.filterIsInstance<String>().toMutableList()
                         for (app in discoveredBackups.values) {

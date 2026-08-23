@@ -43,7 +43,11 @@ object PremiumFeatureHook : HookHandler {
                     for (m in ldClass.declaredMethods) {
                         if (m.parameterCount == 1 && m.name in listOf("k", "setValue", "postValue")) {
                             attempt("hook LiveData setter ${m.name}") {
-                                module.hookTracked(m).intercept { chain ->
+                                module.hookTracked(
+                                    m,
+                                    idPrefix = "premium-livedata-set-${m.name}",
+                                    deoptimize = true
+                                ).intercept { chain ->
                                     if (chain.thisObject === liveDataObj && (chain.getArg(0) is Boolean || chain.getArg(0) == null)) {
                                         chain.proceed(arrayOf(isPremium))
                                     } else chain.proceed()
@@ -51,7 +55,11 @@ object PremiumFeatureHook : HookHandler {
                             }
                         } else if (m.parameterCount == 0 && (m.name == "getValue" || m.name == "d")) {
                             attempt("hook LiveData getter ${m.name}") {
-                                module.hookTracked(m).intercept { chain ->
+                                module.hookTracked(
+                                    m,
+                                    idPrefix = "premium-livedata-get-${m.name}",
+                                    deoptimize = true
+                                ).intercept { chain ->
                                     if (chain.thisObject === liveDataObj) isPremium else chain.proceed()
                                 }
                             }
@@ -72,7 +80,11 @@ object PremiumFeatureHook : HookHandler {
             val vClassA = cl.loadClass("org.swiftapps.swiftbackup.common.V\$a")
             for (m in vClassA.declaredMethods) {
                 if (m.name == "invoke") {
-                    module.hookTracked(m).intercept { isPremium }
+                    module.hookTracked(
+                        m,
+                        idPrefix = "premium-v-lambda-invoke",
+                        deoptimize = true
+                    ).intercept { isPremium }
                     break
                 }
             }
@@ -87,12 +99,34 @@ object PremiumFeatureHook : HookHandler {
 
         for (m in targetClass.declaredMethods) {
             when (m.name) {
-                "getA", "getG", "getVp" -> attempt("hook V getter ${m.name}") { module.hookTracked(m).intercept { isPremium } }
-                "setA", "setVp" -> if (m.parameterCount == 1) attempt("hook V setter ${m.name}") {
-                    module.hookTracked(m).intercept { chain -> chain.proceed(arrayOf(isPremium)) }
+                "getA", "getG", "getVp" -> attempt("hook V getter ${m.name}") {
+                    module.hookTracked(
+                        m,
+                        idPrefix = "premium-v-${m.name}",
+                        deoptimize = true
+                    ).intercept { isPremium }
                 }
-                "getC" -> attempt("hook V.getC") { module.hookTracked(m).intercept { java.lang.Boolean.FALSE } }
-                "getB" -> attempt("hook V.getB") { module.hookTracked(m).intercept { null } }
+                "setA", "setVp" -> if (m.parameterCount == 1) attempt("hook V setter ${m.name}") {
+                    module.hookTracked(
+                        m,
+                        idPrefix = "premium-v-${m.name}",
+                        deoptimize = true
+                    ).intercept { chain -> chain.proceed(arrayOf(isPremium)) }
+                }
+                "getC" -> attempt("hook V.getC") {
+                    module.hookTracked(
+                        m,
+                        idPrefix = "premium-v-getC",
+                        deoptimize = true
+                    ).intercept { java.lang.Boolean.FALSE }
+                }
+                "getB" -> attempt("hook V.getB") {
+                    module.hookTracked(
+                        m,
+                        idPrefix = "premium-v-getB",
+                        deoptimize = true
+                    ).intercept { null }
+                }
             }
         }
     }
@@ -102,11 +136,19 @@ object PremiumFeatureHook : HookHandler {
         for (m in targetClass.declaredMethods) {
             if (m.parameterCount == 1 && (m.parameterTypes[0] == Boolean::class.javaPrimitiveType || m.parameterTypes[0] == Boolean::class.javaObjectType)) {
                 attempt("hook HomeViewModel setter ${m.name}") {
-                    module.hookTracked(m).intercept { chain -> chain.proceed(arrayOf(isPremium)) }
+                    module.hookTracked(
+                        m,
+                        idPrefix = "premium-homevm-set-${m.name}",
+                        deoptimize = true
+                    ).intercept { chain -> chain.proceed(arrayOf(isPremium)) }
                 }
             } else if (m.parameterCount == 0 && (m.returnType == Boolean::class.javaPrimitiveType || m.returnType == Boolean::class.javaObjectType)) {
                 attempt("hook HomeViewModel getter ${m.name}") {
-                    module.hookTracked(m).intercept { isPremium }
+                    module.hookTracked(
+                        m,
+                        idPrefix = "premium-homevm-get-${m.name}",
+                        deoptimize = true
+                    ).intercept { isPremium }
                 }
             }
         }

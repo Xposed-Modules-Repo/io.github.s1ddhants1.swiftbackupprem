@@ -67,15 +67,31 @@ object TelemetrySuppressionHook : HookHandler {
             for (m in clazz.declaredMethods) {
                 when {
                     m.name in crashlyticsNullMethods ->
-                        attempt("hook ${m.name}", silent = true) { module.hookTracked(m).intercept { null } }
+                        attempt("hook ${m.name}", silent = true) {
+                            module.hookTracked(
+                                m,
+                                idPrefix = "telemetry-crashlytics-${m.name}",
+                                priority = io.github.libxposed.api.XposedInterface.PRIORITY_LOWEST
+                            ).intercept { null }
+                        }
                     m.name.startsWith("set") && m.name.endsWith("CollectionEnabled") ->
                         attempt("hook ${m.name}", silent = true) {
-                            module.hookTracked(m).intercept { chain ->
+                            module.hookTracked(
+                                m,
+                                idPrefix = "telemetry-crashlytics-${m.name}",
+                                priority = io.github.libxposed.api.XposedInterface.PRIORITY_LOWEST
+                            ).intercept { chain ->
                                 if (chain.args.isNotEmpty()) chain.proceed(arrayOf(java.lang.Boolean.FALSE)) else chain.proceed()
                             }
                         }
                     m.name == "checkForUnsentReports" ->
-                        attempt("hook ${m.name}", silent = true) { module.hookTracked(m).intercept { falseTask } }
+                        attempt("hook ${m.name}", silent = true) {
+                            module.hookTracked(
+                                m,
+                                idPrefix = "telemetry-crashlytics-checkForUnsentReports",
+                                priority = io.github.libxposed.api.XposedInterface.PRIORITY_LOWEST
+                            ).intercept { falseTask }
+                        }
                 }
             }
         }
@@ -87,10 +103,20 @@ object TelemetrySuppressionHook : HookHandler {
             for (m in clazz.declaredMethods) {
                 when {
                     m.name in analyticsNullMethods ->
-                        attempt("hook ${m.name}", silent = true) { module.hookTracked(m).intercept { null } }
+                        attempt("hook ${m.name}", silent = true) {
+                            module.hookTracked(
+                                m,
+                                idPrefix = "telemetry-analytics-${m.name}",
+                                priority = io.github.libxposed.api.XposedInterface.PRIORITY_LOWEST
+                            ).intercept { null }
+                        }
                     m.name.startsWith("set") && m.name.endsWith("CollectionEnabled") ->
                         attempt("hook ${m.name}", silent = true) {
-                            module.hookTracked(m).intercept { chain ->
+                            module.hookTracked(
+                                m,
+                                idPrefix = "telemetry-analytics-${m.name}",
+                                priority = io.github.libxposed.api.XposedInterface.PRIORITY_LOWEST
+                            ).intercept { chain ->
                                 if (chain.args.isNotEmpty()) chain.proceed(arrayOf(java.lang.Boolean.FALSE)) else chain.proceed()
                             }
                         }
@@ -102,7 +128,11 @@ object TelemetrySuppressionHook : HookHandler {
             val runtimeClass = classLoader.loadClass("com.google.android.datatransport.runtime.TransportRuntime")
             for (m in runtimeClass.declaredMethods) {
                 if (m.name == "schedule") {
-                    module.hookTracked(m).intercept { chain ->
+                    module.hookTracked(
+                        m,
+                        idPrefix = "telemetry-transport-schedule",
+                        priority = io.github.libxposed.api.XposedInterface.PRIORITY_LOWEST
+                    ).intercept { chain ->
                         chain.args.lastOrNull()?.let { callback ->
                             attempt("invoke schedule callback", silent = true) {
                                 callback.javaClass.getMethod("onSchedule", Exception::class.java).invoke(callback, null)
@@ -120,12 +150,14 @@ object TelemetrySuppressionHook : HookHandler {
             val dummyResponse = backendResponseClass.getMethod("ok", Long::class.javaPrimitiveType).invoke(null, 1000L)
             for (m in cctClass.declaredMethods) {
                 if (m.name == "send" || (m.parameterCount == 1 && m.returnType.simpleName == "BackendResponse")) {
-                    module.hookTracked(m).intercept { dummyResponse }
+                    module.hookTracked(
+                        m,
+                        idPrefix = "telemetry-cct-${m.name}",
+                        priority = io.github.libxposed.api.XposedInterface.PRIORITY_LOWEST
+                    ).intercept { dummyResponse }
                 }
             }
         }
-
-
     }
 
     private fun hookMethodsNull(
@@ -134,12 +166,17 @@ object TelemetrySuppressionHook : HookHandler {
         className: String,
         predicate: (String) -> Boolean
     ) {
+        val simpleName = className.substringAfterLast('.')
         attempt("hook telemetry in $className", silent = true) {
             val clazz = classLoader.loadClass(className)
             for (m in clazz.declaredMethods) {
                 if (predicate(m.name)) {
                     attempt("hook method ${m.name} in $className", silent = true) {
-                        module.hookTracked(m).intercept { null }
+                        module.hookTracked(
+                            m,
+                            idPrefix = "telemetry-$simpleName-${m.name}",
+                            priority = io.github.libxposed.api.XposedInterface.PRIORITY_LOWEST
+                        ).intercept { null }
                     }
                 }
             }

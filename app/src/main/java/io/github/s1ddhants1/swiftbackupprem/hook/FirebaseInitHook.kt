@@ -41,7 +41,12 @@ object FirebaseInitHook : HookHandler {
         if (isCustom) {
             attempt("hook getGoogleAuthAndroidClientId") {
                 val swiftAppClass = classLoader.loadClass("org.swiftapps.swiftbackup.SwiftApp")
-                module.hookTracked(swiftAppClass.getDeclaredMethod("getGoogleAuthAndroidClientId")).intercept { prefs.clientId }
+                module.hookTracked(
+                    swiftAppClass.getDeclaredMethod("getGoogleAuthAndroidClientId"),
+                    idPrefix = "firebase-init-clientid",
+                    priority = io.github.libxposed.api.XposedInterface.PRIORITY_DEFAULT + 10,
+                    deoptimize = true
+                ).intercept { prefs.clientId }
             }
         }
     }
