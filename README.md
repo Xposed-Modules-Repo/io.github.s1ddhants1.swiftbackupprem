@@ -16,12 +16,12 @@
 
 ---
 
-## 📖 Table of Contents
+## Table of Contents
 
-- [✨ Features](#-features)
-- [📱 Compatibility & Prerequisites](#-compatibility--prerequisites)
-- [🚀 Installation & Activation](#-installation--activation)
-- [🔥 Custom Firebase Setup Guide](#-custom-firebase-setup-guide)
+- [Features](#-features)
+- [Compatibility & Prerequisites](#-compatibility--prerequisites)
+- [Installation & Activation](#-installation--activation)
+- [Custom Firebase Setup Guide](#-custom-firebase-setup-guide)
   - [Why Use Your Own Firebase Instance?](#why-use-your-own-firebase-instance)
   - [Step 1: Create a Firebase Project](#step-1-create-a-firebase-project)
   - [Step 2: Set Up Realtime Database & Security Rules](#step-2-set-up-realtime-database--security-rules)
@@ -29,45 +29,49 @@
   - [Step 4: Register Android App & OAuth Client](#step-4-register-android-app--oauth-client)
   - [Step 5: Enable Google Drive API & OAuth Scopes](#step-5-enable-google-drive-api--oauth-scopes)
   - [Step 6: Import or Enter Credentials in SwiftBackupPrem](#step-6-import-or-enter-credentials-in-swiftbackupprem)
-- [🔓 Guide: Migrating & Accessing Backups from Default Firebase](#-guide-migrating--accessing-backups-from-default-firebase)
-- [⚡ Automated 1-Click Backup Rebuilder & Restorer](#-automated-1-click-backup-rebuilder--restorer)
-- [🔄 Configuration Export & Migration](#-configuration-export--migration)
-- [🛠️ Building from Source](#️-building-from-source)
-- [💬 Community & Support](#-community--support)
-- [❓ Frequently Asked Questions (FAQ)](#-frequently-asked-questions-faq)
-- [🤝 Credits & Acknowledgements](#-credits--acknowledgements)
-- [⚖️ License & Disclaimer](#️-license--disclaimer)
+- [Guide: Migrating & Accessing Backups from Default Firebase](#guide-migrating--accessing-backups-from-default-firebase)
+- [Automated Backup Rebuild & Restore](#automated-backup-rebuild--restore)
+- [Configuration Export & Migration](#configuration-export--migration)
+- [Building from Source](#building-from-source)
+- [Community & Support](#community--support)
+- [Frequently Asked Questions (FAQ)](#frequently-asked-questions-faq)
+- [Credits & Acknowledgements](#credits--acknowledgements)
+- [License & Disclaimer](#license--disclaimer)
 
 ---
 
-## ✨ Features
+## Features
 
-- 🔓 **Premium Toggle & Unlocking**: Enables all Swift Backup Premium functionality on-demand without needing Google Play Store licensing, with active runtime state enforcement.
-- 🚫 **Disable Telemetry & Tracking**: Selectively blocks Firebase Analytics, Crashlytics, Sessions, Installations, and Google DataTransport tracking calls for maximum privacy.
-- 🛡️ **Custom Firebase Backend (Anti-Ban & Privacy)**: Directs Swift Backup to use your personal Firebase instance for user authentication and cloud synchronization metadata, eliminating reliance on the developer's shared backend.
-- ☁️ **Google Drive Full Access & Cloud Restore**: Upgrades Google Drive OAuth scopes to discover backups across accounts, automatically fetches & decodes cloud `.extra` metadata, and indexes cloud backups without relying on original Firebase catalog state.
-- ⚡ **Dynamic DexKit Bytecode Scanning**: Utilizes [DexKit](https://github.com/LuckyPray/DexKit) to dynamically locate obfuscated classes and methods at runtime across versions, ensuring robust compatibility with newer app updates.
-- 🎨 **Modern Material 3 UI**: Clean user interface built with Jetpack Compose, edge-to-edge display, dynamic theme adaptation, and responsive layouts.
-- 🧙 **Interactive 5-Step Guided Wizard**: In-app wizard with 1-click clipboard helpers (package name, SHA-1 signing fingerprint) and direct links to Firebase and Google Cloud consoles.
-- 📥 **One-Tap JSON Import**: Automatically parses and fills credentials directly from standard `google-services.json` files.
-- 💾 **Configuration Export & Import**: Easily backup or migrate your custom Firebase setup across devices using `sbp_config.json`.
-- ⚡ **Quick Process Controls**: One-tap Root Force Stop and Launch shortcuts directly inside the app.
+- **Premium Toggle & Unlocking**: Enables all Swift Backup Premium functionality without needing Google Play Store licensing.
+- **Disable Telemetry & Tracking**: Blocks Firebase Analytics, Crashlytics, Sessions, Installations, and Google DataTransport tracking calls for maximum privacy.
+- **Custom Firebase Backend (Anti-Ban & Privacy)**: Directs Swift Backup to use your personal Firebase instance for user authentication and cloud synchronization metadata.
+- **Google Drive Full Access & Cloud Restore**: Upgrades Google Drive OAuth scopes to discover backups across accounts, automatically fetches & decodes cloud `.extra` metadata, and indexes cloud backups without relying on original Firebase catalog state.
+
+### Additional features
+
+- **Modern Material 3 UI**: Clean user interface built with Jetpack Compose, Material 3 design guidelines, edge-to-edge display, dynamic theme adaptation, and responsive layouts.
+- **Guided Custom Firebase Setup**: In-app Setup with 1-click clipboard helpers (package name, SHA-1 signing fingerprint) and helpful links to [Firebase](https://firebase.google.com/) and [Google Cloud](https://console.cloud.google.com/).
+- **One-Tap JSON Import**: Automatically parses and fills credentials directly from `google-services.json` files.
+- **Configuration Export & Import**: Easily backup or migrate your setup across devices using `sbp_config.json`.
+- **Quick Process Controls**: One-tap Root Force Stop and Launch shortcuts directly inside the app.
+
+## How it works
+
+- **Dynamic DexKit Bytecode Scanning**: Utilizes [DexKit](https://github.com/LuckyPray/DexKit) to dynamically locate obfuscated classes and methods at runtime across versions, ensuring compatibility with newer app updates.
+
+## Compatibility & Prerequisites
+
+| Requirement                 | Details                                                                                                                                                                                                                                                                                                 |
+| :-------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Root Solution**           | [Magisk](https://github.com/topjohnwu/Magisk), [KernelSU](https://github.com/tiann/KernelSU), or [APatch](https://github.com/bmax121/APatch)                                                                                                                                                            |
+| **Xposed / Hook Framework** | Modern [LibXposed](https://github.com/libxposed) (API 101 / 102+) compatible frameworks:<br>• [LSPosed](https://github.com/LSPosed/LSPosed) (v2.0.0+)<br>• [Vector](https://github.com/JingMatrix/Vector)<br>• LSPosed variants (LSPosed-Irena, etc)<br>• Other LibXposed-compliant ART hooking loaders |
+| **Android Version**         | Android 8.1 (API 27) up to Android 17 (API 37+)                                                                                                                                                                                                                                                         |
+| **Target Application**      | [Swift Backup](https://play.google.com/store/apps/details?id=org.swiftapps.swiftbackup) (`org.swiftapps.swiftbackup`)                                                                                                                                                                                   |
+| **Supported App Versions**  | v4.2.3, v4.2.5, v5.0.4, v5.1.0, and newer releases                                                                                                                                                                                                                                                      |
 
 ---
 
-## 📱 Compatibility & Prerequisites
-
-| Requirement             | Details                                                                                                               |
-| :---------------------- | :-------------------------------------------------------------------------------------------------------------------- |
-| **Root Solution**       | Magisk, KernelSU, or APatch                                                                                           |
-| **Xposed Framework**    | [LSPosed](https://github.com/LSPosed/LSPosed) (Zygisk / Riru) v1.9.0+ or compatible framework                         |
-| **Android Version**     | Android 8.1 (Oreo MR1 / API 27) up to Android 15 / 16 (API 37+)                                                       |
-| **Target Application**  | [Swift Backup](https://play.google.com/store/apps/details?id=org.swiftapps.swiftbackup) (`org.swiftapps.swiftbackup`) |
-| **Tested App Versions** | v4.2.3, v4.2.5, v5.0.4, v5.1.0, and newer releases                                                                    |
-
----
-
-## 🚀 Installation & Activation
+## Installation & Activation
 
 ### Method 1: Obtainium (Recommended)
 
@@ -92,22 +96,21 @@ https://github.com/s1ddhants1/SwiftBackupPrem
 
 ---
 
-### Module Activation (LSPosed)
+### Module Activation (LSPosed / LibXposed)
 
-1. Open **LSPosed Manager**.
+1. Open **LSPosed Manager** (or your active LibXposed framework manager).
 2. Navigate to the **Modules** tab and tap **SwiftBackupPrem**.
 3. Toggle **Enable module**.
 4. Ensure the scope includes **Swift Backup** (`org.swiftapps.swiftbackup`).
-5. Perform a quick reboot (or soft reboot) of your device.
-6. Open the **SwiftBackupPrem** app to configure custom Firebase credentials (recommended) or launch Swift Backup directly.
+5. Open the **SwiftBackupPrem** app to configure custom Firebase credentials (recommended) or launch Swift Backup directly.
 
 ---
 
-## 🔥 Custom Firebase Setup Guide
+## Custom Firebase Setup Guide
 
 ### Why Use Your Own Firebase Instance?
 
-By default, Swift Backup authenticates against the app developer's Firebase project. If the developer blocks or bans your account on their Firebase instance, cloud authentication and cloud sync in Swift Backup will stop working.
+By default, Swift Backup authenticates against the app developer's Firebase project. If the developer blocks or bans your account on their Firebase instance then access to the account will be revoked and you will not be able to restore your backups.
 
 Connecting your own personal Firebase project gives you complete isolation, ensures data privacy, and prevents remote bans.
 
@@ -122,9 +125,8 @@ Connecting your own personal Firebase project gives you complete isolation, ensu
 5. Click **Create project** and wait for provisioning to finish.
 
 <details>
-<summary>📸 <b>View Step 1 Screenshots</b></summary>
+<summary>View Step 1 Screenshots</summary>
 <br>
-
 <p align="center">
   <img src="Screenshots/step1_01_project_name_prompt.webp" alt="Enter project name" width="700" /><br>
   <em>1. Enter project name</em><br><br>
@@ -165,9 +167,8 @@ Connecting your own personal Firebase project gives you complete isolation, ensu
 6. Copy your **Realtime Database URL** from the _Data_ tab (e.g., `https://your-project-id-default-rtdb.firebaseio.com/`).
 
 <details>
-<summary>📸 <b>View Step 2 Screenshots</b></summary>
+<summary>View Step 2 Screenshots</summary>
 <br>
-
 <p align="center">
   <img src="Screenshots/step2_01_navigate_realtime_database.webp" alt="Navigate to Realtime Database" width="700" /><br>
   <em>1. Select Databases &amp; Storage &gt; Realtime Database</em><br><br>
@@ -196,9 +197,8 @@ Connecting your own personal Firebase project gives you complete isolation, ensu
 4. Toggle **Enable**, enter a **Public-facing name for project** of your choice, choose a **Project support email**, and click **Save**.
 
 <details>
-<summary>📸 <b>View Step 3 Screenshots</b></summary>
+<summary>View Step 3 Screenshots</summary>
 <br>
-
 <p align="center">
   <img src="Screenshots/step3_01_navigate_authentication.webp" alt="Select Google Sign-in provider" width="700" /><br>
   <em>1. Navigate to Authentication &gt; Sign-in method and select Google</em><br><br>
@@ -220,19 +220,18 @@ Connecting your own personal Firebase project gives you complete isolation, ensu
 1. In Firebase Console, go to the **Project Overview** page from the sidebar.
 2. Under "Select a platform to get started", click the **Android** icon (Add app).
 3. Enter the package details:
-   - **Android package name**: `org.swiftapps.swiftbackup` _(or tap "Copy Package" in SwiftBackupPrem wizard)_
+   - **Android package name**: `org.swiftapps.swiftbackup` _(or tap "Copy Package" in SwiftBackupPrem custom firebase setup screen)_
    - **App Nickname**: `SwiftBackupPersonal` _(or any name you like)_
 4. Click **Register app**.
 5. Click **Download google-services.json** to save the configuration file.
-6. Click **Next** through the remaining setup steps (Add Firebase SDK is handled automatically by the module), then click **Continue to console**.
+6. Click **Next** through the remaining setup steps, then click **Continue to console**.
 7. On the Project Overview page, click the newly registered app card and select the **Gear icon (Project Settings)**.
-8. Scroll down to the **Your apps** section, click **Add fingerprint**, paste your **SHA-1 fingerprint** _(tap "Copy Fingerprint" in SwiftBackupPrem wizard)_, and click **Save**.
+8. Scroll down to the **Your apps** section, click **Add fingerprint**, paste your **SHA-1 fingerprint** _(tap "Copy Fingerprint" in the custom firebase setup screen from the module)_, and click **Save**.
 9. _(Optional)_ Click the **Data privacy** tab on Project Settings and uncheck **Firebase Service Data Sharing**.
 
 <details>
-<summary>📸 <b>View Firebase App Registration Screenshots</b></summary>
+<summary>View Firebase App Registration Screenshots</summary>
 <br>
-
 <p align="center">
   <img src="Screenshots/step4_01_add_android_app.webp" alt="Add Android App" width="700" /><br>
   <em>1. Click the Android platform icon on Project Overview</em><br><br>
@@ -265,9 +264,8 @@ Connecting your own personal Firebase project gives you complete isolation, ensu
 6. Click **Save**.
 7. Copy the generated **Client ID** string (e.g., `xxxxxxxxxxxx-xxxxxxxxxxxxxxxx.apps.googleusercontent.com`).
 <details>
-<summary>📸 <b>View Google Cloud OAuth Client Screenshots</b></summary>
+<summary>View Google Cloud OAuth Client Screenshots</summary>
 <br>
-
 <p align="center">
   <img src="Screenshots/step4_11_gcp_dashboard.webp" alt="Google Cloud Console Dashboard" width="700" /><br>
   <em>1. Google Cloud Console Dashboard</em><br><br>
@@ -314,7 +312,7 @@ If you plan to use Google Drive for cloud backups:
 2. Enable **Custom firebase app**.
 3. Choose either method:
    - **Method A (Automatic)**: Tap **Import google-services.json** and pick the downloaded JSON file. Then paste your **OAuth Client ID** into the Client ID field.
-   - **Method B (Manual Wizard)**: Follow the interactive 5-step guided wizard in the app to review and confirm all fields.
+   - **Method B (Manual Wizard)**: Follow the guided setup in the app to review and confirm all fields.
 4. Tap **Finish & Save**.
 5. Tap **Force Stop** at the bottom to kill any running Swift Backup instances, then tap **Open App**.
 6. Sign in to Swift Backup with your Google account.
@@ -327,7 +325,7 @@ If you plan to use Google Drive for cloud backups:
 
 ---
 
-## 🔓 Guide: Migrating & Accessing Backups from Default Firebase
+## Migrating & Accessing Backups from Default Firebase
 
 Install Swift Backup with default Firebase and login to pull your UID from `/data/data/org.swiftapps.swiftbackup/shared_prefs/com.google.firebase.auth.api.Store.*.xml`:
 
@@ -335,7 +333,11 @@ Install Swift Backup with default Firebase and login to pull your UID from `/dat
 su -c 'grep -o "GET_TOKEN_RESPONSE\.[^\"]*" /data/data/org.swiftapps.swiftbackup/shared_prefs/com.google.firebase.auth.api.Store.*.xml | cut -d. -f2'
 ```
 
-### Verify UID with Backups
+> [!IMPORTANT]
+> If your account has been banned by the developer of SwiftBackup then you will not be able to fetch your UID if you uninstalled the app post ban as the /data/data/org.swiftapps.swiftbackup/shared_prefs/ directory will be deleted and hence all the cloud backups are not decryptable and thus lost.
+> This is the only way to fetch your UID so don't uninstall the app until you have your UID saved safely somewhere.
+
+### Verify UID with Backups (optional)
 
 Swift Backup takes the MD5 hash of your Firebase UID and uses the first 16 characters for the folder name:
 
@@ -393,14 +395,14 @@ or in case of cloud folder: `Swift Backup (example16char)`
 
 ---
 
-## ⚡ Automated 1-Click Backup Rebuilder & Restorer
+## Automated Backup Rebuild & Restore
 
-When the **Google Drive Full Access & Cloud Restore** toggle is turned on in SwiftBackupPrem, the module enables automated cloud backup restoration:
+When the **Cloud Backup Restore** toggle is turned on in SwiftBackupPrem, the module enables automated cloud backup restoration:
 
-1. **Direct In-App Cloud Restore**: Discovers all backups directly from your Google Drive folder, downloads & decodes `.extra` metadata, and indexes them in real-time across the app (Single App Details, Cloud Sync tab, and Batch Restore).
-2. **Local Cloud Backup Rebuilder**: When cloud backup files (`.app`, `.dat`, `.splits`, `.extdat`, `.extra`) are downloaded or copied to your device storage:
+1. **Direct In-App Cloud Restore**: Indexes all backups directly from your cloud folder, decodes `.extra` metadata files and indexes them in real-time across the app (Single App Details, Cloud Sync tab, and Batch Restore).
+2. **Local Cloud Backup Rebuild**: When cloud backup files (`.app`, `.dat`, `.splits`, `.extdat`, `.extra`) are downloaded or copied to your device storage:
    - Swift Backup typically requires a `<packageName>.xml` metadata file which is absent in raw cloud files.
-   - The module automatically detects missing metadata, decrypts the `.extra` payload on the fly using your active Firebase UID key (Conceal AES-GCM-256 + Zstandard), and generates the authentic `<packageName>.xml`.
+   - The module detects missing metadata, decrypts the `.extra` payload on the fly using your active Firebase UID key (Conceal AES-GCM-256 + Zstandard), and generates the `<packageName>.xml`.
    - The backups immediately appear with all components (APK, App Data, External Data, Splits) and are 100% restorable.
 
 > [!WARNING]
@@ -412,14 +414,14 @@ When the **Google Drive Full Access & Cloud Restore** toggle is turned on in Swi
 
 ---
 
-## 🔄 Configuration Export & Migration
+## Configuration Export & Migration
 
 - **Export Config**: Tap the top-right menu (⋮) > **Export Config** to save your active configuration to a JSON file (`sbp_config.json`).
 - **Import Config**: On a new device or fresh ROM install, tap **Import Config** to restore your settings in a single click.
 
 ---
 
-## 🛠️ Building from Source
+## Building from Source
 
 ### Prerequisites
 
@@ -451,9 +453,9 @@ The built APK will be located in `app/build/outputs/apk/release/app-release.apk`
 
 ---
 
-## 💬 Community & Support
+## Community & Support
 
-Join the official Telegram group for discussion, support, release updates, and assistance with custom Firebase configuration:
+Join the official Telegram group for discussion, support, release updates, and assistance with Custom Firebase configuration:
 
 <p align="center">
   <a href="https://t.me/SwiftBackupPrem">
@@ -461,52 +463,109 @@ Join the official Telegram group for discussion, support, release updates, and a
   </a>
 </p>
 
-- 📢 **Group Link**: [https://t.me/SwiftBackupPrem](https://t.me/SwiftBackupPrem)
-- ❓ **Get Help**: Ask troubleshooting questions or share setup tips.
-- 📦 **Releases & APKs**: Get direct download links and release notifications directly inside Telegram.
+- **Group Link**: [https://t.me/SwiftBackupPrem](https://t.me/SwiftBackupPrem)
+- **Get Help**: Ask troubleshooting questions or share setup tips.
+- **Releases & APKs**: Get direct download links and release notifications directly inside Telegram.
 
 ---
 
-## ❓ Frequently Asked Questions (FAQ)
+## Frequently Asked Questions (FAQ)
 
 <details>
 <summary><b>Q: I see "LSPosed Module Not Enabled" in the app.</b></summary>
-<p>Make sure you have enabled SwiftBackupPrem inside LSPosed Manager, added Swift Backup (<code>org.swiftapps.swiftbackup</code>) to the module scope, and rebooted your device.</p>
-</details>
-
-<details>
-<summary><b>Q: Google Sign-In gives Error Code 10 / 12500.</b></summary>
-<p>This indicates an OAuth mismatch or missing permission:</p>
+<p>Make sure you have:</p>
 <ol>
-  <li>Verify that the <b>SHA-1 fingerprint</b> entered in Firebase Console matches your installed Swift Backup app (use the "Copy Fingerprint" button in SwiftBackupPrem).</li>
-  <li>Ensure <b>Enable custom URI scheme</b> is checked in Google Cloud Console OAuth Client settings.</li>
-  <li>Ensure <b>Google Drive API</b> is enabled and the <code>.../auth/drive.file</code> scope is added in Google Cloud Console if using Google Drive cloud backup.</li>
-  <li>Wait 5–10 minutes after creating OAuth credentials for Google's servers to propagate changes.</li>
+  <li>Enabled <b>SwiftBackupPrem</b> inside LSPosed Manager.</li>
+  <li>Added <b>Swift Backup</b> (<code>org.swiftapps.swiftbackup</code>) to the module scope.</li>
+  <li>Force stopped Swift Backup or rebooted your device.</li>
 </ol>
 </details>
 
 <details>
-<summary><b>Q: Do I need a paid Firebase Blaze plan for Cloud Storage?</b></summary>
-<p>No! The free <b>Spark plan</b> is 100% sufficient. Swift Backup only utilizes Firebase for authentication and metadata. You can leave Cloud Storage unconfigured.</p>
+<summary><b>Q: Why do I need a Custom Firebase project? Will I get banned without it?</b></summary>
+<p>By default, Swift Backup authenticates with the official developer's Firebase backend. The official server performs periodic license checks, anti-tampering verification, and telemetry detection. If unauthorized or modified app usage is detected, the developer can disable/ban your account on their Firebase instance, revoking your access to Swift Backup and your backup metadata.</p>
+<p>Connecting your own personal Firebase backend gives you <b>100% isolation</b>: authentication and metadata stay on your private cloud where no external server can revoke your account.</p>
+</details>
+
+<details>
+<summary><b>Q: Do I need a paid Firebase Blaze plan or Cloud Storage?</b></summary>
+<p><b>No!</b> The 100% free <b>Firebase Spark plan</b> is completely sufficient. Swift Backup only utilizes Firebase Authentication and Realtime Database for account identity and sync metadata. Your actual backup archives (APKs, app data, etc.) are stored on your personal cloud provider (e.g., Google Drive, WebDAV, Nextcloud), not Firebase Storage.</p>
+</details>
+
+<details>
+<summary><b>Q: Google Sign-In fails with Error Code 10 or Error Code 12500.</b></summary>
+<p>This indicates an OAuth mismatch, incorrect Client ID, or missing API configuration:</p>
+<ol>
+  <li><b>Check Client ID Type:</b> In SwiftBackupPrem settings, ensure you entered the <b>Android OAuth Client ID</b>, not the Web Client ID.</li>
+  <li><b>Verify SHA-1 Fingerprint:</b> Use the <b>Copy Fingerprint</b> helper in SwiftBackupPrem's Guided Setup and ensure it matches the SHA-1 added to your Android OAuth Client and Firebase Android App settings.</li>
+  <li><b>Custom URI Scheme:</b> Ensure <b>Enable custom URI scheme</b> is checked in Google Cloud Console > Credentials > Android OAuth Client.</li>
+  <li><b>Enable Google Drive API:</b> Verify that <b>Google Drive API</b> is enabled under APIs &amp; Services in Google Cloud Console.</li>
+</ol>
+</details>
+
+<details>
+<summary><b>Q: Google Drive shows "Google hasn't verified this app" during sign-in.</b></summary>
+<p>This is expected. When <b>Google Drive Full Access &amp; Cloud Restore</b> is enabled, the module requests the full <code>https://www.googleapis.com/auth/drive</code> scope so Swift Backup can discover and rebuild backups created across past accounts or ROM installs.</p>
+<p>Because your Google Cloud project is personal and unverified, Google shows a standard security notice. Click <b>Advanced > Go to Swift Backup (unsafe)</b> to proceed.</p>
+</details>
+
+<details>
+<summary><b>Q: My account was banned on the default Firebase backend. Can I recover my old backups?</b></summary>
+<p><b>Yes, provided you still have your old Firebase UID key.</b></p>
+<p>Swift Backup encrypts backup archives (<code>.dat</code>, <code>.extra</code>) using AES-256-GCM + Zstandard with your Firebase <code>UID</code> as the decryption key. If you extract your old UID (see the <a href="#migrating--accessing-backups-from-default-firebase">Migration Guide</a>) and create a user with that exact same UID in your Custom Firebase project, SwiftBackupPrem will be able to decrypt and restore all your previous backups.</p>
+</details>
+
+<details>
+<summary><b>Q: I uninstalled or wiped Swift Backup after being banned. Can I still recover my old backups?</b></summary>
+<p>Unfortunately, <b>no</b>. When you uninstall or clear data for Swift Backup, the local <code>/data/data/org.swiftapps.swiftbackup/shared_prefs/</code> directory containing the cached Firebase authentication token is deleted. Because the official server has disabled your account, you cannot log in to retrieve the original UID. Without the original UID key, the AES-256-GCM encrypted data cannot be decrypted.</p>
+<p><i>Recommendation: Always backup your Firebase UID or export your SwiftBackupPrem configuration (<code>sbp_config.json</code>) to safe storage.</i></p>
+</details>
+
+<details>
+<summary><b>Q: How do I verify that my extracted UID matches my backup folder?</b></summary>
+<p>Compute the MD5 hash of your raw UID string (for example, using an online MD5 tool or <code>echo -n "YOUR_UID" | md5sum</code>). Compare the <b>first 16 hexadecimal characters</b> of the MD5 hash with the name of the backup folder on your storage or Google Drive. If they match, you have the exact UID needed to restore those backups.</p>
+</details>
+
+<details>
+<summary><b>Q: <code>firebase auth:import</code> fails with "No hash algorithm specified" or project error.</b></summary>
+<p>Ensure you run <code>firebase projects:list</code> to obtain your exact <b>Project ID</b> (not the display name). Use:</p>
+<pre><code class="language-bash">firebase auth:import users.json --project YOUR_PROJECT_ID
+</code></pre>
+<p>Alternatively, you can create the user using the Firebase Admin Python SDK script provided in the Migration Guide.</p>
+</details>
+
+<details>
+<summary><b>Q: Why do uninstalled apps show as package names (e.g. <code>com.whatsapp</code>) or missing icons during Cloud Restore?</b></summary>
+<p>When backups are indexed directly from cloud metadata files (<code>.extra</code>) for apps not currently installed on your device, Swift Backup falls back to displaying the package identifier recorded in the backup headers. Once restored or installed locally, Android resolves the full display name and application icon normally.</p>
+</details>
+
+<details>
+<summary><b>Q: Does Cloud Backup Restore support Call Logs, SMS, and Wallpapers?</b></summary>
+<p>The automated Cloud Backup Rebuild and Restore engine specifically decodes and decrypts application archives (<code>.app</code>, <code>.dat</code>, <code>.splits</code>, <code>.extdat</code>, <code>.extra</code>). System data like Call Logs, SMS, and Wallpapers are restored through standard local backup paths.</p>
+</details>
+
+<details>
+<summary><b>Q: Can SwiftBackupPrem be used with cloned or work profile instances of Swift Backup?</b></summary>
+<p>Yes. Ensure the LSPosed module scope covers the cloned instance or secondary user profile, and verify that root access and storage permissions are properly granted to that profile space.</p>
 </details>
 
 <details>
 <summary><b>Q: How does DexKit work in this module?</b></summary>
-<p>Swift Backup obfuscates its classes with ProGuard/R8 across different releases. Instead of hardcoding static class names that break on every update, DexKit inspects bytecode structures dynamically at runtime to locate the required hooks automatically.</p>
+<p>Swift Backup obfuscates its classes with ProGuard/R8 across different releases. Instead of hardcoding static class names and signatures that break on every update, DexKit inspects bytecode structures dynamically at runtime to locate the required hooks automatically and caches the results for optimal performance.</p>
 </details>
 
 ---
 
-## 🤝 Credits & Acknowledgements
+## Credits & Acknowledgements
 
 - **[Juby210](https://github.com/Juby210)** — Original creator and author of SwiftBackupPrem.
-- **[s1ddhants1](https://github.com/s1ddhants1)** — Maintainer, Jetpack Compose Material 3 UI overhaul, guided setup wizard, and modernizations.
+- **[s1ddhants1](https://github.com/s1ddhants1)** — Maintainer
 - **[LuckyPray/DexKit](https://github.com/LuckyPray/DexKit)** — Powerful runtime DEX search and hooking engine.
 - **[LSPosed](https://github.com/LSPosed/LSPosed)** — ART hooking framework for modern Android.
 
 ---
 
-## ⚖️ License & Disclaimer
+## License & Disclaimer
 
 This project is licensed under the [MIT License](LICENSE).
 
