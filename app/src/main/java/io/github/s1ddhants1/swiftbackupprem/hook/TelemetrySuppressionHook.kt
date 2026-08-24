@@ -2,6 +2,7 @@ package io.github.s1ddhants1.swiftbackupprem.hook
 
 import android.content.Context
 import android.util.Log
+import io.github.libxposed.api.XposedInterface
 import io.github.libxposed.api.XposedModule
 import io.github.s1ddhants1.swiftbackupprem.Consts
 import io.github.s1ddhants1.swiftbackupprem.util.PreferencesManager
@@ -50,96 +51,53 @@ object TelemetrySuppressionHook : HookHandler {
             hookMethodsNull(module, classLoader, className) { it in methods }
         }
 
-        for (name in listOf(
+        listOf(
             "com.google.android.gms.measurement.AppMeasurement",
             "com.google.android.gms.measurement.internal.zzhd",
             "com.google.android.gms.measurement.internal.zzha"
-        )) {
+        ).forEach { name ->
             hookMethodsNull(module, classLoader, name) { it.startsWith("logEvent") || it.startsWith("setUserProperty") }
         }
 
-        // Combined: FirebaseCrashlytics — null-return + collection disable + checkForUnsentReports (single class load)
+        // FirebaseCrashlytics hooks
         val crashlyticsNullMethods = nullTargets["com.google.firebase.crashlytics.FirebaseCrashlytics"] ?: emptySet()
         attempt("hook FirebaseCrashlytics (combined)", silent = true) {
             val clazz = classLoader.loadClass("com.google.firebase.crashlytics.FirebaseCrashlytics")
             val tasksClass = classLoader.loadClass("com.google.android.gms.tasks.Tasks")
             val falseTask = tasksClass.getMethod("forResult", Any::class.java).invoke(null, java.lang.Boolean.FALSE)
-            for (m in clazz.declaredMethods) {
+            clazz.declaredMethods.forEach { m ->
                 when {
-                    m.name in crashlyticsNullMethods ->
-                        attempt("hook ${m.name}", silent = true) {
-                            module.hookTracked(
-                                m,
-                                idPrefix = "telemetry-crashlytics-${m.name}",
-                                priority = io.github.libxposed.api.XposedInterface.PRIORITY_LOWEST
-                            ).intercept { null }
-                        }
-                    m.name.startsWith("set") && m.name.endsWith("CollectionEnabled") ->
-                        attempt("hook ${m.name}", silent = true) {
-                            module.hookTracked(
-                                m,
-                                idPrefix = "telemetry-crashlytics-${m.name}",
-                                priority = io.github.libxposed.api.XposedInterface.PRIORITY_LOWEST
-                            ).intercept { chain ->
-                                if (chain.args.isNotEmpty()) chain.proceed(arrayOf(java.lang.Boolean.FALSE)) else chain.proceed()
-                            }
-                        }
-                    m.name == "checkForUnsentReports" ->
-                        attempt("hook ${m.name}", silent = true) {
-                            module.hookTracked(
-                                m,
-                                idPrefix = "telemetry-crashlytics-checkForUnsentReports",
-                                priority = io.github.libxposed.api.XposedInterface.PRIORITY_LOWEST
-                            ).intercept { falseTask }
-                        }
+                    m.name in crashlyticsNullMethods -> hookNull(module, m, "telemetry-crashlytics-${m.name}")
+                    m.name.startsWith("set") && m.name.endsWith("CollectionEnabled") -> hookDisableCollection(module, m, "telemetry-crashlytics-${m.name}")
+                    m.name == "checkForUnsentReports" -> attempt("hook ${m.name}", silent = true) {
+                        module.hookTracked(m, idPrefix = "telemetry-crashlytics-checkForUnsentReports", priority = XposedInterface.PRIORITY_LOWEST).intercept { falseTask }
+                    }
                 }
             }
         }
 
-        // Combined: FirebaseAnalytics — null-return + collection disable (single class load)
+        // FirebaseAnalytics hooks
         val analyticsNullMethods = nullTargets["com.google.firebase.analytics.FirebaseAnalytics"] ?: emptySet()
         attempt("hook FirebaseAnalytics (combined)", silent = true) {
             val clazz = classLoader.loadClass("com.google.firebase.analytics.FirebaseAnalytics")
-            for (m in clazz.declaredMethods) {
+            clazz.declaredMethods.forEach { m ->
                 when {
-                    m.name in analyticsNullMethods ->
-                        attempt("hook ${m.name}", silent = true) {
-                            module.hookTracked(
-                                m,
-                                idPrefix = "telemetry-analytics-${m.name}",
-                                priority = io.github.libxposed.api.XposedInterface.PRIORITY_LOWEST
-                            ).intercept { null }
-                        }
-                    m.name.startsWith("set") && m.name.endsWith("CollectionEnabled") ->
-                        attempt("hook ${m.name}", silent = true) {
-                            module.hookTracked(
-                                m,
-                                idPrefix = "telemetry-analytics-${m.name}",
-                                priority = io.github.libxposed.api.XposedInterface.PRIORITY_LOWEST
-                            ).intercept { chain ->
-                                if (chain.args.isNotEmpty()) chain.proceed(arrayOf(java.lang.Boolean.FALSE)) else chain.proceed()
-                            }
-                        }
+                    m.name in analyticsNullMethods -> hookNull(module, m, "telemetry-analytics-${m.name}")
+                    m.name.startsWith("set") && m.name.endsWith("CollectionEnabled") -> hookDisableCollection(module, m, "telemetry-analytics-${m.name}")
                 }
             }
         }
 
         attempt("hook TransportRuntime.schedule", silent = true) {
             val runtimeClass = classLoader.loadClass("com.google.android.datatransport.runtime.TransportRuntime")
-            for (m in runtimeClass.declaredMethods) {
-                if (m.name == "schedule") {
-                    module.hookTracked(
-                        m,
-                        idPrefix = "telemetry-transport-schedule",
-                        priority = io.github.libxposed.api.XposedInterface.PRIORITY_LOWEST
-                    ).intercept { chain ->
-                        chain.args.lastOrNull()?.let { callback ->
-                            attempt("invoke schedule callback", silent = true) {
-                                callback.javaClass.getMethod("onSchedule", Exception::class.java).invoke(callback, null)
-                            }
+            runtimeClass.declaredMethods.filter { it.name == "schedule" }.forEach { m ->
+                module.hookTracked(m, idPrefix = "telemetry-transport-schedule", priority = XposedInterface.PRIORITY_LOWEST).intercept { chain ->
+                    chain.args.lastOrNull()?.let { cb ->
+                        attempt("invoke schedule callback", silent = true) {
+                            cb.javaClass.getMethod("onSchedule", Exception::class.java).invoke(cb, null)
                         }
-                        null
                     }
+                    null
                 }
             }
         }
@@ -148,14 +106,22 @@ object TelemetrySuppressionHook : HookHandler {
             val cctClass = classLoader.loadClass("com.google.android.datatransport.cct.CctTransportBackend")
             val backendResponseClass = classLoader.loadClass("com.google.android.datatransport.runtime.backends.BackendResponse")
             val dummyResponse = backendResponseClass.getMethod("ok", Long::class.javaPrimitiveType).invoke(null, 1000L)
-            for (m in cctClass.declaredMethods) {
-                if (m.name == "send" || (m.parameterCount == 1 && m.returnType.simpleName == "BackendResponse")) {
-                    module.hookTracked(
-                        m,
-                        idPrefix = "telemetry-cct-${m.name}",
-                        priority = io.github.libxposed.api.XposedInterface.PRIORITY_LOWEST
-                    ).intercept { dummyResponse }
-                }
+            cctClass.declaredMethods.filter { it.name == "send" || (it.parameterCount == 1 && it.returnType.simpleName == "BackendResponse") }.forEach { m ->
+                module.hookTracked(m, idPrefix = "telemetry-cct-${m.name}", priority = XposedInterface.PRIORITY_LOWEST).intercept { dummyResponse }
+            }
+        }
+    }
+
+    private fun hookNull(module: XposedModule, m: java.lang.reflect.Method, idPrefix: String) {
+        attempt("hook ${m.name}", silent = true) {
+            module.hookTracked(m, idPrefix = idPrefix, priority = XposedInterface.PRIORITY_LOWEST).intercept { null }
+        }
+    }
+
+    private fun hookDisableCollection(module: XposedModule, m: java.lang.reflect.Method, idPrefix: String) {
+        attempt("hook ${m.name}", silent = true) {
+            module.hookTracked(m, idPrefix = idPrefix, priority = XposedInterface.PRIORITY_LOWEST).intercept { chain ->
+                if (chain.args.isNotEmpty()) chain.proceed(arrayOf(java.lang.Boolean.FALSE)) else chain.proceed()
             }
         }
     }
@@ -169,16 +135,8 @@ object TelemetrySuppressionHook : HookHandler {
         val simpleName = className.substringAfterLast('.')
         attempt("hook telemetry in $className", silent = true) {
             val clazz = classLoader.loadClass(className)
-            for (m in clazz.declaredMethods) {
-                if (predicate(m.name)) {
-                    attempt("hook method ${m.name} in $className", silent = true) {
-                        module.hookTracked(
-                            m,
-                            idPrefix = "telemetry-$simpleName-${m.name}",
-                            priority = io.github.libxposed.api.XposedInterface.PRIORITY_LOWEST
-                        ).intercept { null }
-                    }
-                }
+            clazz.declaredMethods.filter { predicate(it.name) }.forEach { m ->
+                hookNull(module, m, "telemetry-$simpleName-${m.name}")
             }
         }
     }

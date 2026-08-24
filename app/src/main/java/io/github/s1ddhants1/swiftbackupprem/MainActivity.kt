@@ -18,13 +18,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Launch
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.PowerSettingsNew
-import androidx.compose.material.icons.filled.Upload
-import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -100,16 +94,15 @@ class MainActivity : ComponentActivity() {
 
             LaunchedEffect(Unit) {
                 viewModel.events.collect { event ->
-                    when (event) {
-                        is MainUiEvent.ConfigExported -> snackbarHostState.showSnackbar(
+                    val msg = when (event) {
+                        is MainUiEvent.ConfigExported ->
                             if (event.success) getString(R.string.msg_config_exported)
                             else getString(R.string.msg_export_failed, event.error ?: "unknown error")
-                        )
-                        is MainUiEvent.ConfigImported -> snackbarHostState.showSnackbar(
+                        is MainUiEvent.ConfigImported ->
                             if (event.success) getString(R.string.msg_config_imported)
                             else getString(R.string.msg_import_failed, event.error ?: "unknown error")
-                        )
                     }
+                    snackbarHostState.showSnackbar(msg)
                 }
             }
 
@@ -126,25 +119,12 @@ class MainActivity : ComponentActivity() {
                     topBar = {
                         TopAppBar(
                             title = {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     if (currentScreen == AppScreen.Settings) {
-                                        Icon(
-                                            painter = painterResource(id = R.drawable.ic_app_bolt),
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.size(24.dp)
-                                        )
+                                        Icon(painter = painterResource(id = R.drawable.ic_app_bolt), contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
                                     }
                                     Text(
-                                        text = stringResource(
-                                            when (currentScreen) {
-                                                AppScreen.Settings -> R.string.screen_settings
-                                                AppScreen.About -> R.string.screen_about
-                                            }
-                                        ),
+                                        text = stringResource(if (currentScreen == AppScreen.Settings) R.string.screen_settings else R.string.screen_about),
                                         fontWeight = FontWeight.Bold
                                     )
                                 }
@@ -224,116 +204,129 @@ class MainActivity : ComponentActivity() {
                         AnimatedContent(targetState = currentScreen, label = "ScreenTransition") { screen ->
                             when (screen) {
                                 AppScreen.About -> AboutScreen()
-                                AppScreen.Settings -> {
-                                    Column(
-                                        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(vertical = 8.dp)
-                                    ) {
-                                        val isConn = state.isFrameworkConnected
-                                        val statusBg = if (isConn) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.tertiaryContainer
-                                        val statusOnBg = if (isConn) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onTertiaryContainer
-                                        val badgeColor = if (isConn) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.tertiary
-                                        val iconTint = if (isConn) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onTertiary
-
-                                        ElevatedCard(
-                                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
-                                            shape = RoundedCornerShape(16.dp),
-                                            colors = CardDefaults.elevatedCardColors(containerColor = statusBg)
-                                        ) {
-                                            Row(
-                                                modifier = Modifier.padding(16.dp),
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(14.dp)
-                                            ) {
-                                                Surface(
-                                                    shape = CircleShape,
-                                                    color = badgeColor,
-                                                    modifier = Modifier.size(38.dp)
-                                                ) {
-                                                    Box(contentAlignment = Alignment.Center) {
-                                                        Icon(
-                                                            imageVector = if (isConn) Icons.Default.CheckCircle else Icons.Default.Warning,
-                                                            contentDescription = null,
-                                                            tint = iconTint,
-                                                            modifier = Modifier.size(22.dp)
-                                                        )
-                                                    }
-                                                }
-                                                Column(modifier = Modifier.weight(1f)) {
-                                                    Text(
-                                                        text = stringResource(if (isConn) R.string.framework_active_title else R.string.framework_inactive_title),
-                                                        style = MaterialTheme.typography.titleSmall,
-                                                        fontWeight = FontWeight.Bold,
-                                                        color = statusOnBg
-                                                    )
-                                                    Text(
-                                                        text = if (isConn) stringResource(R.string.framework_active_desc, state.frameworkName, state.frameworkVersion)
-                                                        else stringResource(R.string.framework_inactive_desc),
-                                                        style = MaterialTheme.typography.bodySmall,
-                                                        color = statusOnBg.copy(alpha = 0.85f)
-                                                    )
-                                                }
-                                            }
-                                        }
-
-                                        SettingsCard {
-                                            SettingsSwitch(
-                                                label = stringResource(R.string.pref_enable_premium_title),
-                                                secondaryLabel = stringResource(R.string.pref_enable_premium_subtitle),
-                                                pref = prefs.enablePremium,
-                                                onPrefChange = { prefs.enablePremium = it }
-                                            )
-
-                                            HorizontalDivider(
-                                                modifier = Modifier.padding(horizontal = 16.dp),
-                                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-                                            )
-
-                                            SettingsSwitch(
-                                                label = stringResource(R.string.pref_disable_telemetry_title),
-                                                secondaryLabel = stringResource(R.string.pref_disable_telemetry_subtitle),
-                                                pref = prefs.disableTelemetry,
-                                                onPrefChange = { prefs.disableTelemetry = it }
-                                            )
-
-                                            HorizontalDivider(
-                                                modifier = Modifier.padding(horizontal = 16.dp),
-                                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-                                            )
-
-                                            SettingsSwitch(
-                                                label = stringResource(R.string.pref_custom_firebase_title),
-                                                secondaryLabel = stringResource(R.string.pref_custom_firebase_subtitle),
-                                                pref = prefs.customFirebaseApp,
-                                                onPrefChange = { prefs.customFirebaseApp = it }
-                                            )
-
-                                            AnimatedVisibility(
-                                                visible = prefs.customFirebaseApp,
-                                                enter = expandVertically() + fadeIn(),
-                                                exit = shrinkVertically() + fadeOut()
-                                            ) {
-                                                Column(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
-                                                    HorizontalDivider(
-                                                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                                                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-                                                    )
-                                                    GuidedSetupWizard(
-                                                        prefs = prefs,
-                                                        onImportGoogleServices = { uri ->
-                                                            viewModel.importGoogleServices(contentResolver, uri, prefs)
-                                                        }
-                                                    )
-                                                }
-                                            }
-                                        }
-
-                                        AdvancedSettingsCard(prefs = prefs, isFrameworkConnected = isConn)
-                                    }
-                                }
+                                AppScreen.Settings -> SettingsScreenContent(
+                                    prefs = prefs,
+                                    isFrameworkConnected = state.isFrameworkConnected,
+                                    frameworkName = state.frameworkName,
+                                    frameworkVersion = state.frameworkVersion,
+                                    onImportGoogleServices = { uri -> viewModel.importGoogleServices(contentResolver, uri, prefs) }
+                                )
                             }
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SettingsScreenContent(
+    prefs: PreferencesManager,
+    isFrameworkConnected: Boolean,
+    frameworkName: String,
+    frameworkVersion: String,
+    onImportGoogleServices: (android.net.Uri) -> Unit
+) {
+    Column(
+        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(vertical = 8.dp)
+    ) {
+        FrameworkStatusBanner(
+            isConnected = isFrameworkConnected,
+            frameworkName = frameworkName,
+            frameworkVersion = frameworkVersion
+        )
+
+        OutlinedCard(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.surface)
+        ) {
+            SettingsSwitch(
+                label = stringResource(R.string.pref_enable_premium_title),
+                secondaryLabel = stringResource(R.string.pref_enable_premium_subtitle),
+                pref = prefs.enablePremium,
+                onPrefChange = { prefs.enablePremium = it }
+            )
+
+            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+            SettingsSwitch(
+                label = stringResource(R.string.pref_disable_telemetry_title),
+                secondaryLabel = stringResource(R.string.pref_disable_telemetry_subtitle),
+                pref = prefs.disableTelemetry,
+                onPrefChange = { prefs.disableTelemetry = it }
+            )
+
+            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+            SettingsSwitch(
+                label = stringResource(R.string.pref_custom_firebase_title),
+                secondaryLabel = stringResource(R.string.pref_custom_firebase_subtitle),
+                pref = prefs.customFirebaseApp,
+                onPrefChange = { prefs.customFirebaseApp = it }
+            )
+
+            AnimatedVisibility(
+                visible = prefs.customFirebaseApp,
+                enter = expandVertically() + fadeIn(),
+                exit = shrinkVertically() + fadeOut()
+            ) {
+                Column(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
+                    HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                    GuidedSetupWizard(prefs = prefs, onImportGoogleServices = onImportGoogleServices)
+                }
+            }
+        }
+
+        AdvancedSettingsCard(prefs = prefs, isFrameworkConnected = isFrameworkConnected)
+    }
+}
+
+@Composable
+private fun FrameworkStatusBanner(
+    isConnected: Boolean,
+    frameworkName: String,
+    frameworkVersion: String
+) {
+    val statusBg = if (isConnected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.tertiaryContainer
+    val statusOnBg = if (isConnected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onTertiaryContainer
+    val badgeColor = if (isConnected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.tertiary
+    val iconTint = if (isConnected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onTertiary
+
+    ElevatedCard(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.elevatedCardColors(containerColor = statusBg)
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Surface(shape = CircleShape, color = badgeColor, modifier = Modifier.size(38.dp)) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = if (isConnected) Icons.Default.CheckCircle else Icons.Default.Warning,
+                        contentDescription = null,
+                        tint = iconTint,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = stringResource(if (isConnected) R.string.framework_active_title else R.string.framework_inactive_title),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = statusOnBg
+                )
+                Text(
+                    text = if (isConnected) stringResource(R.string.framework_active_desc, frameworkName, frameworkVersion)
+                    else stringResource(R.string.framework_inactive_desc),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = statusOnBg.copy(alpha = 0.85f)
+                )
             }
         }
     }
@@ -357,18 +350,4 @@ private fun ActionButton(
         Spacer(Modifier.width(6.dp))
         Text(text, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center, softWrap = true)
     }
-}
-
-@Composable
-private fun SettingsCard(
-    modifier: Modifier = Modifier,
-    content: @Composable ColumnScope.() -> Unit
-) {
-    OutlinedCard(
-        modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = CardDefaults.outlinedCardBorder(enabled = true),
-        content = content
-    )
 }

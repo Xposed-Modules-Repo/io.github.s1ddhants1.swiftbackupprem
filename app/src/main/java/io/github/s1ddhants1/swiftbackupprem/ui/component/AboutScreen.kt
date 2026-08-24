@@ -1,6 +1,7 @@
 package io.github.s1ddhants1.swiftbackupprem.ui.component
 
 import androidx.annotation.DrawableRes
+import androidx.annotation.StringRes
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -30,6 +31,31 @@ import androidx.compose.ui.unit.sp
 import io.github.s1ddhants1.swiftbackupprem.BuildConfig
 import io.github.s1ddhants1.swiftbackupprem.R
 
+private data class Contributor(
+    @DrawableRes val avatarRes: Int,
+    val name: String,
+    @StringRes val roleRes: Int,
+    val githubUrl: String,
+    @StringRes val cdRes: Int
+)
+
+private data class TechItem(
+    val icon: ImageVector,
+    @StringRes val labelRes: Int
+)
+
+private val CONTRIBUTORS = listOf(
+    Contributor(R.drawable.ic_avatar_juby210, "Juby210", R.string.about_original_author_role, "https://github.com/Juby210", R.string.cd_author_avatar),
+    Contributor(R.drawable.ic_avatar_s1ddhants1, "s1ddhants1", R.string.about_maintainer_role, "https://github.com/s1ddhants1", R.string.cd_maintainer_avatar)
+)
+
+private val TECHNOLOGIES = listOf(
+    TechItem(Icons.Default.Memory, R.string.about_lib_dexkit),
+    TechItem(Icons.Default.Extension, R.string.about_lib_libxposed),
+    TechItem(Icons.Default.Android, R.string.about_lib_compose),
+    TechItem(Icons.Default.DataObject, R.string.about_lib_serialization)
+)
+
 @Composable
 fun AboutScreen() {
     val uriHandler = LocalUriHandler.current
@@ -41,16 +67,13 @@ fun AboutScreen() {
             .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // App Header Card
         ElevatedCard(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(16.dp),
             colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
         ) {
             Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(20.dp),
+                modifier = Modifier.fillMaxWidth().padding(20.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
@@ -97,164 +120,83 @@ fun AboutScreen() {
             }
         }
 
-        // Authors & Maintainers Card
         AboutSectionCard(title = stringResource(R.string.about_authors_maintainers)) {
-            AboutContributorRow(
-                avatarRes = R.drawable.ic_avatar_juby210,
-                name = "Juby210",
-                role = stringResource(R.string.about_original_author_role),
-                githubUrl = "https://github.com/Juby210",
-                contentDescription = stringResource(R.string.cd_author_avatar)
-            ) { uriHandler.openUri(it) }
-
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-
-            AboutContributorRow(
-                avatarRes = R.drawable.ic_avatar_s1ddhants1,
-                name = "s1ddhants1",
-                role = stringResource(R.string.about_maintainer_role),
-                githubUrl = "https://github.com/s1ddhants1",
-                contentDescription = stringResource(R.string.cd_maintainer_avatar)
-            ) { uriHandler.openUri(it) }
+            CONTRIBUTORS.forEachIndexed { index, contributor ->
+                if (index > 0) {
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                }
+                ContributorRow(contributor) { uriHandler.openUri(it) }
+            }
         }
 
-        // Libraries & Credits Card
         AboutSectionCard(title = stringResource(R.string.about_libraries_technologies)) {
-            AboutTechRow(Icons.Default.Memory, stringResource(R.string.about_lib_dexkit))
-            AboutTechRow(Icons.Default.Extension, stringResource(R.string.about_lib_libxposed))
-            AboutTechRow(Icons.Default.Android, stringResource(R.string.about_lib_compose))
-            AboutTechRow(Icons.Default.DataObject, stringResource(R.string.about_lib_serialization))
+            TECHNOLOGIES.forEach { tech ->
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Icon(tech.icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
+                    Text(stringResource(tech.labelRes), style = MaterialTheme.typography.bodyMedium)
+                }
+            }
         }
 
-        // Repository Action Button
         Button(
             onClick = { uriHandler.openUri("https://github.com/s1ddhants1/SwiftBackupPrem") },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(50.dp),
+            modifier = Modifier.fillMaxWidth().height(50.dp),
             shape = RoundedCornerShape(12.dp)
         ) {
-            Icon(
-                painter = painterResource(id = R.drawable.ic_github),
-                contentDescription = stringResource(R.string.cd_github_icon),
-                modifier = Modifier.size(20.dp)
-            )
+            Icon(painter = painterResource(id = R.drawable.ic_github), contentDescription = stringResource(R.string.cd_github_icon), modifier = Modifier.size(20.dp))
             Spacer(Modifier.width(10.dp))
             Text(stringResource(R.string.btn_view_source_github), fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.width(6.dp))
-            Icon(
-                Icons.AutoMirrored.Filled.Launch,
-                contentDescription = null,
-                modifier = Modifier.size(16.dp)
-            )
+            Icon(Icons.AutoMirrored.Filled.Launch, contentDescription = null, modifier = Modifier.size(16.dp))
         }
     }
 }
 
 @Composable
 private fun AboutSectionCard(title: String, content: @Composable ColumnScope.() -> Unit) {
-    OutlinedCard(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(14.dp)
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary
-            )
+    OutlinedCard(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp)) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(text = title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
             content()
         }
     }
 }
 
 @Composable
-private fun AboutContributorRow(
-    @DrawableRes avatarRes: Int,
-    name: String,
-    role: String,
-    githubUrl: String,
-    contentDescription: String,
-    onOpenUrl: (String) -> Unit
-) {
+private fun ContributorRow(contributor: Contributor, onOpenUrl: (String) -> Unit) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Image(
-                painter = painterResource(id = avatarRes),
-                contentDescription = contentDescription,
+                painter = painterResource(id = contributor.avatarRes),
+                contentDescription = stringResource(contributor.cdRes),
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
                     .size(44.dp)
                     .clip(CircleShape)
-                    .border(
-                        width = 1.5.dp,
-                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f),
-                        shape = CircleShape
-                    )
+                    .border(width = 1.5.dp, color = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f), shape = CircleShape)
             )
             Column {
-                Text(
-                    text = name,
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    text = role,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                Text(text = contributor.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                Text(text = stringResource(contributor.roleRes), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         OutlinedButton(
-            onClick = { onOpenUrl(githubUrl) },
+            onClick = { onOpenUrl(contributor.githubUrl) },
             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
             shape = RoundedCornerShape(8.dp)
         ) {
-            Icon(
-                painter = painterResource(id = R.drawable.ic_github),
-                contentDescription = null,
-                modifier = Modifier.size(16.dp),
-                tint = MaterialTheme.colorScheme.primary
-            )
+            Icon(painter = painterResource(id = R.drawable.ic_github), contentDescription = null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
             Spacer(Modifier.width(6.dp))
-            Text(
-                text = stringResource(R.string.btn_github),
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Medium
-            )
+            Text(text = stringResource(R.string.btn_github), fontSize = 12.sp, fontWeight = FontWeight.Medium)
             Spacer(Modifier.width(4.dp))
-            Icon(
-                Icons.AutoMirrored.Filled.Launch,
-                contentDescription = null,
-                modifier = Modifier.size(12.dp)
-            )
+            Icon(Icons.AutoMirrored.Filled.Launch, contentDescription = null, modifier = Modifier.size(12.dp))
         }
-    }
-}
-
-@Composable
-private fun AboutTechRow(icon: ImageVector, text: String) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(20.dp)
-        )
-        Text(text = text, style = MaterialTheme.typography.bodyMedium)
     }
 }

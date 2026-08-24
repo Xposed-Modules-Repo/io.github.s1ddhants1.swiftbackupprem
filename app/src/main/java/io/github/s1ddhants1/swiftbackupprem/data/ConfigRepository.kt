@@ -68,28 +68,25 @@ class ConfigRepositoryImpl(
             return prefs.toConfig()
         }
 
-        val baseConfig = runCatching { json.decodeFromString(SbpConfig.serializer(), jsonStr) }.getOrDefault(prefs.toConfig())
-        val effectiveDisableTelemetry = when {
-            rawJson.has("disableTelemetry") -> rawJson.optBoolean("disableTelemetry", true)
-            rawJson.has("suppressTelemetry") -> rawJson.optBoolean("suppressTelemetry", true)
-            else -> baseConfig.disableTelemetry
+        val jsonToDecode = if (rawJson.has("suppressTelemetry") && !rawJson.has("disableTelemetry")) {
+            JSONObject(jsonStr).apply {
+                put("disableTelemetry", rawJson.optBoolean("suppressTelemetry", true))
+            }.toString()
+        } else {
+            jsonStr
         }
 
-        val updatedConfig = baseConfig.copy(
-            disableTelemetry = effectiveDisableTelemetry,
-            enablePremium = rawJson.optBoolean("enablePremium", baseConfig.enablePremium),
-            enableDriveDiscovery = rawJson.optBoolean("enableDriveDiscovery", baseConfig.enableDriveDiscovery),
-            customFirebaseApp = rawJson.optBoolean("customFirebaseApp", baseConfig.customFirebaseApp),
-            googleAppId = rawJson.optString("googleAppId", baseConfig.googleAppId),
-            googleApiKey = rawJson.optString("googleApiKey", baseConfig.googleApiKey),
-            firebaseDatabaseUrl = rawJson.optString("firebaseDatabaseUrl", baseConfig.firebaseDatabaseUrl),
-            gcmDefaultSenderId = rawJson.optString("gcmDefaultSenderId", baseConfig.gcmDefaultSenderId),
-            googleStorageBucket = rawJson.optString("googleStorageBucket", baseConfig.googleStorageBucket),
-            projectId = rawJson.optString("projectId", baseConfig.projectId),
-            clientId = rawJson.optString("clientId", baseConfig.clientId)
+        val base = prefs.toConfig()
+        val decoded = runCatching { json.decodeFromString(SbpConfig.serializer(), jsonToDecode) }.getOrDefault(base)
+        val finalConfig = decoded.copy(
+            disableTelemetry = when {
+                rawJson.has("disableTelemetry") -> rawJson.optBoolean("disableTelemetry", true)
+                rawJson.has("suppressTelemetry") -> rawJson.optBoolean("suppressTelemetry", true)
+                else -> decoded.disableTelemetry
+            }
         )
 
-        prefs.applyConfig(updatedConfig)
-        return updatedConfig
+        prefs.applyConfig(finalConfig)
+        return finalConfig
     }
 }
