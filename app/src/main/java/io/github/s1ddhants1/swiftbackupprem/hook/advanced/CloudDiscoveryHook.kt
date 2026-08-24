@@ -3,11 +3,14 @@ package io.github.s1ddhants1.swiftbackupprem.hook.advanced
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.SharedPreferences
+import android.graphics.Bitmap
 import android.os.Environment
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import android.widget.ImageView
 import androidx.annotation.Keep
+import io.github.libxposed.api.XposedInterface
 import io.github.libxposed.api.XposedModule
 import io.github.s1ddhants1.swiftbackupprem.Consts
 import io.github.s1ddhants1.swiftbackupprem.hook.HookHandler
@@ -157,17 +160,20 @@ object CloudDiscoveryHook : HookHandler {
         val fileId: String,
         val fileName: String,
         val size: Long,
-        val timestamp: Long
+        val timestamp: Long,
+        val thumbnailLink: String? = null
     ) {
         fun toJson(): JSONObject = JSONObject().apply {
             put("fileId", fileId); put("fileName", fileName); put("size", size); put("timestamp", timestamp)
+            thumbnailLink?.let { put("thumbnailLink", it) }
         }
         companion object {
             fun fromJson(obj: JSONObject): DiscoveredCloudWall = DiscoveredCloudWall(
                 fileId = obj.optString("fileId", ""),
                 fileName = obj.optString("fileName", ""),
                 size = obj.optLong("size", 0L),
-                timestamp = obj.optLong("timestamp", System.currentTimeMillis())
+                timestamp = obj.optLong("timestamp", System.currentTimeMillis()),
+                thumbnailLink = obj.optString("thumbnailLink").takeIf { it.isNotBlank() }
             )
         }
     }
@@ -277,6 +283,8 @@ object CloudDiscoveryHook : HookHandler {
         hookAppFilterHelper(module, context, classLoader, targets)
         hookCloudSyncTab(module, context, classLoader, targets)
         hookCloudBackupTags(module, classLoader)
+        hookWallpaperCloudLoader(module, classLoader)
+        hookWifiCloudLoader(module, classLoader)
         startDriveScanWithRetry(context, classLoader, targets)
     }
 
@@ -706,6 +714,132 @@ object CloudDiscoveryHook : HookHandler {
         }
     }
 
+    private fun hookWallpaperCloudLoader(module: XposedModule, classLoader: ClassLoader) {
+        val fu3Class = loadClassFlexible(classLoader, "fu3") ?: return
+        val kMethod = fu3Class.declaredMethods.firstOrNull { it.name == "k" && it.parameterCount == 0 } ?: return
+        val ui1Class = loadClassFlexible(classLoader, "ui1") ?: return
+        val pg1Class = loadClassFlexible(classLoader, "pg1") ?: return
+
+        module.hookTracked(
+            kMethod,
+            idPrefix = "gdrive-wall-cloud-k",
+            priority = XposedInterface.PRIORITY_HIGHEST,
+            deoptimize = true
+        ).intercept { chain ->
+            val original = chain.proceed()
+            if (discoveredWalls.isEmpty()) return@intercept original
+
+            attempt("inject discovered walls into fu3.k", silent = true) {
+                val pg1List = ArrayList<Any>()
+                for (wall in discoveredWalls.values) {
+                    val pg1 = pg1Class.getConstructor(String::class.java, String::class.java).newInstance(wall.fileName, wall.fileId)
+                    pg1Class.getDeclaredField("c").apply { isAccessible = true }.set(pg1, wall.size)
+                    pg1Class.getDeclaredField("e").apply { isAccessible = true }.set(pg1, wall.timestamp)
+                    if (!wall.thumbnailLink.isNullOrBlank()) {
+                        pg1Class.getDeclaredField("f").apply { isAccessible = true }.set(pg1, wall.thumbnailLink)
+                    }
+                    pg1List.add(pg1)
+                }
+                ui1Class.getConstructor(Exception::class.java, List::class.java).newInstance(null, pg1List)
+            } ?: original
+        }
+
+        // Hook wallpaper click handler to allow restore even if thumbnail image drawable hasn't loaded yet
+        val xr0Class = loadClassFlexible(classLoader, "xr0")
+        val onClickMethod = xr0Class?.declaredMethods?.firstOrNull { it.name == "onClick" && it.parameterCount == 1 }
+        if (onClickMethod != null) {
+            module.hookTracked(
+                onClickMethod,
+                idPrefix = "wall-item-click-fallback",
+                priority = XposedInterface.PRIORITY_HIGHEST,
+                deoptimize = true
+            ).intercept { chain ->
+                val thisObj = chain.thisObject ?: return@intercept chain.proceed()
+                val aVal = attempt("read xr0.a", silent = true) {
+                    xr0Class.getDeclaredField("a").apply { isAccessible = true }.getInt(thisObj)
+                } ?: -1
+
+                if (aVal != 0) { // Case 1: wallpaper click
+                    val bObj = xr0Class.getDeclaredField("b").apply { isAccessible = true }.get(thisObj)
+                    val cObj = xr0Class.getDeclaredField("c").apply { isAccessible = true }.get(thisObj)
+                    val dObj = xr0Class.getDeclaredField("d").apply { isAccessible = true }.get(thisObj)
+
+                    if (bObj != null && cObj != null && dObj != null) {
+                        attempt("fallback wallpaper click", silent = true) {
+                            val lo8Class = bObj.javaClass
+                            val ivWall = lo8Class.getDeclaredField("u").apply { isAccessible = true }.get(bObj) as? ImageView
+                            if (ivWall != null && ivWall.drawable == null) {
+                                val mo8Class = cObj.javaClass
+                                val eField = mo8Class.getField("e").get(cObj)
+                                val isMultiSelect = eField?.javaClass?.getField("c")?.getBoolean(eField) ?: false
+                                if (!isMultiSelect) {
+                                    val lField = mo8Class.getField("l").get(cObj) // oo8 instance
+                                    val ao8Class = loadClassFlexible(classLoader, "ao8")
+                                    if (ao8Class != null && lField != null) {
+                                        val dummyBitmap = Bitmap.createBitmap(100, 100, Bitmap.Config.ARGB_8888)
+                                        val ao8Instance = ao8Class.getConstructor(dObj.javaClass, Bitmap::class.java).newInstance(dObj, dummyBitmap)
+                                        lField.javaClass.getMethod("U", ao8Class).invoke(lField, ao8Instance)
+                                        return@intercept null
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                chain.proceed()
+            }
+        }
+    }
+
+    private fun hookWifiCloudLoader(module: XposedModule, classLoader: ClassLoader) {
+        val us8Class = loadClassFlexible(classLoader, "us8")
+        val cMethod = us8Class?.declaredMethods?.firstOrNull { it.name == "c" && it.parameterCount == 0 && java.lang.reflect.Modifier.isStatic(it.modifiers) }
+        val wifiCloudDetailsClass = loadClassFlexible(classLoader, "org.swiftapps.swiftbackup.model.firebase.WifiCloudDetails")
+
+        if (cMethod != null && wifiCloudDetailsClass != null) {
+            module.hookTracked(
+                cMethod,
+                idPrefix = "wifi-helper-cloud-details-c",
+                priority = XposedInterface.PRIORITY_HIGHEST,
+                deoptimize = true
+            ).intercept { chain ->
+                val original = chain.proceed()
+                if (discoveredWifi.isEmpty()) return@intercept original
+
+                attempt("inject discovered wifi into us8.c", silent = true) {
+                    val firstWifi = discoveredWifi.values.firstOrNull() ?: return@attempt original
+                    wifiCloudDetailsClass.getConstructor(String::class.java, java.lang.Long::class.java, java.lang.Integer::class.java)
+                        .newInstance(firstWifi.fileId, firstWifi.size, firstWifi.count)
+                } ?: original
+            }
+        }
+
+        val fu3Class = loadClassFlexible(classLoader, "fu3") ?: return
+        val lMethod = fu3Class.declaredMethods.firstOrNull { it.name == "l" && it.parameterCount == 0 } ?: return
+        val ui1Class = loadClassFlexible(classLoader, "ui1") ?: return
+        val pg1Class = loadClassFlexible(classLoader, "pg1") ?: return
+
+        module.hookTracked(
+            lMethod,
+            idPrefix = "gdrive-wifi-cloud-l",
+            priority = XposedInterface.PRIORITY_HIGHEST,
+            deoptimize = true
+        ).intercept { chain ->
+            val original = chain.proceed()
+            if (discoveredWifi.isEmpty()) return@intercept original
+
+            attempt("inject discovered wifi into fu3.l", silent = true) {
+                val pg1List = ArrayList<Any>()
+                for (wifi in discoveredWifi.values) {
+                    val pg1 = pg1Class.getConstructor(String::class.java, String::class.java).newInstance(wifi.fileName, wifi.fileId)
+                    pg1Class.getDeclaredField("c").apply { isAccessible = true }.set(pg1, wifi.size)
+                    pg1List.add(pg1)
+                }
+                ui1Class.getConstructor(Exception::class.java, List::class.java).newInstance(null, pg1List)
+            } ?: original
+        }
+    }
+
     fun formatBytes(bytes: Long): String {
         if (bytes <= 0) return "0 B"
         val units = arrayOf("B", "KB", "MB", "GB")
@@ -777,9 +911,8 @@ object CloudDiscoveryHook : HookHandler {
         val callFallbackRegex = Pattern.compile("^(.*?)\\.cls(?:\\s+\\((.*?)\\))?$")
         val smsRegex = Pattern.compile("^v3\\.(\\d+)\\.(\\d+)\\.(\\d+)\\.(.*?)\\.msg(?:\\s+\\((.*?)\\))?$")
         val smsFallbackRegex = Pattern.compile("^(.*?)\\.msg(?:\\s+\\((.*?)\\))?$")
-        val wallRegex = Pattern.compile("^(\\d+)\\.wal(?:\\.png)?$")
-        val wallFallbackRegex = Pattern.compile("^(.*?)\\.wal(?:\\.png)?$")
-        val wifiRegex = Pattern.compile("^(.*?)\\.wfi$")
+        val wallRegex = Pattern.compile("^(.*?)\\.wal(?:\\.png)?(?:\\s+\\((.*?)\\))?$")
+        val wifiRegex = Pattern.compile("^(.*?)\\.wfi(?:\\s+\\((.*?)\\))?$")
 
         val appGroups = mutableMapOf<Triple<String, String, String>, MutableMap<String, JSONObject>>()
         val folderGroups = mutableMapOf<Pair<String, String>, MutableMap<String, JSONObject>>()
@@ -843,17 +976,26 @@ object CloudDiscoveryHook : HookHandler {
             // 4. Wallpapers (.wal / .wal.png)
             val wallMatcher = wallRegex.matcher(fileName)
             if (wallMatcher.matches()) {
-                val ts = wallMatcher.group(1)?.toLongOrNull() ?: System.currentTimeMillis()
-                discoveredWalls[fileId] = DiscoveredCloudWall(fileId, fileName, fileSize, ts)
+                val rawTs = wallMatcher.group(1)
+                val ts = rawTs?.toLongOrNull() ?: System.currentTimeMillis()
+                val thumbnailLink = fileObj.optString("thumbnailLink").takeIf { it.isNotBlank() }
+
+                val cleanFileName = when {
+                    fileName.contains("home_wall") -> "home_wall.wal"
+                    fileName.contains("lock_wall") -> "lock_wall.wal"
+                    fileName.endsWith(".wal") && !fileName.contains(" ") -> fileName
+                    else -> "$ts.wal"
+                }
+
+                discoveredWalls[fileId] = DiscoveredCloudWall(
+                    fileId = fileId,
+                    fileName = cleanFileName,
+                    size = fileSize,
+                    timestamp = ts,
+                    thumbnailLink = thumbnailLink
+                )
                 indexedCount++
                 continue
-            } else {
-                val wallFbMatcher = wallFallbackRegex.matcher(fileName)
-                if (wallFbMatcher.matches()) {
-                    discoveredWalls[fileId] = DiscoveredCloudWall(fileId, fileName, fileSize, System.currentTimeMillis())
-                    indexedCount++
-                    continue
-                }
             }
 
             // 5. WiFi (.wfi)
@@ -1048,16 +1190,22 @@ object CloudDiscoveryHook : HookHandler {
 
             // Wallpapers count
             if (discoveredWalls.isNotEmpty()) {
-                val eMethod = re3Class.getDeclaredMethod("e", String::class.java)
-                val wallsNode = eMethod.invoke(null, "walls")
                 val map = mapOf("wallsBackupCount" to discoveredWalls.size)
-                wallsNode?.javaClass?.getDeclaredMethod("i", Any::class.java)?.invoke(wallsNode, map)
+                attempt("sync walls to re3.g", silent = true) {
+                    val gNode = re3Class.getDeclaredMethod("g").invoke(null)
+                    val dMethod = gNode?.javaClass?.getDeclaredMethod("d", String::class.java)
+                    val wallsNode = dMethod?.invoke(gNode, "walls")
+                    wallsNode?.javaClass?.getDeclaredMethod("i", Any::class.java)?.invoke(wallsNode, map)
+                }
+                attempt("sync walls to re3.e", silent = true) {
+                    val eMethod = re3Class.getDeclaredMethod("e", String::class.java)
+                    val legacyWallsNode = eMethod.invoke(null, "walls")
+                    legacyWallsNode?.javaClass?.getDeclaredMethod("i", Any::class.java)?.invoke(legacyWallsNode, map)
+                }
             }
 
             // WiFi config
             if (discoveredWifi.isNotEmpty()) {
-                val eMethod = re3Class.getDeclaredMethod("e", String::class.java)
-                val wifiNode = eMethod.invoke(null, "wifi")
                 val firstWifi = discoveredWifi.values.firstOrNull()
                 if (firstWifi != null) {
                     val map = mapOf(
@@ -1065,7 +1213,17 @@ object CloudDiscoveryHook : HookHandler {
                         "fileSize" to firstWifi.size,
                         "wifiNetworksCount" to firstWifi.count
                     )
-                    wifiNode?.javaClass?.getDeclaredMethod("i", Any::class.java)?.invoke(wifiNode, map)
+                    attempt("sync wifi to re3.g", silent = true) {
+                        val gNode = re3Class.getDeclaredMethod("g").invoke(null)
+                        val dMethod = gNode?.javaClass?.getDeclaredMethod("d", String::class.java)
+                        val wifiNode = dMethod?.invoke(gNode, "wifi")
+                        wifiNode?.javaClass?.getDeclaredMethod("i", Any::class.java)?.invoke(wifiNode, map)
+                    }
+                    attempt("sync wifi to re3.e", silent = true) {
+                        val eMethod = re3Class.getDeclaredMethod("e", String::class.java)
+                        val legacyWifiNode = eMethod.invoke(null, "wifi")
+                        legacyWifiNode?.javaClass?.getDeclaredMethod("i", Any::class.java)?.invoke(legacyWifiNode, map)
+                    }
                 }
             }
         }
@@ -1093,7 +1251,7 @@ object CloudDiscoveryHook : HookHandler {
     private fun queryDriveFolderFiles(folderId: String, token: String): JSONArray {
         val q = URLEncoder.encode("'$folderId' in parents and trashed=false", "UTF-8")
         val respText = executeDriveGet(
-            "https://www.googleapis.com/drive/v3/files?q=$q&fields=files(id,name,size,modifiedTime)&pageSize=1000",
+            "https://www.googleapis.com/drive/v3/files?q=$q&fields=files(id,name,size,modifiedTime,createdTime,thumbnailLink)&pageSize=1000",
             token
         ) ?: return JSONArray()
         return attempt("parse drive files", silent = true) { JSONObject(respText).optJSONArray("files") } ?: JSONArray()
