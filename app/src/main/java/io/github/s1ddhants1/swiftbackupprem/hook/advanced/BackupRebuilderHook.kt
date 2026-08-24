@@ -66,8 +66,8 @@ object BackupRebuilderHook : HookHandler {
         targets: ResolvedTargets,
         prefs: PreferencesManager
     ) {
-        if (!prefs.enableDriveDiscovery) {
-            logD("Backup Rebuilder is disabled by user preference")
+        if (!prefs.customFirebaseApp || !prefs.enableDriveDiscovery) {
+            logD("Backup Rebuilder is disabled (requires custom Firebase app and Drive discovery)")
             return
         }
 

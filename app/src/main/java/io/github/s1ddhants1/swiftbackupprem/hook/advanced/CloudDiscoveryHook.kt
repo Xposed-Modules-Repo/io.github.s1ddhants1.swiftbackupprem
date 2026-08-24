@@ -264,8 +264,8 @@ object CloudDiscoveryHook : HookHandler {
         targets: ResolvedTargets,
         prefs: PreferencesManager
     ) {
-        if (!prefs.enableDriveDiscovery) {
-            Log.d(TAG, "Cloud Discovery is disabled by user preference")
+        if (!prefs.customFirebaseApp || !prefs.enableDriveDiscovery) {
+            Log.d(TAG, "Cloud Discovery is disabled (requires custom Firebase app and Drive discovery)")
             return
         }
 

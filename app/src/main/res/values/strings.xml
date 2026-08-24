@@ -42,7 +42,7 @@
     <string name="framework_active_title">LSPosed Module Active</string>
     <string name="framework_inactive_title">LSPosed Module Not Enabled</string>
     <string name="framework_active_desc">Connected to %1$s %2$s</string>
-    <string name="framework_inactive_desc">Enable module in LSPosed manager and reboot.</string>
+    <string name="framework_inactive_desc">Enable module in LSPosed manager</string>
 
     <!-- Settings Switches -->
     <string name="pref_enable_premium_title">Enable Premium</string>
@@ -52,12 +52,12 @@
     <string name="pref_custom_firebase_title">Custom firebase app</string>
     <string name="pref_custom_firebase_subtitle">Use personal Firebase database &amp; credentials</string>
 
-    <!-- Advanced & Experimental Section -->
-    <string name="section_advanced_features">Advanced &amp; Experimental</string>
-    <string name="section_advanced_features_subtitle">Cloud backup discovery &amp; Drive scope upgrade</string>
+    <!-- Experimental Section -->
+    <string name="section_advanced_features">Experimental Features</string>
+    <string name="section_advanced_features_subtitle">Enable experimental features</string>
     <string name="pref_enable_drive_discovery_title">Google Drive Full Access &amp; Cloud Restore</string>
     <string name="pref_enable_drive_discovery_subtitle">Discover, decode, and index cloud backups</string>
-    <string name="pref_enable_drive_discovery_note">Upgrades OAuth scope to discover backups from other accounts and firebase projects.</string>
+    <string name="pref_enable_drive_discovery_requires_custom_firebase">Requires Custom Firebase App to be enabled</string>
 
     <!-- Setup Wizard -->
     <string name="wizard_step_format">Step %1$d of %2$d</string>

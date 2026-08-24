@@ -275,7 +275,12 @@ private fun SettingsScreenContent(
                 label = stringResource(R.string.pref_custom_firebase_title),
                 secondaryLabel = stringResource(R.string.pref_custom_firebase_subtitle),
                 pref = prefs.customFirebaseApp,
-                onPrefChange = { prefs.customFirebaseApp = it }
+                onPrefChange = {
+                    prefs.customFirebaseApp = it
+                    if (!it) {
+                        prefs.enableDriveDiscovery = false
+                    }
+                }
             )
 
             AnimatedVisibility(

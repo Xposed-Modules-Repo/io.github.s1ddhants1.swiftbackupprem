@@ -72,25 +72,19 @@ fun AdvancedSettingsCard(
                         color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
                     )
 
+                    val isCustomFirebaseEnabled = prefs.customFirebaseApp
+
                     SettingsSwitch(
                         label = stringResource(R.string.pref_enable_drive_discovery_title),
-                        secondaryLabel = stringResource(R.string.pref_enable_drive_discovery_subtitle),
-                        pref = prefs.enableDriveDiscovery,
+                        secondaryLabel = if (isCustomFirebaseEnabled) {
+                            stringResource(R.string.pref_enable_drive_discovery_subtitle)
+                        } else {
+                            stringResource(R.string.pref_enable_drive_discovery_requires_custom_firebase)
+                        },
+                        pref = if (isCustomFirebaseEnabled) prefs.enableDriveDiscovery else false,
+                        enabled = isCustomFirebaseEnabled,
                         onPrefChange = { prefs.enableDriveDiscovery = it }
                     )
-
-                    Surface(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
-                        shape = RoundedCornerShape(8.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                    ) {
-                        Text(
-                            text = stringResource(R.string.pref_enable_drive_discovery_note),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(10.dp)
-                        )
-                    }
                 }
             }
         }

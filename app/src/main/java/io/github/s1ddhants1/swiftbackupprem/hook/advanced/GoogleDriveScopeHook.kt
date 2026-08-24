@@ -34,8 +34,8 @@ object GoogleDriveScopeHook : HookHandler {
         targets: ResolvedTargets,
         prefs: PreferencesManager
     ) {
-        if (!prefs.enableDriveDiscovery) {
-            Log.d(Consts.TAG, "Google Drive scope upgrade is disabled by user preference")
+        if (!prefs.customFirebaseApp || !prefs.enableDriveDiscovery) {
+            Log.d(Consts.TAG, "Google Drive scope upgrade is disabled (requires custom Firebase app and Drive discovery)")
             return
         }
 

@@ -87,8 +87,8 @@ class PreferencesManager(
     fun applyConfig(config: SbpConfig) {
         enablePremium = config.enablePremium
         disableTelemetry = config.disableTelemetry
-        enableDriveDiscovery = config.enableDriveDiscovery
         customFirebaseApp = config.customFirebaseApp
+        enableDriveDiscovery = if (config.customFirebaseApp) config.enableDriveDiscovery else false
         googleAppId = config.googleAppId
         googleApiKey = config.googleApiKey
         firebaseDatabaseUrl = config.firebaseDatabaseUrl
