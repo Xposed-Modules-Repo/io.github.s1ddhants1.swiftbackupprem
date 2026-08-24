@@ -73,6 +73,15 @@ jobs:
       - name: Run Android Lint
         run: ./gradlew lintDebug --no-daemon
 
+      - name: Restore Keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            mkdir -p ~/.android
+            echo "$KEYSTORE_BASE64" | base64 -d > ~/.android/debug.keystore
+          fi
+
       - name: Assemble Debug and Release APK
         run: ./gradlew assembleDebug assembleRelease --no-daemon
 
