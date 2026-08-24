@@ -49,7 +49,7 @@ enum class AppScreen { Settings, About }
 class MainActivity : ComponentActivity() {
     private val viewModel: MainViewModel by viewModels()
 
-    @OptIn(ExperimentalMaterial3Api::class)
+    @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
@@ -114,7 +114,10 @@ class MainActivity : ComponentActivity() {
             }
 
             Theme {
+                val isImeVisible = WindowInsets.isImeVisible
+
                 Scaffold(
+                    modifier = Modifier.fillMaxSize(),
                     snackbarHost = { SnackbarHost(snackbarHostState) },
                     topBar = {
                         TopAppBar(
@@ -164,7 +167,7 @@ class MainActivity : ComponentActivity() {
                     },
                     bottomBar = {
                         AnimatedVisibility(
-                            visible = currentScreen == AppScreen.Settings,
+                            visible = currentScreen == AppScreen.Settings && !isImeVisible,
                             enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
                             exit = slideOutVertically(targetOffsetY = { it }) + fadeOut()
                         ) {
@@ -200,7 +203,12 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 ) { paddingValues ->
-                    Box(modifier = Modifier.padding(paddingValues).fillMaxSize()) {
+                    Box(
+                        modifier = Modifier
+                            .padding(paddingValues)
+                            .fillMaxSize()
+                            .imePadding()
+                    ) {
                         AnimatedContent(targetState = currentScreen, label = "ScreenTransition") { screen ->
                             when (screen) {
                                 AppScreen.About -> AboutScreen()
@@ -229,7 +237,10 @@ private fun SettingsScreenContent(
     onImportGoogleServices: (android.net.Uri) -> Unit
 ) {
     Column(
-        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(vertical = 8.dp)
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(vertical = 8.dp)
     ) {
         FrameworkStatusBanner(
             isConnected = isFrameworkConnected,
@@ -280,6 +291,9 @@ private fun SettingsScreenContent(
         }
 
         AdvancedSettingsCard(prefs = prefs, isFrameworkConnected = isFrameworkConnected)
+
+        // Extra spacing so fields near the bottom can comfortably scroll above the keyboard
+        Spacer(modifier = Modifier.height(64.dp))
     }
 }
 

@@ -1,8 +1,11 @@
 package io.github.s1ddhants1.swiftbackupprem.ui.component
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
@@ -11,14 +14,20 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusEvent
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import io.github.s1ddhants1.swiftbackupprem.R
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun SettingsTextField(
     label: String,
@@ -28,10 +37,22 @@ fun SettingsTextField(
     keyboardType: KeyboardType = KeyboardType.Ascii,
     imeAction: ImeAction = ImeAction.Next
 ) {
+    val bringIntoViewRequester = remember { BringIntoViewRequester() }
+    val coroutineScope = rememberCoroutineScope()
+
     OutlinedTextField(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 2.dp, vertical = 2.dp),
+            .padding(horizontal = 2.dp, vertical = 2.dp)
+            .bringIntoViewRequester(bringIntoViewRequester)
+            .onFocusEvent { focusState ->
+                if (focusState.isFocused) {
+                    coroutineScope.launch {
+                        delay(250)
+                        bringIntoViewRequester.bringIntoView()
+                    }
+                }
+            },
         value = pref,
         onValueChange = onPrefChange,
         label = { Text(label) },
