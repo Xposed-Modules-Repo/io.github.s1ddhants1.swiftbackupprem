@@ -45,7 +45,7 @@
 - **Premium Toggle & Unlocking**: Enables all Swift Backup Premium functionality without needing Google Play Store licensing.
 - **Disable Telemetry & Tracking**: Blocks Firebase Analytics, Crashlytics, Sessions, Installations, and Google DataTransport tracking calls for maximum privacy.
 - **Custom Firebase Backend (Anti-Ban & Privacy)**: Directs Swift Backup to use your personal Firebase instance for user authentication and cloud synchronization metadata.
-- **Google Drive Full Access & Cloud Restore**: Upgrades Google Drive OAuth scopes to discover backups across accounts, automatically fetches & decodes cloud `.extra` metadata, and indexes cloud backups without relying on original Firebase catalog state.
+- **Google Drive Full Access & Cloud Restore**: Upgrades Google Drive OAuth scopes to discover backups across accounts, automatically fetches & decodes cloud backup metadata (apps, system data, folders), and indexes cloud backups without relying on original Firebase catalog state.
 
 ### Additional features
 
@@ -399,7 +399,7 @@ or in case of cloud folder: `Swift Backup (example16char)`
 
 When the **Cloud Backup Restore** toggle is turned on in SwiftBackupPrem, the module enables automated cloud backup restoration:
 
-1. **Direct In-App Cloud Restore**: Indexes all backups directly from your cloud folder, decodes `.extra` metadata files and indexes them in real-time across the app (Single App Details, Cloud Sync tab, and Batch Restore).
+1. **Direct In-App Cloud Restore**: Indexes all backups directly from your cloud folder, decodes cloud metadata and indexes them in real-time across the app (Single App Details, Cloud Sync tab, and Batch Restore).
 2. **Local Cloud Backup Rebuild**: When cloud backup files (`.app`, `.dat`, `.splits`, `.extdat`, `.extra`) are downloaded or copied to your device storage:
    - Swift Backup typically requires a `<packageName>.xml` metadata file which is absent in raw cloud files.
    - The module detects missing metadata, decrypts the `.extra` payload on the fly using your active Firebase UID key (Conceal AES-GCM-256 + Zstandard), and generates the `<packageName>.xml`.
@@ -536,12 +536,12 @@ Join the official Telegram group for discussion, support, release updates, and a
 
 <details>
 <summary><b>Q: Why do uninstalled apps show as package names (e.g. <code>com.whatsapp</code>) or missing icons during Cloud Restore?</b></summary>
-<p>When backups are indexed directly from cloud metadata files (<code>.extra</code>) for apps not currently installed on your device, Swift Backup falls back to displaying the package identifier recorded in the backup headers. Once restored or installed locally, Android resolves the full display name and application icon normally.</p>
+<p>When backups are indexed directly from cloud metadata for apps not currently installed on your device, Swift Backup falls back to displaying the package identifier recorded in the backup headers. Once restored or installed locally, Android resolves the full display name and application icon normally.</p>
 </details>
 
 <details>
-<summary><b>Q: Does Cloud Backup Restore support Call Logs, SMS, and Wallpapers?</b></summary>
-<p>The automated Cloud Backup Rebuild and Restore engine specifically decodes and decrypts application archives (<code>.app</code>, <code>.dat</code>, <code>.splits</code>, <code>.extdat</code>, <code>.extra</code>). System data like Call Logs, SMS, and Wallpapers are restored through standard local backup paths.</p>
+<summary><b>Q: Does Cloud Backup Restore support Call Logs, SMS, Wallpapers, WiFi networks, and Folders?</b></summary>
+<p>Yes. The Cloud Discovery and Backup Rebuilder engine indexes and restores Call Logs (<code>.cls</code>), SMS messages (<code>.msg</code>), Wallpapers (<code>.wal</code>/<code>.wal.png</code>), WiFi configurations (<code>.wfi</code>), and Folder backups (<code>.fld</code>/<code>.flm</code>) alongside full application archives (<code>.app</code>, <code>.dat</code>, <code>.splits</code>, <code>.extdat</code>, <code>.extra</code>). Folder metadata (<code>metadata.json</code>) is also automatically reconstructed if missing.</p>
 </details>
 
 <details>

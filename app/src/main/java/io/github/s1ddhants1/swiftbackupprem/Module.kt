@@ -47,10 +47,15 @@ class Module : XposedModule() {
             deoptimize = true
         ).intercept { chain ->
             val ctx = chain.thisObject as? Context
+            var deferredHookData: Pair<ResolvedTargets, PreferencesManager>? = null
             if (ctx != null) {
-                applyHooks(ctx, cl, param.applicationInfo.sourceDir, chain.thisObject)
+                deferredHookData = applyHooks(ctx, cl, param.applicationInfo.sourceDir, chain.thisObject)
             }
-            chain.proceed()
+            chain.proceed().also {
+                deferredHookData?.let { (targets, prefs) ->
+                    FirebaseInitHook.applyStaticClientId(targets, prefs)
+                }
+            }
         }
     }
 
@@ -89,11 +94,13 @@ class Module : XposedModule() {
         if (app != null && app.packageName == Consts.packageName) {
             val cl = app.classLoader
             ExitProtectionHook.applyEarly(this, cl)
-            applyHooks(app, cl, app.applicationInfo.sourceDir, app)
+            applyHooks(app, cl, app.applicationInfo.sourceDir, app)?.let { (targets, prefs) ->
+                FirebaseInitHook.applyStaticClientId(targets, prefs)
+            }
         }
     }
 
-    private fun applyHooks(ctx: Context, cl: ClassLoader, sourceDir: String, swiftAppInstance: Any? = null) {
+    private fun applyHooks(ctx: Context, cl: ClassLoader, sourceDir: String, swiftAppInstance: Any? = null): Pair<ResolvedTargets, PreferencesManager>? {
         val remotePrefs = attempt("get remote preferences") { getRemotePreferences(Consts.PREFS_SETTINGS) }
         val prefs = PreferencesManager(remotePrefs, isDynamic = true)
 
@@ -117,7 +124,8 @@ class Module : XposedModule() {
         if (swiftAppInstance != null) {
             PremiumFeatureHook.hookSwiftAppPremium(this, swiftAppInstance, prefs.enablePremium)
         }
-        FirebaseInitHook.applyStaticClientId(targets, prefs)
+
+        return Pair(targets, prefs)
     }
 }
 

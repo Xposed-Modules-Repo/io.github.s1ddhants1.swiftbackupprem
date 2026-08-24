@@ -56,8 +56,8 @@
     <string name="section_advanced_features">Advanced &amp; Experimental</string>
     <string name="section_advanced_features_subtitle">Cloud backup discovery &amp; Drive scope upgrade</string>
     <string name="pref_enable_drive_discovery_title">Google Drive Full Access &amp; Cloud Restore</string>
-    <string name="pref_enable_drive_discovery_subtitle">Discover, decode (.extra), and index cloud backups</string>
-    <string name="pref_enable_drive_discovery_note">Upgrades OAuth scope to discover backups from other accounts and projects.</string>
+    <string name="pref_enable_drive_discovery_subtitle">Discover, decode, and index cloud backups</string>
+    <string name="pref_enable_drive_discovery_note">Upgrades OAuth scope to discover backups from other accounts and firebase projects.</string>
 
     <!-- Setup Wizard -->
     <string name="wizard_step_format">Step %1$d of %2$d</string>

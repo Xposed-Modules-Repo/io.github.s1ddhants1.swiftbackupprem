@@ -14,6 +14,19 @@ import kotlinx.coroutines.withTimeoutOrNull
 object AppUtils {
     private val chars = ('A'..'F') + ('0'..'9')
 
+    /**
+     * Validates that [name] looks like a real Android package name.
+     * Must have at least two dot-separated segments, each segment starting with a letter
+     * or underscore and containing only [a-zA-Z0-9_]. Rejects bare names like "folder-base"
+     * that are directory artifacts rather than actual apps.
+     */
+    private val PACKAGE_NAME_REGEX = Regex(
+        "^[a-zA-Z_][a-zA-Z0-9_]*(\\.[a-zA-Z_][a-zA-Z0-9_]*)+$"
+    )
+
+    fun isValidPackageName(name: String): Boolean =
+        name.length in 2..256 && PACKAGE_NAME_REGEX.matches(name)
+
     fun randomFingerprint(): String =
         List(20) { chars.random().toString() + chars.random() }.joinToString(":")
 

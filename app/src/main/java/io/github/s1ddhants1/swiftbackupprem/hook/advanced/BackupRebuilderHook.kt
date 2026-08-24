@@ -14,6 +14,7 @@ import io.github.s1ddhants1.swiftbackupprem.hook.hookTracked
 import io.github.s1ddhants1.swiftbackupprem.util.BackupCrypto
 import io.github.s1ddhants1.swiftbackupprem.util.PreferencesManager
 import io.github.s1ddhants1.swiftbackupprem.util.attempt
+import io.github.s1ddhants1.swiftbackupprem.util.AppUtils
 import io.github.s1ddhants1.swiftbackupprem.util.loadClassFlexible
 import org.json.JSONObject
 import java.io.File
@@ -212,6 +213,10 @@ object BackupRebuilderHook : HookHandler {
             val appsLocalDir = File(account, "backups/apps/local")
             if (appsLocalDir.isDirectory) {
                 appsLocalDir.listFiles { f -> f.isDirectory }?.forEach { pkgFolder ->
+                    if (!AppUtils.isValidPackageName(pkgFolder.name)) {
+                        logD("Skipping non-package directory: ${pkgFolder.name}")
+                        return@forEach
+                    }
                     pkgFolder.listFiles { f -> f.isDirectory }?.forEach { backupDir ->
                         if (rebuildBackupDirectory(backupDir, pkgFolder.name, backupDir.name, classLoader, targets, primaryUid, context)) {
                             totalRebuilt++
@@ -219,10 +224,66 @@ object BackupRebuilderHook : HookHandler {
                     }
                 }
             }
+
+            val foldersLocalDir = File(account, "backups/folders/local")
+            if (foldersLocalDir.isDirectory) {
+                foldersLocalDir.listFiles { f -> f.isDirectory }?.forEach { folderDir ->
+                    if (rebuildFolderDirectory(folderDir, folderDir.name)) {
+                        totalRebuilt++
+                    }
+                }
+            }
         }
 
         if (totalRebuilt > 0) logI("Rebuilt $totalRebuilt missing backup metadata files across storage")
         return totalRebuilt
+    }
+
+    @SuppressLint("SetWorldReadable", "SetWorldWritable")
+    fun rebuildFolderDirectory(folderDir: File, folderDirName: String): Boolean {
+        val metaFile = File(folderDir, "metadata.json")
+        if (metaFile.exists() && metaFile.length() > 0) return false
+
+        val fldFile = File(folderDir, "folder-base.fld")
+        val flmFile = File(folderDir, "folder-base.flm")
+        if (!fldFile.exists() && !flmFile.exists()) return false
+
+        logI("Found folder backup without metadata.json at ${folderDir.absolutePath}. Auto-reconstructing metadata...")
+
+        val cleanId = folderDirName.removePrefix("Folder-")
+        val fldSize = if (fldFile.exists()) fldFile.length() else 0L
+        val flmSize = if (flmFile.exists()) flmFile.length() else 0L
+        val now = System.currentTimeMillis()
+        val tsFormat = java.text.SimpleDateFormat("yyyyMMdd-HHmmss-SSS", java.util.Locale.US)
+        val tsStr = tsFormat.format(java.util.Date(now))
+
+        val metaJson = JSONObject().apply {
+            put("folderItem", JSONObject().apply {
+                put("id", cleanId)
+                put("displayName", "Folder-$cleanId")
+                put("sourceFolder", "/storage/emulated/0")
+                put("setupCreationTime", now)
+            })
+            put("baseBackup", JSONObject().apply {
+                put("backupLink", fldFile.absolutePath)
+                put("backupSize", fldSize)
+                put("manifestLink", flmFile.absolutePath)
+                put("manifestSize", flmSize)
+                put("originalSize", fldSize)
+                put("timestamp", tsStr)
+            })
+        }
+
+        try {
+            metaFile.writeText(metaJson.toString(2), StandardCharsets.UTF_8)
+            metaFile.setReadable(true, false)
+            metaFile.setWritable(true, false)
+            logI("Successfully generated metadata.json for folder $cleanId")
+            return true
+        } catch (t: Throwable) {
+            logE("Failed to write metadata.json for folder $cleanId: ${t.message}")
+            return false
+        }
     }
 
     @SuppressLint("SetWorldReadable", "SetWorldWritable")
