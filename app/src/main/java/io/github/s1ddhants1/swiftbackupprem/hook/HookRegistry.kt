@@ -45,3 +45,10 @@ fun XposedModule.hookTracked(
     }
 }
 
+fun Any.getFieldValue(name: String): Any? = attempt("get field $name", silent = true) {
+    javaClass.getDeclaredField(name).apply { isAccessible = true }.get(this)
+}
+
+inline fun <reified T> Any.getTypedFieldValue(name: String): T? = getFieldValue(name) as? T
+
+

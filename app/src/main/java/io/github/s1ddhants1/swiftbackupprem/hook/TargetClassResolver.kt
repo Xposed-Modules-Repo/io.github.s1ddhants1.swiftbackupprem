@@ -56,6 +56,13 @@ object TargetClassResolver {
             if (cloudGms != null) break
         }
 
+        if (appBackup == null) {
+            appBackup = loadClassFlexible(cl, "defpackage.hk") ?: loadClassFlexible(cl, "hk")
+        }
+        if (appMetadataXml == null) {
+            appMetadataXml = loadClassFlexible(cl, "defpackage.cu") ?: loadClassFlexible(cl, "cu")
+        }
+
         if (clientId != null && v != null && homeVm != null && authUser != null && oauthHelper != null && authRequestBuilder != null) {
             Log.d(Consts.TAG, "Resolved Swift Backup hook classes without DexKit scan")
             return ResolvedTargets(clientId, v, cloudGms, homeVm, authUser, anonUser, oauthHelper, authRequestBuilder, appBackup, appMetadataXml)

@@ -21,8 +21,8 @@ import io.github.s1ddhants1.swiftbackupprem.util.PreferencesManager
 @Composable
 fun AdvancedSettingsCard(
     prefs: PreferencesManager,
-    isFrameworkConnected: Boolean = true,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isFrameworkConnected: Boolean = true
 ) {
     var showAdvancedFeatures by remember { mutableStateOf(false) }
 

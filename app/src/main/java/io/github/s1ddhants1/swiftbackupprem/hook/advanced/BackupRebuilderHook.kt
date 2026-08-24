@@ -5,22 +5,22 @@ import android.content.Context
 import android.os.Environment
 import android.util.Log
 import androidx.annotation.Keep
+import androidx.core.content.pm.PackageInfoCompat
 import io.github.libxposed.api.XposedModule
 import io.github.s1ddhants1.swiftbackupprem.Consts
 import io.github.s1ddhants1.swiftbackupprem.hook.HookHandler
 import io.github.s1ddhants1.swiftbackupprem.hook.ResolvedTargets
 import io.github.s1ddhants1.swiftbackupprem.hook.hookTracked
+import io.github.s1ddhants1.swiftbackupprem.util.BackupCrypto
 import io.github.s1ddhants1.swiftbackupprem.util.PreferencesManager
 import io.github.s1ddhants1.swiftbackupprem.util.attempt
 import io.github.s1ddhants1.swiftbackupprem.util.loadClassFlexible
 import org.json.JSONObject
 import java.io.File
 import java.nio.charset.StandardCharsets
-import java.security.SecureRandom
-import java.util.Base64
-import javax.crypto.Cipher
-import javax.crypto.spec.GCMParameterSpec
-import javax.crypto.spec.SecretKeySpec
+import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledExecutorService
+import java.util.concurrent.TimeUnit
 
 /**
  * Hook and engine that automatically detects, decrypts, and reconstructs missing
@@ -30,17 +30,16 @@ import javax.crypto.spec.SecretKeySpec
 object BackupRebuilderHook : HookHandler {
 
     private const val TAG = Consts.TAG
-    private const val CONCEAL_ENTITY = "SwiftBackup_Entity"
 
     private fun logI(msg: String) { try { Log.i(TAG, "[BackupRebuilder] $msg") } catch (_: Throwable) {} }
     private fun logE(msg: String) { try { Log.e(TAG, "[BackupRebuilder] $msg") } catch (_: Throwable) {} }
     private fun logD(msg: String) { try { Log.d(TAG, "[BackupRebuilder] $msg") } catch (_: Throwable) {} }
 
     @Volatile
-    private var rebuildExecutor: java.util.concurrent.ScheduledExecutorService = createRebuildExecutor()
+    private var rebuildExecutor: ScheduledExecutorService = createRebuildExecutor()
 
-    private fun createRebuildExecutor(): java.util.concurrent.ScheduledExecutorService =
-        java.util.concurrent.Executors.newSingleThreadScheduledExecutor { r ->
+    private fun createRebuildExecutor(): ScheduledExecutorService =
+        Executors.newSingleThreadScheduledExecutor { r ->
             Thread(r, "SBP-BackupRebuilder").apply { isDaemon = true }
         }
 
@@ -87,7 +86,7 @@ object BackupRebuilderHook : HookHandler {
             } catch (t: Throwable) {
                 logE("Startup backup scan error: ${t.message}")
             }
-        }, 2, java.util.concurrent.TimeUnit.SECONDS)
+        }, 2, TimeUnit.SECONDS)
     }
 
     private fun hookAppBackupValidity(
@@ -184,7 +183,7 @@ object BackupRebuilderHook : HookHandler {
         val accountsDir = File(Environment.getExternalStorageDirectory(), "SwiftBackup/accounts")
         if (!accountsDir.exists()) return false
 
-        val candidateUids = CloudDiscoveryHook.resolveCandidateUids(context, classLoader, targets)
+        val candidateUids = BackupCrypto.resolveCandidateUids(context, classLoader, targets)
         val primaryUid = candidateUids.firstOrNull() ?: "default_uid"
         var rebuilt = false
 
@@ -205,7 +204,7 @@ object BackupRebuilderHook : HookHandler {
         val accountsDir = File(Environment.getExternalStorageDirectory(), "SwiftBackup/accounts")
         if (!accountsDir.isDirectory) return 0
 
-        val candidateUids = CloudDiscoveryHook.resolveCandidateUids(context, classLoader, targets)
+        val candidateUids = BackupCrypto.resolveCandidateUids(context, classLoader, targets)
         val primaryUid = candidateUids.firstOrNull() ?: "default_uid"
         var totalRebuilt = 0
 
@@ -261,26 +260,15 @@ object BackupRebuilderHook : HookHandler {
 
         if (extraFile.exists() && extraFile.length() > 0) {
             attempt("decrypt .extra file") {
-                val parts = extraFile.readText(StandardCharsets.UTF_8).trim().split(":::").filter { it.isNotBlank() }
-                if (parts.size >= 3) {
-                    val candidateUids = CloudDiscoveryHook.resolveCandidateUids(context, classLoader, targets)
-                    for (candUid in candidateUids) {
-                        try {
-                            val key = deriveConcealKey(candUid)
-                            val decExtraBytes = concealDecrypt(parts[2].trim(), key)
-                            val decompressedJson = decompressZstdOrRaw(decExtraBytes, classLoader)
-                            if (decompressedJson != null) {
-                                val json = JSONObject(decompressedJson)
-                                if (json.has("ssaid")) ssaid = json.optString("ssaid")
-                                if (json.has("permissionStatesCsv")) permissionStatesCsv = json.optString("permissionStatesCsv")
-                                if (json.has("notificationPolicyXml")) notificationPolicyXml = json.optString("notificationPolicyXml")
-                                if (json.has("versionCode")) versionCode = json.optLong("versionCode", 1L)
-                                if (json.has("versionName")) versionName = json.optString("versionName", "1.0")
-                                resolvedUid = candUid
-                                break
-                            }
-                        } catch (_: Throwable) {}
-                    }
+                val candidateUids = BackupCrypto.resolveCandidateUids(context, classLoader, targets)
+                val extra = BackupCrypto.parseExtraPayload(extraFile.readText(StandardCharsets.UTF_8), candidateUids, classLoader)
+                if (extra != null) {
+                    ssaid = extra.ssaid
+                    permissionStatesCsv = extra.permissionStatesCsv
+                    notificationPolicyXml = extra.notificationPolicyXml
+                    versionCode = extra.versionCode
+                    versionName = extra.versionName
+                    resolvedUid = extra.resolvedUid
                 }
             }
         }
@@ -292,7 +280,7 @@ object BackupRebuilderHook : HookHandler {
                 attempt("read version info from apk", silent = true) {
                     val info = context.packageManager.getPackageArchiveInfo(apkFile.absolutePath, 0)
                     if (info != null) {
-                        versionCode = info.longVersionCode
+                        versionCode = PackageInfoCompat.getLongVersionCode(info)
                         if (!info.versionName.isNullOrBlank()) versionName = info.versionName!!
                     }
                 }
@@ -348,51 +336,9 @@ object BackupRebuilderHook : HookHandler {
         return true
     }
 
-    fun deriveConcealKey(uid: String): ByteArray {
-        val repeated = uid.repeat((32 / uid.length) + 1).take(32)
-        return repeated.toByteArray(StandardCharsets.UTF_8)
-    }
-
-    fun concealDecrypt(base64Payload: String, key: ByteArray): ByteArray {
-        val raw = Base64.getDecoder().decode(base64Payload.trim().replace("\n", "").replace("\r", ""))
-        val version = raw[0]
-        val cipherId = raw[1]
-        val iv = raw.copyOfRange(2, 14)
-        val cipherTextAndTag = raw.copyOfRange(14, raw.size)
-
-        val aad = byteArrayOf(version, cipherId) + CONCEAL_ENTITY.toByteArray(StandardCharsets.UTF_8)
-        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(key, "AES"), GCMParameterSpec(128, iv))
-        cipher.updateAAD(aad)
-        return cipher.doFinal(cipherTextAndTag)
-    }
-
-    fun concealEncrypt(plaintext: String, key: ByteArray): String {
-        val iv = ByteArray(12).apply { SecureRandom().nextBytes(this) }
-        val aad = byteArrayOf(1, 2) + CONCEAL_ENTITY.toByteArray(StandardCharsets.UTF_8)
-
-        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(key, "AES"), GCMParameterSpec(128, iv))
-        cipher.updateAAD(aad)
-        val cipherTextAndTag = cipher.doFinal(plaintext.toByteArray(StandardCharsets.UTF_8))
-
-        val output = byteArrayOf(1, 2) + iv + cipherTextAndTag
-        return Base64.getEncoder().encodeToString(output)
-    }
-
-    fun decompressZstdOrRaw(bytes: ByteArray, classLoader: ClassLoader): String? {
-        try {
-            val str = String(bytes, StandardCharsets.UTF_8)
-            if (str.startsWith("{") && str.endsWith("}")) return str
-        } catch (_: Throwable) {}
-
-        return attempt("decompress Zstandard payload", silent = true) {
-            val unb64 = Base64.getDecoder().decode(bytes)
-            val zstdClass = loadClassFlexible(classLoader, "com.swiftapps.sba.SbaZstdNative") ?: return@attempt null
-            val nativeInstance = zstdClass.getDeclaredField("a").apply { isAccessible = true }.get(null)
-            val decompressMethod = zstdClass.getDeclaredMethod("decompressZstdBytes", ByteArray::class.java)
-            val decompressed = decompressMethod.invoke(nativeInstance, unb64) as? ByteArray
-            decompressed?.let { String(it, StandardCharsets.UTF_8) }
-        }
-    }
+    // Delegating functions to BackupCrypto for backward compatibility & direct test access
+    fun deriveConcealKey(uid: String): ByteArray = BackupCrypto.deriveConcealKey(uid)
+    fun concealDecrypt(base64Payload: String, key: ByteArray): ByteArray = BackupCrypto.concealDecrypt(base64Payload, key)
+    fun concealEncrypt(plaintext: String, key: ByteArray): String = BackupCrypto.concealEncrypt(plaintext, key)
+    fun decompressZstdOrRaw(bytes: ByteArray, classLoader: ClassLoader): String? = BackupCrypto.decompressZstdOrRaw(bytes, classLoader)
 }
