@@ -53,35 +53,25 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        makeWorldReadable()
 
         setContent {
             val context = LocalContext.current
             val state by viewModel.uiState.collectAsStateWithLifecycle()
-            val localPrefs = remember { getSharedPreferences(Consts.PREFS_SETTINGS, Context.MODE_PRIVATE) }
+            val localPrefs = remember {
+                try {
+                    @Suppress("DEPRECATION")
+                    getSharedPreferences(Consts.PREFS_SETTINGS, Context.MODE_WORLD_READABLE)
+                } catch (_: Throwable) {
+                    getSharedPreferences(Consts.PREFS_SETTINGS, Context.MODE_PRIVATE)
+                }
+            }
             val prefsState = remember { mutableStateOf(PreferencesManager(localPrefs)) }
             val prefs = prefsState.value
 
             LaunchedEffect(Unit) {
-                App.serviceState.collect { service ->
-                    if (service != null) {
-                        val name = attempt("get frameworkName", silent = true) { service.frameworkName } ?: "LSPosed"
-                        val version = attempt("get frameworkVersion", silent = true) { service.frameworkVersion } ?: ""
-                        viewModel.onFrameworkConnected(name, version)
-                        attempt("retrieve remote preferences from XposedService") {
-                            val remotePrefs = service.getRemotePreferences(Consts.PREFS_SETTINGS)
-                            val remoteMgr = PreferencesManager(remotePrefs, backupPrefs = localPrefs)
-                            val localMgr = PreferencesManager(localPrefs)
-                            if (remotePrefs.all.isEmpty()) {
-                                remoteMgr.applyConfig(localMgr.toConfig())
-                            } else {
-                                localMgr.applyConfig(remoteMgr.toConfig())
-                            }
-                            prefsState.value = remoteMgr
-                        }
-                    } else {
-                        viewModel.onFrameworkDisconnected()
-                        prefsState.value = PreferencesManager(localPrefs)
-                    }
+                if (App.isModuleActive()) {
+                    viewModel.onFrameworkConnected("Xposed", "Legacy (API 82)")
                 }
             }
 
@@ -214,9 +204,6 @@ class MainActivity : ComponentActivity() {
                                 AppScreen.About -> AboutScreen()
                                 AppScreen.Settings -> SettingsScreenContent(
                                     prefs = prefs,
-                                    isFrameworkConnected = state.isFrameworkConnected,
-                                    frameworkName = state.frameworkName,
-                                    frameworkVersion = state.frameworkVersion,
                                     onImportGoogleServices = { uri -> viewModel.importGoogleServices(contentResolver, uri, prefs) }
                                 )
                             }
@@ -226,14 +213,43 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
+    override fun onResume() {
+        super.onResume()
+        makeWorldReadable()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        makeWorldReadable()
+    }
+
+    private fun makeWorldReadable() {
+        try {
+            val dataDir = java.io.File(applicationInfo.dataDir)
+            dataDir.setReadable(true, false)
+            dataDir.setExecutable(true, false)
+            val user0Dir = java.io.File("/data/user/0/${BuildConfig.APPLICATION_ID}")
+            if (user0Dir.exists()) {
+                user0Dir.setReadable(true, false)
+                user0Dir.setExecutable(true, false)
+            }
+            val prefsDir = java.io.File(dataDir, "shared_prefs")
+            val prefsFile = java.io.File(prefsDir, "${BuildConfig.APPLICATION_ID}_preferences.xml")
+            if (prefsDir.exists()) {
+                prefsDir.setReadable(true, false)
+                prefsDir.setExecutable(true, false)
+            }
+            if (prefsFile.exists()) {
+                prefsFile.setReadable(true, false)
+            }
+        } catch (_: Throwable) {}
+    }
 }
 
 @Composable
 private fun SettingsScreenContent(
     prefs: PreferencesManager,
-    isFrameworkConnected: Boolean,
-    frameworkName: String,
-    frameworkVersion: String,
     onImportGoogleServices: (android.net.Uri) -> Unit
 ) {
     Column(
@@ -242,12 +258,6 @@ private fun SettingsScreenContent(
             .verticalScroll(rememberScrollState())
             .padding(vertical = 8.dp)
     ) {
-        FrameworkStatusBanner(
-            isConnected = isFrameworkConnected,
-            frameworkName = frameworkName,
-            frameworkVersion = frameworkVersion
-        )
-
         OutlinedCard(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
             shape = RoundedCornerShape(16.dp),
@@ -295,59 +305,10 @@ private fun SettingsScreenContent(
             }
         }
 
-        AdvancedSettingsCard(prefs = prefs, isFrameworkConnected = isFrameworkConnected)
+        AdvancedSettingsCard(prefs = prefs)
 
         // Extra spacing so fields near the bottom can comfortably scroll above the keyboard
         Spacer(modifier = Modifier.height(64.dp))
-    }
-}
-
-@Composable
-private fun FrameworkStatusBanner(
-    isConnected: Boolean,
-    frameworkName: String,
-    frameworkVersion: String
-) {
-    val statusBg = if (isConnected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.tertiaryContainer
-    val statusOnBg = if (isConnected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onTertiaryContainer
-    val badgeColor = if (isConnected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.tertiary
-    val iconTint = if (isConnected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onTertiary
-
-    ElevatedCard(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.elevatedCardColors(containerColor = statusBg)
-    ) {
-        Row(
-            modifier = Modifier.padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(14.dp)
-        ) {
-            Surface(shape = CircleShape, color = badgeColor, modifier = Modifier.size(38.dp)) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        imageVector = if (isConnected) Icons.Default.CheckCircle else Icons.Default.Warning,
-                        contentDescription = null,
-                        tint = iconTint,
-                        modifier = Modifier.size(22.dp)
-                    )
-                }
-            }
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = stringResource(if (isConnected) R.string.framework_active_title else R.string.framework_inactive_title),
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = statusOnBg
-                )
-                Text(
-                    text = if (isConnected) stringResource(R.string.framework_active_desc, frameworkName, frameworkVersion)
-                    else stringResource(R.string.framework_inactive_desc),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = statusOnBg.copy(alpha = 0.85f)
-                )
-            }
-        }
     }
 }
 

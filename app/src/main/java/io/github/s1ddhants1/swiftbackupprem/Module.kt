@@ -1,108 +1,77 @@
 package io.github.s1ddhants1.swiftbackupprem
 
 import android.content.Context
-import android.os.Bundle
 import android.util.Log
 import androidx.annotation.Keep
-import io.github.libxposed.api.XposedInterface
-import io.github.libxposed.api.XposedModule
-import io.github.libxposed.api.XposedModuleInterface
+import de.robv.android.xposed.IXposedHookLoadPackage
+import de.robv.android.xposed.XC_MethodHook
+import de.robv.android.xposed.XSharedPreferences
+import de.robv.android.xposed.XposedBridge
+import de.robv.android.xposed.callbacks.XC_LoadPackage
 import io.github.s1ddhants1.swiftbackupprem.hook.*
 import io.github.s1ddhants1.swiftbackupprem.hook.advanced.BackupRebuilderHook
 import io.github.s1ddhants1.swiftbackupprem.hook.advanced.CloudDiscoveryHook
 import io.github.s1ddhants1.swiftbackupprem.hook.advanced.GoogleDriveScopeHook
 import io.github.s1ddhants1.swiftbackupprem.util.PreferencesManager
 import io.github.s1ddhants1.swiftbackupprem.util.attempt
-import java.util.concurrent.ConcurrentHashMap
+import java.lang.reflect.Constructor
+import java.lang.reflect.Executable
+import java.lang.reflect.Member
 
 @Keep
-class Module : XposedModule() {
-    private val hookHandles = ConcurrentHashMap<String, XposedInterface.HookHandle>()
+class Module : IXposedHookLoadPackage, HookContext {
 
-    fun rememberHook(id: String?, handle: XposedInterface.HookHandle) {
-        if (id != null) hookHandles[id] = handle
-    }
-
-    override fun onPackageReady(param: XposedModuleInterface.PackageReadyParam) {
-        super.onPackageReady(param)
-        if (!param.isFirstPackage || param.packageName != Consts.packageName) {
-            if (apiVersion >= XposedInterface.API_102) {
-                attempt("detach non-target package", silent = true) { detach() }
+    override fun handleLoadPackage(lpparam: XC_LoadPackage.LoadPackageParam) {
+        if (lpparam.packageName == BuildConfig.APPLICATION_ID) {
+            attempt("hook App.isModuleActive in own app") {
+                val appClass = lpparam.classLoader.loadClass("io.github.s1ddhants1.swiftbackupprem.App")
+                val isModuleActiveMethod = appClass.getDeclaredMethod("isModuleActive")
+                XposedBridge.hookMethod(isModuleActiveMethod, object : XC_MethodHook(PRIORITY_HIGHEST) {
+                    override fun beforeHookedMethod(param: MethodHookParam) {
+                        param.result = true
+                    }
+                })
             }
             return
         }
 
+        if (lpparam.packageName != Consts.packageName) return
+
         attempt("load nativelib native library") { System.loadLibrary("nativelib") }
 
-        val cl = param.classLoader
+        val xPrefs = XSharedPreferences(BuildConfig.APPLICATION_ID)
+        try {
+            @Suppress("DEPRECATION")
+            xPrefs.makeWorldReadable()
+            xPrefs.reload()
+        } catch (_: Throwable) {}
+
+        Log.d(Consts.TAG, "xPrefs file: ${xPrefs.file?.absolutePath}, exists: ${xPrefs.file?.exists()}, canRead: ${xPrefs.file?.canRead()}, keys: ${xPrefs.all?.keys}")
+
+        val cl = lpparam.classLoader
         ExitProtectionHook.applyEarly(this, cl)
 
         val swiftAppClass = attempt("load SwiftApp class") { cl.loadClass("org.swiftapps.swiftbackup.SwiftApp") } ?: return
         val onCreateMethod = attempt("find SwiftApp.onCreate") { swiftAppClass.getDeclaredMethod("onCreate") } ?: return
 
-        hookTracked(
-            onCreateMethod,
-            idPrefix = "swift-app-on-create",
-            priority = XposedInterface.PRIORITY_HIGHEST,
-            deoptimize = true
-        ).intercept { chain ->
-            val ctx = chain.thisObject as? Context
-            var deferredHookData: Pair<ResolvedTargets, PreferencesManager>? = null
-            if (ctx != null) {
-                deferredHookData = applyHooks(ctx, cl, param.applicationInfo.sourceDir, chain.thisObject)
+        XposedBridge.hookMethod(onCreateMethod, object : XC_MethodHook(PRIORITY_HIGHEST) {
+            override fun beforeHookedMethod(param: MethodHookParam) {
+                xPrefs.reload()
+                Log.d(Consts.TAG, "SwiftApp.onCreate beforeHookedMethod: xPrefs keys=${xPrefs.all?.keys}, custom_firebase_app=${xPrefs.getBoolean("custom_firebase_app", false)}")
+                val ctx = param.thisObject as? Context ?: return
+                applyHooks(ctx, cl, lpparam.appInfo?.sourceDir ?: "", xPrefs, param.thisObject)
             }
-            chain.proceed().also {
-                deferredHookData?.let { (targets, prefs) ->
-                    FirebaseInitHook.applyStaticClientId(targets, prefs)
-                }
-            }
-        }
+        })
     }
 
-    override fun onHotReloading(param: XposedModuleInterface.HotReloadingParam): Boolean {
-        Log.i(Consts.TAG, "Preparing old module generation for hot reload...")
-        
-        val state = Bundle().apply {
-            putLong("hot_reload_timestamp", System.currentTimeMillis())
-        }
-        param.setSavedInstanceState(state)
-
-        BackupRebuilderHook.shutdown()
-        CloudDiscoveryHook.shutdown()
-        ExitProtectionHook.reset()
-        hookHandles.clear()
-
-        return true
-    }
-
-    override fun onHotReloaded(param: XposedModuleInterface.HotReloadedParam) {
-        Log.i(Consts.TAG, "Hot reloaded SwiftBackupPrem in process ${param.processName}!")
-
-        for (oldHandle in param.oldHookHandles) {
-            try {
-                oldHandle.unhook()
-            } catch (_: Throwable) {}
-        }
-        hookHandles.clear()
-
-        attempt("load nativelib native library on hot reload") { System.loadLibrary("nativelib") }
-
-        val app = attempt("get current Application", silent = true) {
-            val atClass = Class.forName("android.app.ActivityThread")
-            atClass.getDeclaredMethod("currentApplication").invoke(null) as? android.app.Application
-        }
-        if (app != null && app.packageName == Consts.packageName) {
-            val cl = app.classLoader
-            ExitProtectionHook.applyEarly(this, cl)
-            applyHooks(app, cl, app.applicationInfo.sourceDir, app)?.let { (targets, prefs) ->
-                FirebaseInitHook.applyStaticClientId(targets, prefs)
-            }
-        }
-    }
-
-    private fun applyHooks(ctx: Context, cl: ClassLoader, sourceDir: String, swiftAppInstance: Any? = null): Pair<ResolvedTargets, PreferencesManager>? {
-        val remotePrefs = attempt("get remote preferences") { getRemotePreferences(Consts.PREFS_SETTINGS) }
-        val prefs = PreferencesManager(remotePrefs, isDynamic = true)
+    private fun applyHooks(
+        ctx: Context,
+        cl: ClassLoader,
+        sourceDir: String,
+        xPrefs: XSharedPreferences,
+        swiftAppInstance: Any? = null
+    ): Pair<ResolvedTargets, PreferencesManager> {
+        val prefs = PreferencesManager(xPrefs, isDynamic = true)
 
         var targets = ResolvedTargets()
         attempt("find obfuscated classes with DexKit") {
@@ -127,5 +96,106 @@ class Module : XposedModule() {
 
         return Pair(targets, prefs)
     }
-}
 
+    override fun deoptimize(executable: Executable): Boolean = false
+
+    override fun hookTracked(
+        executable: Executable,
+        idPrefix: String,
+        priority: Int,
+        deoptimize: Boolean
+    ): HookBuilder {
+        return object : HookBuilder {
+            private var currentPriority = priority
+
+            override fun setPriority(priority: Int) = apply { this.currentPriority = priority }
+            override fun setExceptionMode(mode: ExceptionMode) = this
+            override fun setId(id: String?) = this
+
+            override fun intercept(hooker: (Chain) -> Any?): HookHandle {
+                val isCtor = executable is Constructor<*>
+                var unhookObj: XC_MethodHook.Unhook? = null
+
+                val methodHook = object : XC_MethodHook(currentPriority) {
+                    override fun beforeHookedMethod(param: MethodHookParam) {
+                        var proceedCalled = false
+                        var modifiedArgs: Array<Any?>? = null
+
+                        val beforeChain = object : Chain {
+                            override val thisObject: Any? get() = param.thisObject
+                            override val args: List<Any?> get() = (modifiedArgs ?: param.args).toList()
+                            override fun getArg(index: Int): Any? = (modifiedArgs ?: param.args).getOrNull(index)
+
+                            override fun proceed(): Any? {
+                                proceedCalled = true
+                                return null
+                            }
+
+                            override fun proceed(args: Array<Any?>): Any? {
+                                proceedCalled = true
+                                modifiedArgs = args
+                                for (i in args.indices) {
+                                    if (i < param.args.size) {
+                                        param.args[i] = args[i]
+                                    }
+                                }
+                                return null
+                            }
+                        }
+
+                        try {
+                            val res = hooker(beforeChain)
+                            if (modifiedArgs != null) {
+                                for (i in modifiedArgs!!.indices) {
+                                    if (i < param.args.size) {
+                                        param.args[i] = modifiedArgs!![i]
+                                    }
+                                }
+                            }
+                            if (!proceedCalled && !isCtor) {
+                                param.result = res
+                            }
+                        } catch (t: Throwable) {
+                            Log.e(Consts.TAG, "Error in legacy beforeHookedMethod for $executable ($idPrefix)", t)
+                        }
+                    }
+
+                    override fun afterHookedMethod(param: MethodHookParam) {
+                        if (isCtor || param.hasThrowable()) return
+
+                        val afterChain = object : Chain {
+                            override val thisObject: Any? get() = param.thisObject
+                            override val args: List<Any?> get() = param.args.toList()
+                            override fun getArg(index: Int): Any? = param.args.getOrNull(index)
+
+                            override fun proceed(): Any? = param.result
+
+                            override fun proceed(args: Array<Any?>): Any? = param.result
+                        }
+
+                        try {
+                            val res = hooker(afterChain)
+                            if (res != null || param.result == null) {
+                                param.result = res
+                            }
+                        } catch (t: Throwable) {
+                            Log.e(Consts.TAG, "Error in legacy afterHookedMethod for $executable ($idPrefix)", t)
+                        }
+                    }
+                }
+
+                try {
+                    unhookObj = XposedBridge.hookMethod(executable as Member, methodHook)
+                } catch (t: Throwable) {
+                    Log.e(Consts.TAG, "Failed to hook method with legacy Xposed: $executable ($idPrefix)", t)
+                }
+
+                return HookHandle {
+                    try {
+                        unhookObj?.unhook()
+                    } catch (_: Throwable) {}
+                }
+            }
+        }
+    }
+}

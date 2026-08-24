@@ -10,13 +10,12 @@ import android.os.Looper
 import android.util.Log
 import android.widget.ImageView
 import androidx.annotation.Keep
-import io.github.libxposed.api.XposedInterface
-import io.github.libxposed.api.XposedModule
 import io.github.s1ddhants1.swiftbackupprem.Consts
+import io.github.s1ddhants1.swiftbackupprem.hook.HookContext
 import io.github.s1ddhants1.swiftbackupprem.hook.HookHandler
+import io.github.s1ddhants1.swiftbackupprem.hook.PRIORITY_HIGHEST
 import io.github.s1ddhants1.swiftbackupprem.hook.ResolvedTargets
 import io.github.s1ddhants1.swiftbackupprem.hook.getFieldValue
-import io.github.s1ddhants1.swiftbackupprem.hook.hookTracked
 import io.github.s1ddhants1.swiftbackupprem.util.BackupCrypto
 import io.github.s1ddhants1.swiftbackupprem.util.PreferencesManager
 import io.github.s1ddhants1.swiftbackupprem.util.AppUtils
@@ -264,7 +263,7 @@ object CloudDiscoveryHook : HookHandler {
     }
 
     override fun apply(
-        module: XposedModule,
+        module: HookContext,
         context: Context,
         classLoader: ClassLoader,
         targets: ResolvedTargets,
@@ -422,7 +421,7 @@ object CloudDiscoveryHook : HookHandler {
     }
 
     private fun hookAppCloudBackups(
-        module: XposedModule,
+        module: HookContext,
         context: Context,
         classLoader: ClassLoader,
         targets: ResolvedTargets
@@ -477,7 +476,7 @@ object CloudDiscoveryHook : HookHandler {
     }
 
     private fun hookDetailCloudListener(
-        module: XposedModule,
+        module: HookContext,
         context: Context,
         classLoader: ClassLoader,
         targets: ResolvedTargets
@@ -537,7 +536,7 @@ object CloudDiscoveryHook : HookHandler {
     }
 
     private fun hookBatchCloudLoader(
-        module: XposedModule,
+        module: HookContext,
         context: Context,
         classLoader: ClassLoader,
         targets: ResolvedTargets
@@ -579,7 +578,7 @@ object CloudDiscoveryHook : HookHandler {
     }
 
     private fun hookAppFilterHelper(
-        module: XposedModule,
+        module: HookContext,
         context: Context,
         classLoader: ClassLoader,
         targets: ResolvedTargets
@@ -622,7 +621,7 @@ object CloudDiscoveryHook : HookHandler {
     }
 
     private fun hookCloudSyncTab(
-        module: XposedModule,
+        module: HookContext,
         context: Context,
         classLoader: ClassLoader,
         targets: ResolvedTargets
@@ -683,7 +682,7 @@ object CloudDiscoveryHook : HookHandler {
         }
     }
 
-    private fun hookCloudBackupTags(module: XposedModule, classLoader: ClassLoader) {
+    private fun hookCloudBackupTags(module: HookContext, classLoader: ClassLoader) {
         val ob1Class = loadClassFlexible(classLoader, "ob1") ?: return
         ob1Class.declaredMethods.filter { it.name == "a" }.forEach { m ->
             module.hookTracked(m, idPrefix = "cloud-discovery-backup-tags").intercept { chain ->
@@ -714,7 +713,7 @@ object CloudDiscoveryHook : HookHandler {
         }
     }
 
-    private fun hookWallpaperCloudLoader(module: XposedModule, classLoader: ClassLoader) {
+    private fun hookWallpaperCloudLoader(module: HookContext, classLoader: ClassLoader) {
         val fu3Class = loadClassFlexible(classLoader, "fu3") ?: return
         val kMethod = fu3Class.declaredMethods.firstOrNull { it.name == "k" && it.parameterCount == 0 } ?: return
         val ui1Class = loadClassFlexible(classLoader, "ui1") ?: return
@@ -723,7 +722,7 @@ object CloudDiscoveryHook : HookHandler {
         module.hookTracked(
             kMethod,
             idPrefix = "gdrive-wall-cloud-k",
-            priority = XposedInterface.PRIORITY_HIGHEST,
+            priority = PRIORITY_HIGHEST,
             deoptimize = true
         ).intercept { chain ->
             val original = chain.proceed()
@@ -751,7 +750,7 @@ object CloudDiscoveryHook : HookHandler {
             module.hookTracked(
                 onClickMethod,
                 idPrefix = "wall-item-click-fallback",
-                priority = XposedInterface.PRIORITY_HIGHEST,
+                priority = PRIORITY_HIGHEST,
                 deoptimize = true
             ).intercept { chain ->
                 val thisObj = chain.thisObject ?: return@intercept chain.proceed()
@@ -791,7 +790,7 @@ object CloudDiscoveryHook : HookHandler {
         }
     }
 
-    private fun hookWifiCloudLoader(module: XposedModule, classLoader: ClassLoader) {
+    private fun hookWifiCloudLoader(module: HookContext, classLoader: ClassLoader) {
         val us8Class = loadClassFlexible(classLoader, "us8")
         val cMethod = us8Class?.declaredMethods?.firstOrNull { it.name == "c" && it.parameterCount == 0 && java.lang.reflect.Modifier.isStatic(it.modifiers) }
         val wifiCloudDetailsClass = loadClassFlexible(classLoader, "org.swiftapps.swiftbackup.model.firebase.WifiCloudDetails")
@@ -800,7 +799,7 @@ object CloudDiscoveryHook : HookHandler {
             module.hookTracked(
                 cMethod,
                 idPrefix = "wifi-helper-cloud-details-c",
-                priority = XposedInterface.PRIORITY_HIGHEST,
+                priority = PRIORITY_HIGHEST,
                 deoptimize = true
             ).intercept { chain ->
                 val original = chain.proceed()
@@ -822,7 +821,7 @@ object CloudDiscoveryHook : HookHandler {
         module.hookTracked(
             lMethod,
             idPrefix = "gdrive-wifi-cloud-l",
-            priority = XposedInterface.PRIORITY_HIGHEST,
+            priority = PRIORITY_HIGHEST,
             deoptimize = true
         ).intercept { chain ->
             val original = chain.proceed()

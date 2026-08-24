@@ -6,6 +6,7 @@ on:
       - main
       - master
       - testing
+      - legacy
     paths-ignore:
       - '**.md'
       - 'docs/**'
@@ -22,6 +23,7 @@ on:
       - main
       - master
       - testing
+      - legacy
     paths-ignore:
       - '**.md'
       - 'docs/**'

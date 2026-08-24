@@ -6,11 +6,10 @@ import android.os.Environment
 import android.util.Log
 import androidx.annotation.Keep
 import androidx.core.content.pm.PackageInfoCompat
-import io.github.libxposed.api.XposedModule
 import io.github.s1ddhants1.swiftbackupprem.Consts
+import io.github.s1ddhants1.swiftbackupprem.hook.HookContext
 import io.github.s1ddhants1.swiftbackupprem.hook.HookHandler
 import io.github.s1ddhants1.swiftbackupprem.hook.ResolvedTargets
-import io.github.s1ddhants1.swiftbackupprem.hook.hookTracked
 import io.github.s1ddhants1.swiftbackupprem.util.BackupCrypto
 import io.github.s1ddhants1.swiftbackupprem.util.PreferencesManager
 import io.github.s1ddhants1.swiftbackupprem.util.attempt
@@ -60,7 +59,7 @@ object BackupRebuilderHook : HookHandler {
     )
 
     override fun apply(
-        module: XposedModule,
+        module: HookContext,
         context: Context,
         classLoader: ClassLoader,
         targets: ResolvedTargets,
@@ -91,7 +90,7 @@ object BackupRebuilderHook : HookHandler {
     }
 
     private fun hookAppBackupValidity(
-        module: XposedModule,
+        module: HookContext,
         appBackupClass: Class<*>,
         classLoader: ClassLoader,
         targets: ResolvedTargets
@@ -117,7 +116,7 @@ object BackupRebuilderHook : HookHandler {
     }
 
     private fun hookAppBackupMetadata(
-        module: XposedModule,
+        module: HookContext,
         appBackupClass: Class<*>,
         classLoader: ClassLoader,
         targets: ResolvedTargets
@@ -133,9 +132,10 @@ object BackupRebuilderHook : HookHandler {
             idPrefix = "backup-rebuilder-metadata"
         ).intercept { chain ->
             val initialResult = chain.proceed()
-            if (initialResult == null && chain.thisObject != null) {
+            val target = chain.thisObject
+            if (initialResult == null && target != null) {
                 val repaired = attempt("auto-rebuild on getMetadata", silent = true) {
-                    rebuildFromBackupInstance(chain.thisObject, classLoader, targets)
+                    rebuildFromBackupInstance(target, classLoader, targets)
                 }
                 if (repaired == true) return@intercept chain.proceed()
             }

@@ -6,11 +6,10 @@ import android.net.Uri
 import android.util.Log
 import androidx.annotation.Keep
 import androidx.core.net.toUri
-import io.github.libxposed.api.XposedModule
 import io.github.s1ddhants1.swiftbackupprem.Consts
+import io.github.s1ddhants1.swiftbackupprem.hook.HookContext
 import io.github.s1ddhants1.swiftbackupprem.hook.HookHandler
 import io.github.s1ddhants1.swiftbackupprem.hook.ResolvedTargets
-import io.github.s1ddhants1.swiftbackupprem.hook.hookTracked
 import io.github.s1ddhants1.swiftbackupprem.util.PreferencesManager
 import io.github.s1ddhants1.swiftbackupprem.util.attempt
 
@@ -28,7 +27,7 @@ object GoogleDriveScopeHook : HookHandler {
     private const val ENCODED_FULL_DRIVE_SCOPE = "https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fdrive"
 
     override fun apply(
-        module: XposedModule,
+        module: HookContext,
         context: Context,
         classLoader: ClassLoader,
         targets: ResolvedTargets,
@@ -48,7 +47,7 @@ object GoogleDriveScopeHook : HookHandler {
         hookGmsScope(module, classLoader)
     }
 
-    private fun hookOAuthHelper(module: XposedModule, clazz: Class<*>?) {
+    private fun hookOAuthHelper(module: HookContext, clazz: Class<*>?) {
         if (clazz == null) return
         attempt("hook OAuthHelper constructors (${clazz.name})") {
             for (ctor in clazz.declaredConstructors) {
@@ -58,21 +57,23 @@ object GoogleDriveScopeHook : HookHandler {
                 ).intercept { chain ->
                     var modified = false
                     val newArgs = chain.args.map { arg ->
-                        when {
-                            arg is List<*> && arg.contains(DRIVE_FILE_SCOPE) -> {
+                        when (arg) {
+                            is String -> if (arg.contains(DRIVE_FILE_SCOPE)) {
                                 modified = true
-                                arg.map { if (it == DRIVE_FILE_SCOPE) FULL_DRIVE_SCOPE else it }
-                            }
-                            arg is String && arg == DRIVE_FILE_SCOPE -> {
-                                modified = true
-                                FULL_DRIVE_SCOPE
+                                arg.replace(DRIVE_FILE_SCOPE, FULL_DRIVE_SCOPE)
+                            } else arg
+                            is Iterable<*> -> arg.map { item ->
+                                if (item is String && item == DRIVE_FILE_SCOPE) {
+                                    modified = true
+                                    FULL_DRIVE_SCOPE
+                                } else item
                             }
                             else -> arg
                         }
                     }.toTypedArray()
 
                     if (modified) {
-                        Log.d(Consts.TAG, "Upgraded Google Drive scope in OAuthHelper constructor")
+                        Log.d(Consts.TAG, "Upgraded OAuthHelper scopes to full Google Drive access")
                         chain.proceed(newArgs)
                     } else {
                         chain.proceed()
@@ -82,27 +83,28 @@ object GoogleDriveScopeHook : HookHandler {
         }
     }
 
-    private fun hookAuthRequestBuilder(module: XposedModule, clazz: Class<*>?) {
+    private fun hookAuthRequestBuilder(module: HookContext, clazz: Class<*>?) {
         if (clazz == null) return
-        attempt("hook AuthRequestBuilder methods (${clazz.name})") {
+        attempt("hook AuthRequestBuilder.setScopes (${clazz.name})") {
             for (m in clazz.declaredMethods) {
-                if (m.returnType != Void.TYPE && m.parameterCount == 0 && m.returnType != clazz) {
+                if (m.parameterTypes.any { Iterable::class.java.isAssignableFrom(it) || it.isArray }) {
                     module.hookTracked(
                         m,
-                        idPrefix = "drive-scope-auth-builder-${m.name}"
+                        idPrefix = "drive-scope-auth-req-builder"
                     ).intercept { chain ->
                         val target = chain.thisObject
-                        if (target != null) {
-                            for (field in target.javaClass.declaredFields) {
-                                try {
-                                    field.isAccessible = true
-                                    val value = field.get(target)
-                                    if (value is String && value.contains(DRIVE_FILE_SCOPE)) {
-                                        field.set(target, value.replace(DRIVE_FILE_SCOPE, FULL_DRIVE_SCOPE))
-                                    } else if (value is List<*> && value.contains(DRIVE_FILE_SCOPE)) {
-                                        field.set(target, value.map { if (it == DRIVE_FILE_SCOPE) FULL_DRIVE_SCOPE else it })
+                        attempt("upgrade builder scopes field", silent = true) {
+                            for (field in clazz.declaredFields) {
+                                field.isAccessible = true
+                                val value = field.get(target)
+                                if (value is MutableCollection<*>) {
+                                    @Suppress("UNCHECKED_CAST")
+                                    val coll = value as MutableCollection<Any?>
+                                    if (coll.remove(DRIVE_FILE_SCOPE)) {
+                                        coll.add(FULL_DRIVE_SCOPE)
+                                        Log.d(Consts.TAG, "Replaced drive.file scope with drive in AuthRequestBuilder field: ${field.name}")
                                     }
-                                } catch (_: Throwable) {}
+                                }
                             }
                         }
                         chain.proceed()
@@ -112,9 +114,10 @@ object GoogleDriveScopeHook : HookHandler {
         }
     }
 
-    private fun hookUriBuilder(module: XposedModule) {
-        attempt("hook Uri.Builder.appendQueryParameter") {
-            val m = Uri.Builder::class.java.getDeclaredMethod("appendQueryParameter", String::class.java, String::class.java)
+    private fun hookUriBuilder(module: HookContext) {
+        attempt("hook Uri.Builder.appendQueryParameter for OAuth scope and prompt") {
+            val builderClass = Uri.Builder::class.java
+            val m = builderClass.getMethod("appendQueryParameter", String::class.java, String::class.java)
             module.hookTracked(
                 m,
                 idPrefix = "drive-scope-uri-builder"
@@ -122,8 +125,9 @@ object GoogleDriveScopeHook : HookHandler {
                 val key = chain.getArg(0) as? String
                 val value = chain.getArg(1) as? String
                 when {
-                    key == "scope" && value != null && value.contains("drive.file") -> {
-                        val upgraded = upgradeScopeString(value)
+                    key == "scope" && value != null && value.contains(DRIVE_FILE_SCOPE) -> {
+                        val upgraded = value.replace(DRIVE_FILE_SCOPE, FULL_DRIVE_SCOPE)
+                        Log.d(Consts.TAG, "Upgraded scope parameter in OAuth Uri.Builder")
                         chain.proceed(arrayOf(key, upgraded))
                     }
                     key == "prompt" && value != "consent" -> chain.proceed(arrayOf(key, "consent"))
@@ -133,14 +137,14 @@ object GoogleDriveScopeHook : HookHandler {
         }
     }
 
-    private fun hookActivityStart(module: XposedModule, cl: ClassLoader) {
-        attempt("hook NoGmsSignInActivity.startActivityForResult", silent = true) {
-            val activityClass = cl.loadClass("org.swiftapps.swiftbackup.cloud.connect.NoGmsSignInActivity")
+    private fun hookActivityStart(module: HookContext, cl: ClassLoader) {
+        attempt("hook Activity.startActivity for custom tabs OAuth intent") {
+            val activityClass = cl.loadClass("android.app.Activity")
             for (m in activityClass.declaredMethods) {
-                if ((m.name == "startActivityForResult" || m.name == "O") && m.parameterTypes.isNotEmpty() && m.parameterTypes[0] == Intent::class.java) {
+                if (m.name == "startActivity" && m.parameterTypes.isNotEmpty() && m.parameterTypes[0] == Intent::class.java) {
                     module.hookTracked(
                         m,
-                        idPrefix = "drive-scope-nogms-activity-${m.name}"
+                        idPrefix = "drive-scope-start-activity"
                     ).intercept { chain ->
                         (chain.getArg(0) as? Intent)?.let { upgradeIntentUri(it) }
                         chain.proceed()
@@ -150,7 +154,7 @@ object GoogleDriveScopeHook : HookHandler {
         }
     }
 
-    private fun hookIntentSetData(module: XposedModule) {
+    private fun hookIntentSetData(module: HookContext) {
         attempt("hook Intent.setData / setDataAndNormalize") {
             for (methodName in listOf("setData", "setDataAndNormalize")) {
                 val m = Intent::class.java.getDeclaredMethod(methodName, Uri::class.java)
@@ -187,7 +191,7 @@ object GoogleDriveScopeHook : HookHandler {
         return uriStr.toUri()
     }
 
-    private fun hookGmsScope(module: XposedModule, cl: ClassLoader) {
+    private fun hookGmsScope(module: HookContext, cl: ClassLoader) {
         attempt("hook GMS Scope class fallback", silent = true) {
             val scopeClass = cl.loadClass("com.google.android.gms.common.api.Scope")
             for (ctor in scopeClass.declaredConstructors) {

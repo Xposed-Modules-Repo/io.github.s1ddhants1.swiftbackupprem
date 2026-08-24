@@ -6,15 +6,16 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.core.content.edit
+import io.github.s1ddhants1.swiftbackupprem.BuildConfig
 import io.github.s1ddhants1.swiftbackupprem.Consts
 import io.github.s1ddhants1.swiftbackupprem.model.SbpConfig
+import java.io.File
 import kotlin.reflect.KProperty
 
 @Stable
 class PreferencesManager(
-    private val prefs: SharedPreferences?,
-    private val isDynamic: Boolean = false,
-    private val backupPrefs: SharedPreferences? = null
+    private val prefs: SharedPreferences,
+    private val isDynamic: Boolean = false
 ) {
     private class Preference<T>(
         private val isDynamic: Boolean,
@@ -26,8 +27,13 @@ class PreferencesManager(
         var value by mutableStateOf(getter(key, defaultValue))
             private set
 
-        operator fun getValue(thisRef: Any?, property: KProperty<*>): T =
-            if (isDynamic) getter(key, defaultValue) else value
+        operator fun getValue(thisRef: Any?, property: KProperty<*>): T {
+            return if (isDynamic) {
+                getter(key, defaultValue)
+            } else {
+                value
+            }
+        }
 
         operator fun setValue(thisRef: Any?, property: KProperty<*>, newValue: T) {
             value = newValue
@@ -35,27 +41,59 @@ class PreferencesManager(
         }
     }
 
-    private fun getString(key: String, defaultValue: String) = prefs?.getString(key, defaultValue) ?: defaultValue
-    private fun getBoolean(key: String, defaultValue: Boolean) = prefs?.getBoolean(key, defaultValue) ?: defaultValue
+    private fun getString(key: String, defaultValue: String) = prefs.getString(key, defaultValue) ?: defaultValue
+    private fun getBoolean(key: String, defaultValue: Boolean) = prefs.getBoolean(key, defaultValue)
 
     private fun putString(key: String, value: String?) {
-        attempt("save preference string $key", silent = true) {
-            prefs?.edit(commit = true) { putString(key, value) }
-            backupPrefs?.edit(commit = true) { putString(key, value) }
-        }
+        prefs.edit(commit = true) { putString(key, value) }
+        makeWorldReadable()
     }
+
     private fun putBoolean(key: String, value: Boolean) {
-        attempt("save preference boolean $key", silent = true) {
-            prefs?.edit(commit = true) { putBoolean(key, value) }
-            backupPrefs?.edit(commit = true) { putBoolean(key, value) }
-        }
+        prefs.edit(commit = true) { putBoolean(key, value) }
+        makeWorldReadable()
     }
 
-    private fun stringPreference(key: String) =
-        Preference(isDynamic, key, "", ::getString, ::putString)
+    fun makeWorldReadable() {
+        try {
+            val dataDir = File("/data/data/${BuildConfig.APPLICATION_ID}")
+            dataDir.setReadable(true, false)
+            dataDir.setExecutable(true, false)
+            val user0Dir = File("/data/user/0/${BuildConfig.APPLICATION_ID}")
+            user0Dir.setReadable(true, false)
+            user0Dir.setExecutable(true, false)
+            val prefsDir = File(dataDir, "shared_prefs")
+            if (prefsDir.exists()) {
+                prefsDir.setReadable(true, false)
+                prefsDir.setExecutable(true, false)
+            }
+            val prefsFile = File(prefsDir, "${BuildConfig.APPLICATION_ID}_preferences.xml")
+            if (prefsFile.exists()) {
+                prefsFile.setReadable(true, false)
+            }
+        } catch (_: Throwable) {}
+    }
 
-    private fun booleanPreference(key: String, defaultValue: Boolean = false) =
-        Preference(isDynamic, key, defaultValue, ::getBoolean, ::putBoolean)
+    private fun stringPreference(
+        key: String
+    ) = Preference(
+        isDynamic = isDynamic,
+        key = key,
+        defaultValue = "",
+        getter = ::getString,
+        setter = ::putString
+    )
+
+    private fun booleanPreference(
+        key: String,
+        defaultValue: Boolean = false
+    ) = Preference(
+        isDynamic = isDynamic,
+        key = key,
+        defaultValue = defaultValue,
+        getter = ::getBoolean,
+        setter = ::putBoolean
+    )
 
     var googleAppId by stringPreference(Consts.googleAppId)
     var googleApiKey by stringPreference(Consts.googleApiKey)

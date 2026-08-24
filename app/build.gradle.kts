@@ -43,16 +43,10 @@ android {
         compose = true
         resValues = false
     }
-    packaging {
-        resources {
-            merges += "META-INF/xposed/*"
-        }
-    }
 }
 
 dependencies {
-    compileOnly(libs.libxposed.api)
-    implementation(libs.libxposed.service)
+    compileOnly(files("libs/api-82.jar"))
     implementation(libs.dexkit)
     implementation(libs.kotlinx.serialization.json)
 
@@ -67,7 +61,6 @@ dependencies {
     implementation(libs.bundles.compose)
     debugImplementation(libs.androidx.compose.ui.tooling)
 
-    testImplementation(libs.libxposed.api)
-    testImplementation(libs.libxposed.service)
+    testImplementation(files("libs/api-82.jar"))
     testImplementation(libs.bundles.unit.test)
 }
