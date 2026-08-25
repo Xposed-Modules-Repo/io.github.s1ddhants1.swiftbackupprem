@@ -858,6 +858,16 @@ object CloudDiscoveryHook : HookHandler {
                         ensureScan(context, classLoader, targets)
                         findMatchingBackup(pkgName)?.let { matching ->
 
+                            // Always populate in-memory ji.cloudBackups property so other screens / filters recognize it
+                            buildAppCloudBackup(matching, classLoader)?.let { cloudBackup ->
+                                createBackupsObject(cloudBackup, classLoader)?.let { backupsObj ->
+                                    val appCloudBackupsClass = loadClassFlexible(classLoader, "org.swiftapps.swiftbackup.model.app.AppCloudBackups")
+                                    if (appCloudBackupsClass != null) {
+                                        jiInstance.javaClass.getDeclaredMethod("setCloudBackups", appCloudBackupsClass).invoke(jiInstance, backupsObj)
+                                    }
+                                }
+                            }
+
                             val injected = attempt("synthetic snapshot injection", silent = true) {
                                 if (snapshot == null) return@attempt false
                                 val queryRef = FirebaseSnapshotSynthesizer.extractQueryRef(snapshot) ?: return@attempt false
@@ -867,7 +877,7 @@ object CloudDiscoveryHook : HookHandler {
                                 ) ?: return@attempt false
 
                                 chain.proceed(arrayOf(syntheticSnapshot))
-                                Log.i(TAG, "[CloudDiscovery] \u2713 Synthetic DataSnapshot injected for $pkgName")
+                                Log.i(TAG, "[CloudDiscovery] ✓ Synthetic DataSnapshot injected for $pkgName")
                                 true
                             } ?: false
 
@@ -984,57 +994,70 @@ object CloudDiscoveryHook : HookHandler {
         targets: ResolvedTargets
     ) {
         val qqClass = loadClassFlexible(classLoader, "qq") ?: return
-        qqClass.declaredMethods.filter { it.name == "b" && it.parameterCount == 2 }.forEach { m ->
-            module.hookTracked(m, idPrefix = "cloud-discovery-filter-helper").intercept { chain ->
-                val listArg = chain.args.getOrNull(0) as? List<*> ?: return@intercept chain.proceed()
-                val ce3Arg = chain.args.getOrNull(1) ?: return@intercept chain.proceed()
-
+        qqClass.declaredMethods.filter { m ->
+            m.parameterTypes.firstOrNull()?.let { List::class.java.isAssignableFrom(it) } == true &&
+            List::class.java.isAssignableFrom(m.returnType)
+        }.forEach { m ->
+            module.hookTracked(m, idPrefix = "cloud-discovery-filter-helper-${m.name}").intercept { chain ->
+                val listArg = chain.args.firstOrNull { it is List<*> } as? List<*> ?: return@intercept chain.proceed()
                 val originalFiltered = chain.proceed() as? List<*> ?: emptyList<Any>()
 
-                if (ce3Arg.toString() == "Synced" && discoveredBackups.isNotEmpty()) {
-                    ensureScan(context, classLoader, targets)
+                if (discoveredBackups.isEmpty()) return@intercept originalFiltered
 
-                    val jiClass = loadClassFlexible(classLoader, "ji") ?: return@intercept originalFiltered
-                    val getPkgMethod = jiClass.getDeclaredMethod("getPackageName")
-                    val appCloudBackupsClass = loadClassFlexible(classLoader, "org.swiftapps.swiftbackup.model.app.AppCloudBackups") ?: return@intercept originalFiltered
-                    val setCloudBackupsMethod = jiClass.getDeclaredMethod("setCloudBackups", appCloudBackupsClass)
-                    val appBackupsCtor = appCloudBackupsClass.getConstructor(List::class.java)
+                // Check if any argument is Synced or a discovered backup tag
+                val isSyncedFilter = chain.args.any { it?.toString() == "Synced" }
+                val isTagFilter = chain.args.any { arg ->
+                    arg is String && discoveredBackups.values.any { it.backupTag == arg }
+                }
 
-                    val existingSyncedPkgs = originalFiltered.mapNotNull { item ->
-                        if (item != null) getPkgMethod.invoke(item) as? String else null
-                    }.toSet()
+                if (!isSyncedFilter && !isTagFilter) return@intercept originalFiltered
 
-                    val mergedFiltered = mutableListOf<Any>()
-                    originalFiltered.filterNotNull().forEach { mergedFiltered.add(it) }
+                ensureScan(context, classLoader, targets)
 
-                    var newlyAddedCount = 0
-                    for (item in listArg) {
-                        if (item == null) continue
-                        val pkg = getPkgMethod.invoke(item) as? String ?: continue
-                        if (existingSyncedPkgs.contains(pkg)) continue
+                val jiClass = loadClassFlexible(classLoader, "ji") ?: return@intercept originalFiltered
+                val getPkgMethod = jiClass.getDeclaredMethod("getPackageName")
+                val appCloudBackupsClass = loadClassFlexible(classLoader, "org.swiftapps.swiftbackup.model.app.AppCloudBackups") ?: return@intercept originalFiltered
+                val setCloudBackupsMethod = jiClass.getDeclaredMethod("setCloudBackups", appCloudBackupsClass)
+                val appBackupsCtor = appCloudBackupsClass.getConstructor(List::class.java)
 
-                        val existingCloudBackups = attempt("check existing cloud backups", silent = true) {
-                            item.javaClass.getDeclaredMethod("getCloudBackups").invoke(item)
+                val existingSyncedPkgs = originalFiltered.mapNotNull { item ->
+                    if (item != null) getPkgMethod.invoke(item) as? String else null
+                }.toSet()
+
+                val mergedFiltered = mutableListOf<Any>()
+                originalFiltered.filterNotNull().forEach { mergedFiltered.add(it) }
+
+                var newlyAddedCount = 0
+                for (item in listArg) {
+                    if (item == null) continue
+                    val pkg = getPkgMethod.invoke(item) as? String ?: continue
+                    if (existingSyncedPkgs.contains(pkg)) continue
+
+                    val existingCloudBackups = attempt("check existing cloud backups", silent = true) {
+                        item.javaClass.getDeclaredMethod("getCloudBackups").invoke(item)
+                    }
+                    if (existingCloudBackups != null && !isResultEmpty(existingCloudBackups)) {
+                        mergedFiltered.add(item)
+                        continue
+                    }
+
+                    findMatchingBackup(pkg)?.let { matching ->
+                        if (isTagFilter) {
+                            val activeTag = chain.args.firstOrNull { it is String } as? String
+                            if (activeTag != null && matching.backupTag != activeTag) return@let
                         }
-                        if (existingCloudBackups != null && !isResultEmpty(existingCloudBackups)) {
+                        buildAppCloudBackup(matching, classLoader)?.let { cloudBackup ->
+                            val backupsObj = appBackupsCtor.newInstance(listOf(cloudBackup))
+                            setCloudBackupsMethod.invoke(item, backupsObj)
                             mergedFiltered.add(item)
-                            continue
-                        }
-
-                        findMatchingBackup(pkg)?.let { matching ->
-                            buildAppCloudBackup(matching, classLoader)?.let { cloudBackup ->
-                                val backupsObj = appBackupsCtor.newInstance(listOf(cloudBackup))
-                                setCloudBackupsMethod.invoke(item, backupsObj)
-                                mergedFiltered.add(item)
-                                newlyAddedCount++
-                            }
+                            newlyAddedCount++
                         }
                     }
+                }
 
-                    if (newlyAddedCount > 0) {
-                        Log.i(TAG, "[CloudDiscovery] Filtered ${mergedFiltered.size} apps for 'Cloud synced apps' (${originalFiltered.size} from RTDB, $newlyAddedCount discovered)")
-                        return@intercept mergedFiltered
-                    }
+                if (newlyAddedCount > 0) {
+                    Log.i(TAG, "[CloudDiscovery] Filtered ${mergedFiltered.size} apps for synced/tag filter (${originalFiltered.size} from RTDB, $newlyAddedCount discovered)")
+                    return@intercept mergedFiltered
                 }
                 originalFiltered
             }
@@ -1052,6 +1075,12 @@ object CloudDiscoveryHook : HookHandler {
             module.hookTracked(m, idPrefix = "cloud-discovery-sync-tab-vm").intercept { chain ->
                 val result = chain.proceed()
                 ensureScan(context, classLoader, targets)
+                val ng1Instance = chain.thisObject
+                if (discoveredBackups.isNotEmpty() || discoveredFolders.isNotEmpty() ||
+                    discoveredCalls.isNotEmpty() || discoveredSms.isNotEmpty() ||
+                    discoveredWalls.isNotEmpty() || discoveredWifi.isNotEmpty()) {
+                    postCloudSyncStats(ng1Instance, classLoader)
+                }
                 result
             }
         }
@@ -1077,40 +1106,13 @@ object CloudDiscoveryHook : HookHandler {
                         discoveredCalls.isNotEmpty() || discoveredSms.isNotEmpty() ||
                         discoveredWalls.isNotEmpty() || discoveredWifi.isNotEmpty()
 
-                if (!hasDiscovered) return@intercept chain.proceed()
-
-                val injected = attempt("synthetic sync stats injection", silent = true) {
-                    if (snapshot == null) return@attempt false
-                    val queryRef = FirebaseSnapshotSynthesizer.extractQueryRef(snapshot) ?: return@attempt false
-
-                    val totalApps = discoveredBackups.size
-                    val totalSpace = discoveredBackups.values.sumOf { it.totalSize } +
-                            discoveredFolders.values.sumOf { it.totalSize } +
-                            discoveredCalls.values.sumOf { it.size } +
-                            discoveredSms.values.sumOf { it.size } +
-                            discoveredWalls.values.sumOf { it.size } +
-                            discoveredWifi.values.sumOf { it.size }
-                    val totalMessages = discoveredSms.size
-                    val totalCalls = discoveredCalls.size
-                    val totalFolders = discoveredFolders.size
-
-                    val syntheticSnapshot = FirebaseSnapshotSynthesizer.createSyncStatsSnapshot(
-                        classLoader, queryRef,
-                        totalApps, totalSpace, totalMessages, totalCalls, totalFolders
-                    ) ?: return@attempt false
-
-                    chain.proceed(arrayOf(syntheticSnapshot))
-                    Log.i(TAG, "[CloudDiscovery] ✓ Synthetic sync stats DataSnapshot injected")
-                    true
-                } ?: false
-
-                if (injected) return@intercept null
-
-                Log.d(TAG, "[CloudDiscovery] Sync stats snapshot synthesis unavailable, falling back to z8 reflection")
-                val jg1Instance = chain.thisObject ?: return@intercept chain.proceed()
-                val ng1Instance = jg1Instance.getFieldValue("q")
-                postCloudSyncStats(ng1Instance, classLoader)
-                return@intercept null
+                if (hasDiscovered) {
+                    val jg1Instance = chain.thisObject
+                    val ng1Instance = jg1Instance?.getFieldValue("q")
+                    postCloudSyncStats(ng1Instance, classLoader)
+                    return@intercept null
+                }
+                chain.proceed()
             }
         }
     }
