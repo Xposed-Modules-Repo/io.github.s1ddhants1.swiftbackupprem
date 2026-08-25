@@ -15,6 +15,9 @@ import io.github.libxposed.api.XposedModule
 import io.github.s1ddhants1.swiftbackupprem.Consts
 import io.github.s1ddhants1.swiftbackupprem.hook.HookHandler
 import io.github.s1ddhants1.swiftbackupprem.hook.ResolvedTargets
+import io.github.s1ddhants1.swiftbackupprem.hook.advanced.cloud.CloudFileItem
+import io.github.s1ddhants1.swiftbackupprem.hook.advanced.cloud.CloudScanner
+import io.github.s1ddhants1.swiftbackupprem.hook.advanced.cloud.CloudScannerRegistry
 import io.github.s1ddhants1.swiftbackupprem.hook.getFieldValue
 import io.github.s1ddhants1.swiftbackupprem.hook.hookTracked
 import io.github.s1ddhants1.swiftbackupprem.util.BackupCrypto
@@ -22,12 +25,8 @@ import io.github.s1ddhants1.swiftbackupprem.util.PreferencesManager
 import io.github.s1ddhants1.swiftbackupprem.util.AppUtils
 import io.github.s1ddhants1.swiftbackupprem.util.attempt
 import io.github.s1ddhants1.swiftbackupprem.util.loadClassFlexible
-import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
-import java.net.HttpURLConnection
-import java.net.URL
-import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
@@ -35,11 +34,6 @@ import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.regex.Pattern
 
-/**
- * Cloud Discovery & Direct Metadata Indexing Hook:
- * Discovers cloud backups (apps, system data, and folders) directly from Google Drive, downloads & decodes
- * metadata using Facebook Conceal AES-GCM-256 + Zstandard, and injects them into Swift Backup's cloud catalog.
- */
 @Keep
 object CloudDiscoveryHook : HookHandler {
 
@@ -77,7 +71,8 @@ object CloudDiscoveryHook : HookHandler {
         val flmSize: Long = 0,
         val totalSize: Long = 0,
         val timestamp: Long = System.currentTimeMillis(),
-        val sourceFolder: String = "/storage/emulated/0"
+        val sourceFolder: String = "/storage/emulated/0",
+        val provider: String = "Generic"
     ) {
         fun toJson(): JSONObject = JSONObject().apply {
             put("id", id)
@@ -90,6 +85,7 @@ object CloudDiscoveryHook : HookHandler {
             put("totalSize", totalSize)
             put("timestamp", timestamp)
             put("sourceFolder", sourceFolder)
+            put("provider", provider)
         }
 
         companion object {
@@ -103,7 +99,8 @@ object CloudDiscoveryHook : HookHandler {
                 flmSize = obj.optLong("flmSize", 0L),
                 totalSize = obj.optLong("totalSize", 0L),
                 timestamp = obj.optLong("timestamp", System.currentTimeMillis()),
-                sourceFolder = obj.optString("sourceFolder", "/storage/emulated/0")
+                sourceFolder = obj.optString("sourceFolder", "/storage/emulated/0"),
+                provider = obj.optString("provider", "Generic")
             )
         }
     }
@@ -114,11 +111,13 @@ object CloudDiscoveryHook : HookHandler {
         val size: Long,
         val count: Int,
         val tag: String,
-        val timestamp: Long
+        val timestamp: Long,
+        val provider: String = "Generic"
     ) {
         fun toJson(): JSONObject = JSONObject().apply {
             put("fileId", fileId); put("fileName", fileName); put("size", size)
             put("count", count); put("tag", tag); put("timestamp", timestamp)
+            put("provider", provider)
         }
         companion object {
             fun fromJson(obj: JSONObject): DiscoveredCloudCall = DiscoveredCloudCall(
@@ -127,7 +126,8 @@ object CloudDiscoveryHook : HookHandler {
                 size = obj.optLong("size", 0L),
                 count = obj.optInt("count", 1),
                 tag = obj.optString("tag", "DEFAULT"),
-                timestamp = obj.optLong("timestamp", System.currentTimeMillis())
+                timestamp = obj.optLong("timestamp", System.currentTimeMillis()),
+                provider = obj.optString("provider", "Generic")
             )
         }
     }
@@ -138,11 +138,13 @@ object CloudDiscoveryHook : HookHandler {
         val size: Long,
         val totalCount: Int,
         val tag: String,
-        val timestamp: Long
+        val timestamp: Long,
+        val provider: String = "Generic"
     ) {
         fun toJson(): JSONObject = JSONObject().apply {
             put("fileId", fileId); put("fileName", fileName); put("size", size)
             put("totalCount", totalCount); put("tag", tag); put("timestamp", timestamp)
+            put("provider", provider)
         }
         companion object {
             fun fromJson(obj: JSONObject): DiscoveredCloudSms = DiscoveredCloudSms(
@@ -151,7 +153,8 @@ object CloudDiscoveryHook : HookHandler {
                 size = obj.optLong("size", 0L),
                 totalCount = obj.optInt("totalCount", 1),
                 tag = obj.optString("tag", "DEFAULT"),
-                timestamp = obj.optLong("timestamp", System.currentTimeMillis())
+                timestamp = obj.optLong("timestamp", System.currentTimeMillis()),
+                provider = obj.optString("provider", "Generic")
             )
         }
     }
@@ -161,11 +164,13 @@ object CloudDiscoveryHook : HookHandler {
         val fileName: String,
         val size: Long,
         val timestamp: Long,
-        val thumbnailLink: String? = null
+        val thumbnailLink: String? = null,
+        val provider: String = "Generic"
     ) {
         fun toJson(): JSONObject = JSONObject().apply {
             put("fileId", fileId); put("fileName", fileName); put("size", size); put("timestamp", timestamp)
             thumbnailLink?.let { put("thumbnailLink", it) }
+            put("provider", provider)
         }
         companion object {
             fun fromJson(obj: JSONObject): DiscoveredCloudWall = DiscoveredCloudWall(
@@ -173,7 +178,8 @@ object CloudDiscoveryHook : HookHandler {
                 fileName = obj.optString("fileName", ""),
                 size = obj.optLong("size", 0L),
                 timestamp = obj.optLong("timestamp", System.currentTimeMillis()),
-                thumbnailLink = obj.optString("thumbnailLink").takeIf { it.isNotBlank() }
+                thumbnailLink = obj.optString("thumbnailLink").takeIf { it.isNotBlank() },
+                provider = obj.optString("provider", "Generic")
             )
         }
     }
@@ -182,17 +188,20 @@ object CloudDiscoveryHook : HookHandler {
         val fileId: String,
         val fileName: String,
         val size: Long,
-        val count: Int
+        val count: Int,
+        val provider: String = "Generic"
     ) {
         fun toJson(): JSONObject = JSONObject().apply {
             put("fileId", fileId); put("fileName", fileName); put("size", size); put("count", count)
+            put("provider", provider)
         }
         companion object {
             fun fromJson(obj: JSONObject): DiscoveredCloudWifi = DiscoveredCloudWifi(
                 fileId = obj.optString("fileId", ""),
                 fileName = obj.optString("fileName", ""),
                 size = obj.optLong("size", 0L),
-                count = obj.optInt("count", 1)
+                count = obj.optInt("count", 1),
+                provider = obj.optString("provider", "Generic")
             )
         }
     }
@@ -216,7 +225,8 @@ object CloudDiscoveryHook : HookHandler {
         val ssaid: String? = null,
         val permissionStatesCsv: String? = null,
         val notificationPolicyXml: String? = null,
-        val dateBackup: Long = System.currentTimeMillis()
+        val dateBackup: Long = System.currentTimeMillis(),
+        val provider: String = "Generic"
     ) {
         fun toJson(): JSONObject = JSONObject().apply {
             put("packageName", packageName)
@@ -238,6 +248,7 @@ object CloudDiscoveryHook : HookHandler {
             permissionStatesCsv?.let { put("permissionStatesCsv", it) }
             notificationPolicyXml?.let { put("notificationPolicyXml", it) }
             put("dateBackup", dateBackup)
+            put("provider", provider)
         }
 
         companion object {
@@ -257,7 +268,8 @@ object CloudDiscoveryHook : HookHandler {
                     totalSize = l("totalSize"), ssaid = s("ssaid"),
                     permissionStatesCsv = s("permissionStatesCsv"),
                     notificationPolicyXml = s("notificationPolicyXml"),
-                    dateBackup = obj.optLong("dateBackup", System.currentTimeMillis())
+                    dateBackup = obj.optLong("dateBackup", System.currentTimeMillis()),
+                    provider = obj.optString("provider", "Generic")
                 )
             }
         }
@@ -275,7 +287,7 @@ object CloudDiscoveryHook : HookHandler {
             return
         }
 
-        Log.d(TAG, "Applying CloudDiscoveryHook (Drive discovery & full-app cloud metadata indexing)")
+        Log.d(TAG, "Applying CloudDiscoveryHook (Universal Cloud discovery & full-app cloud metadata indexing)")
         loadDiskCache(context)
         hookAppCloudBackups(module, context, classLoader, targets)
         hookDetailCloudListener(module, context, classLoader, targets)
@@ -285,17 +297,20 @@ object CloudDiscoveryHook : HookHandler {
         hookCloudBackupTags(module, classLoader)
         hookWallpaperCloudLoader(module, classLoader)
         hookWifiCloudLoader(module, classLoader)
-        startDriveScanWithRetry(context, classLoader, targets)
+        startCloudScanWithRetry(context, classLoader, targets)
     }
 
-    fun startDriveScanWithRetry(context: Context, classLoader: ClassLoader, targets: ResolvedTargets) {
+    fun startDriveScanWithRetry(context: Context, classLoader: ClassLoader, targets: ResolvedTargets) =
+        startCloudScanWithRetry(context, classLoader, targets)
+
+    fun startCloudScanWithRetry(context: Context, classLoader: ClassLoader, targets: ResolvedTargets) {
         if (!isScanRunning.compareAndSet(false, true)) return
         scanExecutor.execute {
             try {
                 for (delay in longArrayOf(500L, 2000L, 5000L, 10000L)) {
                     try {
                         Thread.sleep(delay)
-                        val count = discoverDriveBackups(context, classLoader, targets)
+                        val count = discoverAllCloudBackups(context, classLoader, targets)
                         if (count > 0 || discoveredBackups.isNotEmpty()) {
                             Log.i(TAG, "[CloudDiscovery] Background scan completed with ${discoveredBackups.size} apps")
                             break
@@ -311,7 +326,7 @@ object CloudDiscoveryHook : HookHandler {
     }
 
     private fun ensureScan(context: Context, classLoader: ClassLoader, targets: ResolvedTargets) {
-        if (discoveredBackups.isEmpty()) startDriveScanWithRetry(context, classLoader, targets)
+        if (discoveredBackups.isEmpty()) startCloudScanWithRetry(context, classLoader, targets)
     }
 
     fun findMatchingBackup(key: String): DiscoveredCloudApp? =
@@ -744,7 +759,6 @@ object CloudDiscoveryHook : HookHandler {
             } ?: original
         }
 
-        // Hook wallpaper click handler to allow restore even if thumbnail image drawable hasn't loaded yet
         val xr0Class = loadClassFlexible(classLoader, "xr0")
         val onClickMethod = xr0Class?.declaredMethods?.firstOrNull { it.name == "onClick" && it.parameterCount == 1 }
         if (onClickMethod != null) {
@@ -773,7 +787,7 @@ object CloudDiscoveryHook : HookHandler {
                                 val eField = mo8Class.getField("e").get(cObj)
                                 val isMultiSelect = eField?.javaClass?.getField("c")?.getBoolean(eField) ?: false
                                 if (!isMultiSelect) {
-                                    val lField = mo8Class.getField("l").get(cObj) // oo8 instance
+                                    val lField = mo8Class.getField("l").get(cObj)
                                     val ao8Class = loadClassFlexible(classLoader, "ao8")
                                     if (ao8Class != null && lField != null) {
                                         val dummyBitmap = Bitmap.createBitmap(100, 100, Bitmap.Config.ARGB_8888)
@@ -808,7 +822,7 @@ object CloudDiscoveryHook : HookHandler {
 
                 attempt("inject discovered wifi into us8.c", silent = true) {
                     val firstWifi = discoveredWifi.values.firstOrNull() ?: return@attempt original
-                    wifiCloudDetailsClass.getConstructor(String::class.java, java.lang.Long::class.java, java.lang.Integer::class.java)
+                    wifiCloudDetailsClass.getConstructor(String::class.java, Long::class.javaObjectType, Int::class.javaObjectType)
                         .newInstance(firstWifi.fileId, firstWifi.size, firstWifi.count)
                 } ?: original
             }
@@ -890,20 +904,29 @@ object CloudDiscoveryHook : HookHandler {
         context: Context,
         classLoader: ClassLoader,
         targets: ResolvedTargets
+    ): Int = discoverAllCloudBackups(context, classLoader, targets)
+
+    fun discoverAllCloudBackups(
+        context: Context,
+        classLoader: ClassLoader,
+        targets: ResolvedTargets
     ): Int {
         val sp: SharedPreferences = attempt("get swiftbackup prefs", silent = true) {
             context.getSharedPreferences("org.swiftapps.swiftbackup_preferences", Context.MODE_PRIVATE)
         } ?: return 0
 
-        val token = sp.getString("nogms_access_token", null) ?: return 0
-        val folderId = sp.getString("google_drive_cloud_main_folder_id", null) ?: return 0
-        val deviceTag = sp.getString("google_drive_cloud_backup_tag", null) ?: "DEFAULT"
+        val deviceTag = sp.getString("google_drive_cloud_backup_tag", null)
+            ?: sp.getString("cloud_backup_tag", null)
+            ?: "DEFAULT"
 
         val candidateUids = resolveCandidateUids(context, classLoader, targets)
-        Log.d(TAG, "[CloudDiscovery] Querying Google Drive folder $folderId for cloud backups...")
+        Log.d(TAG, "[CloudDiscovery] Starting discovery across all configured cloud providers...")
 
-        val fileList = queryDriveFolderFiles(folderId, token)
-        if (fileList.length() == 0) return 0
+        val providerResults = CloudScannerRegistry.scanAllConfiguredProviders(context)
+        if (providerResults.isEmpty()) {
+            Log.d(TAG, "[CloudDiscovery] No cloud providers returned items")
+            return 0
+        }
 
         val appRegex = Pattern.compile("^(.*?)\\.([a-z]+)\\s+\\((.*?)\\)\\s+\\(id-(.*?)\\)$")
         val folderRegex = Pattern.compile("^folder-base\\.(fld|flm)\\s+\\((.*?)\\)\\s+\\(id-(.*?)\\)$")
@@ -914,224 +937,231 @@ object CloudDiscoveryHook : HookHandler {
         val wallRegex = Pattern.compile("^(.*?)\\.wal(?:\\.png)?(?:\\s+\\((.*?)\\))?$")
         val wifiRegex = Pattern.compile("^(.*?)\\.wfi(?:\\s+\\((.*?)\\))?$")
 
-        val appGroups = mutableMapOf<Triple<String, String, String>, MutableMap<String, JSONObject>>()
-        val folderGroups = mutableMapOf<Pair<String, String>, MutableMap<String, JSONObject>>()
+        var totalIndexedCount = 0
 
-        var indexedCount = 0
+        for (providerResult in providerResults) {
+            val scanner = providerResult.scanner
+            val fileList = providerResult.items
+            val providerName = scanner.providerName
 
-        for (i in 0 until fileList.length()) {
-            val fileObj = fileList.getJSONObject(i)
-            val fileName = fileObj.optString("name")
-            val fileId = fileObj.optString("id")
-            val fileSize = fileObj.optLong("size", 0L)
+            val appGroups = mutableMapOf<Triple<String, String, String>, MutableMap<String, CloudFileItem>>()
+            val folderGroups = mutableMapOf<Pair<String, String>, MutableMap<String, CloudFileItem>>()
 
-            // 1. Folders
-            val folderMatcher = folderRegex.matcher(fileName)
-            if (folderMatcher.matches()) {
-                val part = folderMatcher.group(1) ?: continue
-                val tag = folderMatcher.group(2) ?: deviceTag
-                val folderIdClean = folderMatcher.group(3) ?: continue
-                folderGroups.getOrPut(Pair(folderIdClean, tag)) { mutableMapOf() }[part] = fileObj
-                continue
-            }
+            for (fileObj in fileList) {
+                val fileName = fileObj.name
+                val fileId = fileObj.id
+                val fileSize = fileObj.size
 
-            // 2. Call Logs (.cls)
-            val callMatcher = callRegex.matcher(fileName)
-            if (callMatcher.matches()) {
-                val ts = callMatcher.group(1)?.toLongOrNull() ?: System.currentTimeMillis()
-                val count = callMatcher.group(2)?.toIntOrNull() ?: 1
-                val tag = callMatcher.group(4) ?: deviceTag
-                discoveredCalls[fileId] = DiscoveredCloudCall(fileId, fileName, fileSize, count, tag, ts)
-                indexedCount++
-                continue
-            } else {
-                val callFbMatcher = callFallbackRegex.matcher(fileName)
-                if (callFbMatcher.matches()) {
-                    val tag = callFbMatcher.group(2) ?: deviceTag
-                    discoveredCalls[fileId] = DiscoveredCloudCall(fileId, fileName, fileSize, 1, tag, System.currentTimeMillis())
-                    indexedCount++
+                // 1. Folders
+                val folderMatcher = folderRegex.matcher(fileName)
+                if (folderMatcher.matches()) {
+                    val part = folderMatcher.group(1) ?: continue
+                    val tag = folderMatcher.group(2) ?: deviceTag
+                    val folderIdClean = folderMatcher.group(3) ?: continue
+                    folderGroups.getOrPut(Pair(folderIdClean, tag)) { mutableMapOf() }[part] = fileObj
                     continue
                 }
-            }
 
-            // 3. SMS (.msg)
-            val smsMatcher = smsRegex.matcher(fileName)
-            if (smsMatcher.matches()) {
-                val ts = smsMatcher.group(1)?.toLongOrNull() ?: System.currentTimeMillis()
-                val totalCount = smsMatcher.group(3)?.toIntOrNull() ?: 1
-                val tag = smsMatcher.group(5) ?: deviceTag
-                discoveredSms[fileId] = DiscoveredCloudSms(fileId, fileName, fileSize, totalCount, tag, ts)
-                indexedCount++
-                continue
-            } else {
-                val smsFbMatcher = smsFallbackRegex.matcher(fileName)
-                if (smsFbMatcher.matches()) {
-                    val tag = smsFbMatcher.group(2) ?: deviceTag
-                    discoveredSms[fileId] = DiscoveredCloudSms(fileId, fileName, fileSize, 1, tag, System.currentTimeMillis())
-                    indexedCount++
+                // 2. Call Logs (.cls)
+                val callMatcher = callRegex.matcher(fileName)
+                if (callMatcher.matches()) {
+                    val ts = callMatcher.group(1)?.toLongOrNull() ?: fileObj.timestamp
+                    val count = callMatcher.group(2)?.toIntOrNull() ?: 1
+                    val tag = callMatcher.group(4) ?: deviceTag
+                    discoveredCalls[fileId] = DiscoveredCloudCall(fileId, fileName, fileSize, count, tag, ts, providerName)
+                    totalIndexedCount++
                     continue
-                }
-            }
-
-            // 4. Wallpapers (.wal / .wal.png)
-            val wallMatcher = wallRegex.matcher(fileName)
-            if (wallMatcher.matches()) {
-                val rawTs = wallMatcher.group(1)
-                val ts = rawTs?.toLongOrNull() ?: System.currentTimeMillis()
-                val thumbnailLink = fileObj.optString("thumbnailLink").takeIf { it.isNotBlank() }
-
-                val cleanFileName = when {
-                    fileName.contains("home_wall") -> "home_wall.wal"
-                    fileName.contains("lock_wall") -> "lock_wall.wal"
-                    fileName.endsWith(".wal") && !fileName.contains(" ") -> fileName
-                    else -> "$ts.wal"
-                }
-
-                discoveredWalls[fileId] = DiscoveredCloudWall(
-                    fileId = fileId,
-                    fileName = cleanFileName,
-                    size = fileSize,
-                    timestamp = ts,
-                    thumbnailLink = thumbnailLink
-                )
-                indexedCount++
-                continue
-            }
-
-            // 5. WiFi (.wfi)
-            val wifiMatcher = wifiRegex.matcher(fileName)
-            if (wifiMatcher.matches()) {
-                discoveredWifi[fileId] = DiscoveredCloudWifi(fileId, fileName, fileSize, 1)
-                indexedCount++
-                continue
-            }
-
-            // 6. Apps (.app, .dat, .extra, etc.)
-            val appMatcher = appRegex.matcher(fileName)
-            if (appMatcher.matches()) {
-                val pkg = appMatcher.group(1) ?: continue
-                if (!AppUtils.isValidPackageName(pkg)) {
-                    Log.d(TAG, "[CloudDiscovery] Skipping non-package file: $fileName")
-                    continue
-                }
-                val part = appMatcher.group(2) ?: continue
-                val tag = appMatcher.group(3) ?: continue
-                val backupId = appMatcher.group(4) ?: continue
-                appGroups.getOrPut(Triple(pkg, backupId, tag)) { mutableMapOf() }[part] = fileObj
-            }
-        }
-
-        // Process Apps
-        for ((key, parts) in appGroups) {
-            val (pkg, backupId, tag) = key
-            val sanitizedAppId = pkg.replace(".", "")
-
-            var ssaid: String? = null
-            var permissionStatesCsv: String? = null
-            var notificationPolicyXml: String? = null
-
-            val extraObj = parts["extra"]
-            val extraFileId = extraObj?.optString("id")
-            val extraSize = extraObj?.optLong("size", 0L) ?: 0L
-
-            if (!extraFileId.isNullOrBlank()) {
-                val rawExtraText = downloadDriveFileText(extraFileId, token)
-                if (rawExtraText != null) {
-                    val extra = BackupCrypto.parseExtraPayload(rawExtraText, candidateUids, classLoader)
-                    if (extra != null) {
-                        ssaid = extra.ssaid
-                        permissionStatesCsv = extra.permissionStatesCsv
-                        notificationPolicyXml = extra.notificationPolicyXml
+                } else {
+                    val callFbMatcher = callFallbackRegex.matcher(fileName)
+                    if (callFbMatcher.matches()) {
+                        val tag = callFbMatcher.group(2) ?: deviceTag
+                        discoveredCalls[fileId] = DiscoveredCloudCall(fileId, fileName, fileSize, 1, tag, fileObj.timestamp, providerName)
+                        totalIndexedCount++
+                        continue
                     }
                 }
+
+                // 3. SMS (.msg)
+                val smsMatcher = smsRegex.matcher(fileName)
+                if (smsMatcher.matches()) {
+                    val ts = smsMatcher.group(1)?.toLongOrNull() ?: fileObj.timestamp
+                    val totalCount = smsMatcher.group(3)?.toIntOrNull() ?: 1
+                    val tag = smsMatcher.group(5) ?: deviceTag
+                    discoveredSms[fileId] = DiscoveredCloudSms(fileId, fileName, fileSize, totalCount, tag, ts, providerName)
+                    totalIndexedCount++
+                    continue
+                } else {
+                    val smsFbMatcher = smsFallbackRegex.matcher(fileName)
+                    if (smsFbMatcher.matches()) {
+                        val tag = smsFbMatcher.group(2) ?: deviceTag
+                        discoveredSms[fileId] = DiscoveredCloudSms(fileId, fileName, fileSize, 1, tag, fileObj.timestamp, providerName)
+                        totalIndexedCount++
+                        continue
+                    }
+                }
+
+                // 4. Wallpapers (.wal / .wal.png)
+                val wallMatcher = wallRegex.matcher(fileName)
+                if (wallMatcher.matches()) {
+                    val rawTs = wallMatcher.group(1)
+                    val ts = rawTs?.toLongOrNull() ?: fileObj.timestamp
+                    val thumbnailLink = fileObj.thumbnailLink
+
+                    val cleanFileName = when {
+                        fileName.contains("home_wall") -> "home_wall.wal"
+                        fileName.contains("lock_wall") -> "lock_wall.wal"
+                        fileName.endsWith(".wal") && !fileName.contains(" ") -> fileName
+                        else -> "$ts.wal"
+                    }
+
+                    discoveredWalls[fileId] = DiscoveredCloudWall(
+                        fileId = fileId,
+                        fileName = cleanFileName,
+                        size = fileSize,
+                        timestamp = ts,
+                        thumbnailLink = thumbnailLink,
+                        provider = providerName
+                    )
+                    totalIndexedCount++
+                    continue
+                }
+
+                // 5. WiFi (.wfi)
+                val wifiMatcher = wifiRegex.matcher(fileName)
+                if (wifiMatcher.matches()) {
+                    discoveredWifi[fileId] = DiscoveredCloudWifi(fileId, fileName, fileSize, 1, providerName)
+                    totalIndexedCount++
+                    continue
+                }
+
+                // 6. Apps (.app, .dat, .extra, etc.)
+                val appMatcher = appRegex.matcher(fileName)
+                if (appMatcher.matches()) {
+                    val pkg = appMatcher.group(1) ?: continue
+                    if (!AppUtils.isValidPackageName(pkg)) {
+                        Log.d(TAG, "[CloudDiscovery] Skipping non-package file: $fileName")
+                        continue
+                    }
+                    val part = appMatcher.group(2) ?: continue
+                    val tag = appMatcher.group(3) ?: continue
+                    val backupId = appMatcher.group(4) ?: continue
+                    appGroups.getOrPut(Triple(pkg, backupId, tag)) { mutableMapOf() }[part] = fileObj
+                }
             }
 
-            val apkFileId = parts["app"]?.optString("id")
-            val apkSize = parts["app"]?.optLong("size", 0L) ?: 0L
-            val dataFileId = parts["dat"]?.optString("id")
-            val dataSize = parts["dat"]?.optLong("size", 0L) ?: 0L
-            val extDataFileId = parts["extdat"]?.optString("id")
-            val extDataSize = parts["extdat"]?.optLong("size", 0L) ?: 0L
-            val splitsFileId = parts["splits"]?.optString("id")
-            val splitsSize = parts["splits"]?.optLong("size", 0L) ?: 0L
+            // Process Apps for this provider
+            for ((key, parts) in appGroups) {
+                val (pkg, backupId, tag) = key
+                val sanitizedAppId = pkg.replace(".", "")
 
-            val discovered = DiscoveredCloudApp(
-                packageName = pkg,
-                sanitizedAppId = sanitizedAppId,
-                backupId = backupId,
-                backupTag = tag,
-                apkLink = apkFileId,
-                apkSize = apkSize,
-                dataLink = dataFileId,
-                dataSize = dataSize,
-                extDataLink = extDataFileId,
-                extDataSize = extDataSize,
-                splitsLink = splitsFileId,
-                splitsSize = splitsSize,
-                extraLink = extraFileId,
-                extraSize = extraSize,
-                totalSize = apkSize + dataSize + extDataSize + splitsSize,
-                ssaid = ssaid,
-                permissionStatesCsv = permissionStatesCsv,
-                notificationPolicyXml = notificationPolicyXml
-            )
-            discoveredBackups[pkg] = discovered
-            syncToFirebaseRealtimeDb(classLoader, tag, sanitizedAppId, backupId, discovered)
-            indexedCount++
-        }
+                var ssaid: String? = null
+                var permissionStatesCsv: String? = null
+                var notificationPolicyXml: String? = null
 
-        // Process Folders
-        for ((key, parts) in folderGroups) {
-            val (fid, tag) = key
-            val fldObj = parts["fld"]
-            val flmObj = parts["flm"]
-            val fldLink = fldObj?.optString("id")
-            val fldSize = fldObj?.optLong("size", 0L) ?: 0L
-            val flmLink = flmObj?.optString("id")
-            val flmSize = flmObj?.optLong("size", 0L) ?: 0L
+                val extraItem = parts["extra"]
+                val extraFileId = extraItem?.id
+                val extraSize = extraItem?.size ?: 0L
 
-            // Resolve local folder displayName & sourceFolder if available
-            var displayName = "Folder-$fid"
-            var sourceFolder = "/storage/emulated/0"
-            val accountsDir = File(Environment.getExternalStorageDirectory(), "SwiftBackup/accounts")
-            if (accountsDir.isDirectory) {
-                accountsDir.listFiles { f -> f.isDirectory }?.forEach { acc ->
-                    val localMetaFile = File(acc, "backups/folders/local/Folder-$fid/metadata.json")
-                    if (localMetaFile.exists()) {
-                        attempt("read local folder metadata", silent = true) {
-                            val obj = JSONObject(localMetaFile.readText(StandardCharsets.UTF_8))
-                            obj.optJSONObject("folderItem")?.let { item ->
-                                item.optString("displayName").takeIf { it.isNotBlank() }?.let { displayName = it }
-                                item.optString("sourceFolder").takeIf { it.isNotBlank() }?.let { sourceFolder = it }
+                if (extraItem != null) {
+                    val rawExtraText = scanner.downloadFileText(context, sp, extraItem)
+                    if (rawExtraText != null) {
+                        val extra = BackupCrypto.parseExtraPayload(rawExtraText, candidateUids, classLoader)
+                        if (extra != null) {
+                            ssaid = extra.ssaid
+                            permissionStatesCsv = extra.permissionStatesCsv
+                            notificationPolicyXml = extra.notificationPolicyXml
+                        }
+                    }
+                }
+
+                val apkFileId = parts["app"]?.id
+                val apkSize = parts["app"]?.size ?: 0L
+                val dataFileId = parts["dat"]?.id
+                val dataSize = parts["dat"]?.size ?: 0L
+                val extDataFileId = parts["extdat"]?.id
+                val extDataSize = parts["extdat"]?.size ?: 0L
+                val splitsFileId = parts["splits"]?.id
+                val splitsSize = parts["splits"]?.size ?: 0L
+
+                val discovered = DiscoveredCloudApp(
+                    packageName = pkg,
+                    sanitizedAppId = sanitizedAppId,
+                    backupId = backupId,
+                    backupTag = tag,
+                    apkLink = apkFileId,
+                    apkSize = apkSize,
+                    dataLink = dataFileId,
+                    dataSize = dataSize,
+                    extDataLink = extDataFileId,
+                    extDataSize = extDataSize,
+                    splitsLink = splitsFileId,
+                    splitsSize = splitsSize,
+                    extraLink = extraFileId,
+                    extraSize = extraSize,
+                    totalSize = apkSize + dataSize + extDataSize + splitsSize,
+                    ssaid = ssaid,
+                    permissionStatesCsv = permissionStatesCsv,
+                    notificationPolicyXml = notificationPolicyXml,
+                    provider = providerName
+                )
+                discoveredBackups[pkg] = discovered
+                syncToFirebaseRealtimeDb(classLoader, tag, sanitizedAppId, backupId, discovered)
+                totalIndexedCount++
+            }
+
+            // Process Folders for this provider
+            for ((key, parts) in folderGroups) {
+                val (fid, tag) = key
+                val fldObj = parts["fld"]
+                val flmObj = parts["flm"]
+                val fldLink = fldObj?.id
+                val fldSize = fldObj?.size ?: 0L
+                val flmLink = flmObj?.id
+                val flmSize = flmObj?.size ?: 0L
+
+                var displayName = "Folder-$fid"
+                var sourceFolder = "/storage/emulated/0"
+                val accountsDir = File(Environment.getExternalStorageDirectory(), "SwiftBackup/accounts")
+                if (accountsDir.isDirectory) {
+                    accountsDir.listFiles { f -> f.isDirectory }?.forEach { acc ->
+                        val localMetaFile = File(acc, "backups/folders/local/Folder-$fid/metadata.json")
+                        if (localMetaFile.exists()) {
+                            attempt("read local folder metadata", silent = true) {
+                                val obj = JSONObject(localMetaFile.readText(StandardCharsets.UTF_8))
+                                obj.optJSONObject("folderItem")?.let { item ->
+                                    item.optString("displayName").takeIf { it.isNotBlank() }?.let { displayName = it }
+                                    item.optString("sourceFolder").takeIf { it.isNotBlank() }?.let { sourceFolder = it }
+                                }
                             }
                         }
                     }
                 }
-            }
 
-            val discoveredFolder = DiscoveredCloudFolder(
-                id = fid,
-                displayName = displayName,
-                tag = tag,
-                fldLink = fldLink,
-                fldSize = fldSize,
-                flmLink = flmLink,
-                flmSize = flmSize,
-                totalSize = fldSize + flmSize,
-                timestamp = System.currentTimeMillis(),
-                sourceFolder = sourceFolder
-            )
-            discoveredFolders[fid] = discoveredFolder
-            syncFolderToFirebaseRealtimeDb(classLoader, tag, fid, discoveredFolder)
-            indexedCount++
+                val discoveredFolder = DiscoveredCloudFolder(
+                    id = fid,
+                    displayName = displayName,
+                    tag = tag,
+                    fldLink = fldLink,
+                    fldSize = fldSize,
+                    flmLink = flmLink,
+                    flmSize = flmSize,
+                    totalSize = fldSize + flmSize,
+                    timestamp = System.currentTimeMillis(),
+                    sourceFolder = sourceFolder,
+                    provider = providerName
+                )
+                discoveredFolders[fid] = discoveredFolder
+                syncFolderToFirebaseRealtimeDb(classLoader, tag, fid, discoveredFolder)
+                totalIndexedCount++
+            }
         }
 
         // Sync System Data to Firebase RTDB
         syncSystemDataToFirebaseRealtimeDb(classLoader)
 
         saveDiskCache(context)
-        Log.i(TAG, "[CloudDiscovery] Successfully indexed $indexedCount cloud items (apps, folders, calls, sms, walls, wifi) from Google Drive into catalog")
-        return indexedCount
+        Log.i(TAG, "[CloudDiscovery] Successfully indexed $totalIndexedCount cloud items across providers into catalog")
+        return totalIndexedCount
     }
 
     private fun syncFolderToFirebaseRealtimeDb(
@@ -1228,37 +1258,6 @@ object CloudDiscoveryHook : HookHandler {
             }
         }
     }
-
-    private fun executeDriveGet(urlStr: String, token: String): String? = attempt("Drive HTTP GET", silent = true) {
-        val conn = (URL(urlStr).openConnection() as HttpURLConnection).apply {
-            requestMethod = "GET"
-            setRequestProperty("Authorization", "Bearer $token")
-            connectTimeout = 15000
-            readTimeout = 15000
-        }
-        try {
-            if (conn.responseCode == 200) {
-                conn.inputStream.bufferedReader(StandardCharsets.UTF_8).use { it.readText() }
-            } else {
-                Log.w(TAG, "[CloudDiscovery] Drive HTTP GET error ${conn.responseCode} for $urlStr")
-                null
-            }
-        } finally {
-            conn.disconnect()
-        }
-    }
-
-    private fun queryDriveFolderFiles(folderId: String, token: String): JSONArray {
-        val q = URLEncoder.encode("'$folderId' in parents and trashed=false", "UTF-8")
-        val respText = executeDriveGet(
-            "https://www.googleapis.com/drive/v3/files?q=$q&fields=files(id,name,size,modifiedTime,createdTime,thumbnailLink)&pageSize=1000",
-            token
-        ) ?: return JSONArray()
-        return attempt("parse drive files", silent = true) { JSONObject(respText).optJSONArray("files") } ?: JSONArray()
-    }
-
-    private fun downloadDriveFileText(fileId: String, token: String): String? =
-        executeDriveGet("https://www.googleapis.com/drive/v3/files/$fileId?alt=media", token)
 
     private fun syncToFirebaseRealtimeDb(
         classLoader: ClassLoader,

@@ -55,8 +55,8 @@
     <!-- Experimental Section -->
     <string name="section_advanced_features">Experimental Features</string>
     <string name="section_advanced_features_subtitle">Enable experimental features</string>
-    <string name="pref_enable_drive_discovery_title">Google Drive Full Access &amp; Cloud Restore</string>
-    <string name="pref_enable_drive_discovery_subtitle">Discover, decode, and index cloud backups</string>
+    <string name="pref_enable_drive_discovery_title">Universal Cloud Discovery &amp; Cloud Restore</string>
+    <string name="pref_enable_drive_discovery_subtitle">Discover, decode, and index cloud backups across Drive, WebDAV, S3, Dropbox, OneDrive, Box &amp; pCloud</string>
     <string name="pref_enable_drive_discovery_requires_custom_firebase">Requires Custom Firebase App to be enabled</string>
 
     <!-- Setup Wizard -->
