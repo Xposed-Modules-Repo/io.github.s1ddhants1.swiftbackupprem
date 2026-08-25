@@ -119,4 +119,98 @@ class CloudDiscoveryHookTest {
         assertEquals(1, newlyAdded.size)
         assertEquals("com.orphaned.app", newlyAdded.first().packageName)
     }
+
+    @Test
+    fun testMetadataMapStructure() {
+        val app = CloudDiscoveryHook.DiscoveredCloudApp(
+            packageName = "com.dv.adm",
+            sanitizedAppId = "comdvadm",
+            backupId = "20260821-232918-NK",
+            backupTag = "CPH2573",
+            apkLink = "https://drive.google.com/file/d/apk1",
+            apkSize = 40000000L,
+            dataLink = "https://drive.google.com/file/d/dat1",
+            dataSize = 3000000L,
+            totalSize = 43000000L,
+            dateBackup = 1724282958000L
+        )
+
+        val rootMap = CloudDiscoveryHook.FirebaseSnapshotSynthesizer.buildMetadataMap(app)
+        assertTrue(rootMap.containsKey("20260821-232918-NK"))
+
+        @Suppress("UNCHECKED_CAST")
+        val meta = rootMap["20260821-232918-NK"] as Map<String, Any>
+        assertEquals("comdvadm", meta["appId"])
+        assertEquals("com.dv.adm", meta["packageName"])
+        assertEquals("CPH2573", meta["backupTag"])
+        assertEquals(1724282958000L, meta["dateBackup"])
+        assertEquals(580L, meta["minSBVersionCodeRequired"])
+        assertEquals(1, meta["keyVersion"])
+    }
+
+    @Test
+    fun testMetadataMapSliceGeneration() {
+        val app = CloudDiscoveryHook.DiscoveredCloudApp(
+            packageName = "demigos.com.mobilism",
+            sanitizedAppId = "demigoscommobilism",
+            backupId = "20260824-000000-XX",
+            backupTag = "DEVICE1",
+            apkLink = "https://drive.google.com/apk",
+            apkSize = 1000L,
+            dataLink = "https://drive.google.com/dat",
+            dataSize = 2000L,
+            extDataLink = "https://drive.google.com/extdat",
+            extDataSize = 3000L,
+            splitsLink = "https://drive.google.com/splits",
+            splitsSize = 4000L,
+            extraLink = "https://drive.google.com/extra",
+            extraSize = 5000L,
+            totalSize = 15000L,
+            ssaid = "dummy_ssaid",
+            permissionStatesCsv = "perm1,perm2",
+            notificationPolicyXml = "<policy/>"
+        )
+
+        val rootMap = CloudDiscoveryHook.FirebaseSnapshotSynthesizer.buildMetadataMap(app)
+        @Suppress("UNCHECKED_CAST")
+        val meta = rootMap["20260824-000000-XX"] as Map<String, Any>
+
+        assertEquals("https://drive.google.com/apk", meta["apkLink"])
+        assertEquals(1000L, meta["apkSize"])
+        assertEquals("https://drive.google.com/dat", meta["dataLink"])
+        assertEquals(2000L, meta["dataSize"])
+        assertEquals("https://drive.google.com/extdat", meta["extDataLink"])
+        assertEquals(3000L, meta["extDataSize"])
+        assertEquals("https://drive.google.com/splits", meta["splitsLink"])
+        assertEquals(4000L, meta["splitsSize"])
+        assertEquals("https://drive.google.com/extra", meta["specialDataLink"])
+        assertEquals(5000L, meta["specialDataSize"])
+        assertEquals("dummy_ssaid", meta["ssaid"])
+        assertEquals("perm1,perm2", meta["permissionStatesCsv"])
+        assertEquals("<policy/>", meta["notificationPolicyXml"])
+    }
+
+    @Test
+    fun testMetadataMapEncryptionFields() {
+        val app = CloudDiscoveryHook.DiscoveredCloudApp(
+            packageName = "com.meld.app",
+            sanitizedAppId = "commeldapp",
+            backupId = "20260824-012623-FQ",
+            backupTag = "DEVICE1",
+            dataLink = "https://drive.google.com/dat",
+            dataSize = 5000L,
+            extDataLink = "https://drive.google.com/extdat",
+            extDataSize = 6000L,
+            totalSize = 11000L
+        )
+
+        val rootMap = CloudDiscoveryHook.FirebaseSnapshotSynthesizer.buildMetadataMap(app)
+        @Suppress("UNCHECKED_CAST")
+        val meta = rootMap["20260824-012623-FQ"] as Map<String, Any>
+
+        assertEquals(true, meta["isDataEncrypted"])
+        assertEquals("StandardEncryption", meta["dataEncryptionMethod"])
+        assertEquals(true, meta["isExtDataEncrypted"])
+        assertEquals("StandardEncryption", meta["extDataEncryptionMethod"])
+    }
 }

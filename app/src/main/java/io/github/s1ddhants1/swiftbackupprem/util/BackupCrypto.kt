@@ -106,6 +106,43 @@ object BackupCrypto {
         return null
     }
 
+    data class DecryptedFolderManifest(
+        val sourcePath: String = "/storage/emulated/0",
+        val displayName: String = "",
+        val created: Long = 0L,
+        val backupId: String = ""
+    )
+
+    fun parseFolderManifest(
+        rawFlmText: String,
+        candidateUids: List<String>,
+        classLoader: ClassLoader
+    ): DecryptedFolderManifest? {
+        val parts = rawFlmText.split(":::").filter { it.isNotBlank() }
+        if (parts.size < 3) return null
+
+        val payload = parts[2].trim()
+        for (candUid in candidateUids) {
+            try {
+                val key = deriveConcealKey(candUid)
+                val decBytes = concealDecrypt(payload, key)
+                val decompJson = decompressZstdOrRaw(decBytes, classLoader) ?: continue
+                val json = JSONObject(decompJson)
+                val srcPath = json.optString("sourcePath").takeIf { it.isNotBlank() } ?: "/storage/emulated/0"
+                val name = srcPath.trimEnd('/').substringAfterLast('/').takeIf { it.isNotBlank() } ?: srcPath
+                val created = json.optLong("created", 0L)
+                val bId = json.optString("backupId")
+                return DecryptedFolderManifest(
+                    sourcePath = srcPath,
+                    displayName = name,
+                    created = created,
+                    backupId = bId
+                )
+            } catch (_: Throwable) {}
+        }
+        return null
+    }
+
     @SuppressLint("SdCardPath")
     fun resolveCandidateUids(context: Context?, classLoader: ClassLoader, targets: ResolvedTargets? = null): List<String> {
         val uids = LinkedHashSet<String>()
