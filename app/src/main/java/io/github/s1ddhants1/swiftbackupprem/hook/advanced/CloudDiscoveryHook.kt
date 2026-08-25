@@ -331,6 +331,17 @@ object CloudDiscoveryHook : HookHandler {
             return FirebaseClasses(nodeUtils, indexedNode, node, dataSnapshot)
         }
 
+        fun extractQueryRef(snapshot: Any): Any? =
+            snapshot.getFieldValue("query")
+                ?: snapshot.getFieldValue("b")
+                ?: snapshot.getFieldValue("a")
+                ?: attempt("find query field by non-Node type", silent = true) {
+                    snapshot.javaClass.declaredFields.firstOrNull {
+                        val typeName = it.type.name
+                        !typeName.contains("sb4") && !typeName.contains("IndexedNode") && !typeName.contains("qn5") && !typeName.contains("Node")
+                    }?.apply { isAccessible = true }?.get(snapshot)
+                }
+
         private fun buildMetadataMap(app: DiscoveredCloudApp): Map<String, Any> {
             val backupMap = mutableMapOf<String, Any>(
                 "appId" to app.sanitizedAppId,
@@ -849,9 +860,7 @@ object CloudDiscoveryHook : HookHandler {
 
                             val injected = attempt("synthetic snapshot injection", silent = true) {
                                 if (snapshot == null) return@attempt false
-                                val queryRef = snapshot.getFieldValue("query")
-                                    ?: snapshot.getFieldValue("a")
-                                    ?: return@attempt false
+                                val queryRef = FirebaseSnapshotSynthesizer.extractQueryRef(snapshot) ?: return@attempt false
 
                                 val syntheticSnapshot = FirebaseSnapshotSynthesizer.createSyntheticSnapshot(
                                     classLoader, queryRef, matching
@@ -1072,9 +1081,7 @@ object CloudDiscoveryHook : HookHandler {
 
                 val injected = attempt("synthetic sync stats injection", silent = true) {
                     if (snapshot == null) return@attempt false
-                    val queryRef = snapshot.getFieldValue("query")
-                        ?: snapshot.getFieldValue("a")
-                        ?: return@attempt false
+                    val queryRef = FirebaseSnapshotSynthesizer.extractQueryRef(snapshot) ?: return@attempt false
 
                     val totalApps = discoveredBackups.size
                     val totalSpace = discoveredBackups.values.sumOf { it.totalSize } +
