@@ -38,7 +38,7 @@ object BoxScanner : CloudScanner {
 
         val folderQueue: Queue<String> = LinkedList()
         val visited = mutableSetOf<String>()
-        folderQueue.add("0") // Root folder ID
+        folderQueue.add("0")
 
         var scannedCount = 0
         while (folderQueue.isNotEmpty() && scannedCount < 20) {

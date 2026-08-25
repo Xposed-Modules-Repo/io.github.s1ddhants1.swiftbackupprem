@@ -397,7 +397,6 @@ object BackupRebuilderHook : HookHandler {
         return true
     }
 
-    // Delegating functions to BackupCrypto for backward compatibility & direct test access
     fun deriveConcealKey(uid: String): ByteArray = BackupCrypto.deriveConcealKey(uid)
     fun concealDecrypt(base64Payload: String, key: ByteArray): ByteArray = BackupCrypto.concealDecrypt(base64Payload, key)
     fun concealEncrypt(plaintext: String, key: ByteArray): String = BackupCrypto.concealEncrypt(plaintext, key)

@@ -42,7 +42,6 @@ class ConfigRepositoryTest {
         assertEquals("repo-project", result.projectId)
         assertEquals("repo-client-id", result.clientId)
 
-        // Verify preferences mutated
         assertTrue(prefs.enableDriveDiscovery)
         assertEquals("repo-project", prefs.projectId)
         assertEquals("repo-client-id", prefs.clientId)

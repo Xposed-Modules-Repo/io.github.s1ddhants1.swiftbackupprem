@@ -216,7 +216,7 @@ object S3Scanner : CloudScanner {
             timeZone = TimeZone.getTimeZone("UTC")
         }.format(now)
 
-        val payloadHash = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" // SHA256 of empty string
+        val payloadHash = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
         val canonicalHeaders = "host:$host\nx-amz-content-sha256:$payloadHash\nx-amz-date:$amzDate\n"
         val signedHeaders = "host;x-amz-content-sha256;x-amz-date"
 

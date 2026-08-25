@@ -296,8 +296,6 @@ private fun SettingsScreenContent(
         }
 
         AdvancedSettingsCard(prefs = prefs, isFrameworkConnected = isFrameworkConnected)
-
-        // Extra spacing so fields near the bottom can comfortably scroll above the keyboard
         Spacer(modifier = Modifier.height(64.dp))
     }
 }

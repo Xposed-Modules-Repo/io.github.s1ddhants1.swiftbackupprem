@@ -88,7 +88,6 @@ object WebDavScanner : CloudScanner {
         val normalizedBase = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
         queue.add(normalizedBase)
 
-        // Also check if SwiftBackup is in a subdirectory
         if (!normalizedBase.contains("SwiftBackup", ignoreCase = true)) {
             queue.add("${normalizedBase}SwiftBackup/")
         }

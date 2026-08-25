@@ -86,12 +86,10 @@ class CloudDiscoveryHookTest {
 
     @Test
     fun testRtdbAppPreservationAgainstDiscoveredDuplicates() {
-        // Given an existing set of packages loaded with rich metadata from RTDB
         val rtdbPackages = setOf("com.whatsapp", "org.telegram.messenger")
 
-        // And discovered items from cloud discovery
         val discoveredApp1 = CloudDiscoveryHook.DiscoveredCloudApp(
-            packageName = "com.whatsapp", // Already has genuine RTDB metadata
+            packageName = "com.whatsapp",
             sanitizedAppId = "comwhatsapp",
             backupId = "20260825-110000-CD",
             backupTag = "DEVICE1",
@@ -100,7 +98,7 @@ class CloudDiscoveryHookTest {
             provider = "GoogleDrive"
         )
         val discoveredApp2 = CloudDiscoveryHook.DiscoveredCloudApp(
-            packageName = "com.orphaned.app", // No RTDB metadata
+            packageName = "com.orphaned.app",
             sanitizedAppId = "comorphanedapp",
             backupId = "20260825-120000-EF",
             backupTag = "DEVICE1",
@@ -114,7 +112,6 @@ class CloudDiscoveryHookTest {
             discoveredApp2.packageName to discoveredApp2
         )
 
-        // Deduplication rule: Only add discovered apps if not already present in RTDB
         val newlyAdded = discoveredMap.values.filter {
             !rtdbPackages.contains(it.packageName) && !rtdbPackages.contains(it.sanitizedAppId)
         }

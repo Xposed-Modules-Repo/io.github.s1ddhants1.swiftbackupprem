@@ -11,7 +11,6 @@ class AppUtilsTest {
     fun randomFingerprintProducesExpectedColonSeparatedHex() {
         val fingerprint = AppUtils.randomFingerprint()
 
-        // SHA-1 fingerprint is 20 hex pairs separated by colons -> 59 characters
         assertEquals(59, fingerprint.length)
         assertEquals(19, fingerprint.count { it == ':' })
         assertTrue(fingerprint.all { it.isDigit() || it in 'A'..'F' || it == ':' })

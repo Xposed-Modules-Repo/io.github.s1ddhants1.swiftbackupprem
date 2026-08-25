@@ -60,7 +60,6 @@ object CloudScannerRegistry {
 
     @SuppressLint("SdCardPath")
     private fun buildAggregatedPreferences(context: Context, primaryPrefs: SharedPreferences): SharedPreferences {
-        // Collect additional shared_prefs files if present
         val prefsDir = File(context.filesDir?.parentFile, "shared_prefs")
         if (!prefsDir.exists() || !prefsDir.isDirectory) {
             return primaryPrefs

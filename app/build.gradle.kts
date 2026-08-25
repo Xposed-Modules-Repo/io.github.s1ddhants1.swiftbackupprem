@@ -56,13 +56,11 @@ dependencies {
     implementation(libs.dexkit)
     implementation(libs.kotlinx.serialization.json)
 
-    // AndroidX
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.lifecycle.runtime.compose)
 
-    // Compose
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.bundles.compose)
     debugImplementation(libs.androidx.compose.ui.tooling)

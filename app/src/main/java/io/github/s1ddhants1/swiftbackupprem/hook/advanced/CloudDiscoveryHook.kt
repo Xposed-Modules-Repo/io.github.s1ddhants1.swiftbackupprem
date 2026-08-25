@@ -399,7 +399,6 @@ object CloudDiscoveryHook : HookHandler {
 
             val metadataMap = buildMetadataMap(app)
 
-            // Step 1: Map → Node via NodeUtilities.NodeFromJSON(Object) / xh8.a(Object, priority)
             val nodeFromJson = fb.nodeUtilities.declaredMethods.firstOrNull { m ->
                 (m.parameterCount == 1 && m.parameterTypes[0] == Any::class.java && fb.node.isAssignableFrom(m.returnType)) ||
                 (m.parameterCount == 2 && m.parameterTypes[0] == Any::class.java && fb.node.isAssignableFrom(m.parameterTypes[1]) && fb.node.isAssignableFrom(m.returnType))
@@ -418,7 +417,6 @@ object CloudDiscoveryHook : HookHandler {
                 return@attempt null
             }
 
-            // Step 2: Node → IndexedNode via IndexedNode.from(Node) / sb4 constructor
             val indexedFromNode = fb.indexedNode.declaredMethods.firstOrNull { m ->
                 m.parameterCount == 1 && fb.node.isAssignableFrom(m.parameterTypes[0]) && fb.indexedNode.isAssignableFrom(m.returnType)
             } ?: attempt("fallback IndexedNode.from", silent = true) { fb.indexedNode.getMethod("from", fb.node) }
@@ -433,7 +431,6 @@ object CloudDiscoveryHook : HookHandler {
                 ctor?.newInstance(nodeObj, defaultIndex)
             } ?: run { Log.w(SYNTH_TAG, "IndexedNode resolution returned null"); return@attempt null }
 
-            // Step 3: DataSnapshot(queryRef, indexedNode)
             val ctor = fb.dataSnapshot.constructors
                 .filter { it.parameterCount == 2 }
                 .firstOrNull { c ->
@@ -480,7 +477,6 @@ object CloudDiscoveryHook : HookHandler {
                 "folders" to folders
             )
 
-            // Step 1: Map → Node via NodeUtilities.NodeFromJSON(Object) / xh8.a(Object, priority)
             val nodeFromJson = fb.nodeUtilities.declaredMethods.firstOrNull { m ->
                 (m.parameterCount == 1 && m.parameterTypes[0] == Any::class.java && fb.node.isAssignableFrom(m.returnType)) ||
                 (m.parameterCount == 2 && m.parameterTypes[0] == Any::class.java && fb.node.isAssignableFrom(m.parameterTypes[1]) && fb.node.isAssignableFrom(m.returnType))
@@ -499,7 +495,6 @@ object CloudDiscoveryHook : HookHandler {
                 return@attempt null
             }
 
-            // Step 2: Node → IndexedNode via IndexedNode.from(Node) / sb4 constructor
             val indexedFromNode = fb.indexedNode.declaredMethods.firstOrNull { m ->
                 m.parameterCount == 1 && fb.node.isAssignableFrom(m.parameterTypes[0]) && fb.indexedNode.isAssignableFrom(m.returnType)
             } ?: attempt("fallback IndexedNode.from for stats", silent = true) { fb.indexedNode.getMethod("from", fb.node) }
@@ -514,7 +509,6 @@ object CloudDiscoveryHook : HookHandler {
                 ctor?.newInstance(nodeObj, defaultIndex)
             } ?: run { Log.w(SYNTH_TAG, "IndexedNode.from returned null for sync stats"); return@attempt null }
 
-            // Step 3: DataSnapshot(queryRef, indexedNode)
             val ctor = fb.dataSnapshot.constructors
                 .filter { it.parameterCount == 2 }
                 .firstOrNull { c ->
@@ -673,7 +667,6 @@ object CloudDiscoveryHook : HookHandler {
             if (fileToRead.exists()) {
                 val root = JSONObject(fileToRead.readText(StandardCharsets.UTF_8))
                 
-                // Apps
                 val appsObj = root.optJSONObject("apps") ?: root
                 appsObj.keys().forEach { pkg ->
                     if (AppUtils.isValidPackageName(pkg)) {
@@ -684,7 +677,6 @@ object CloudDiscoveryHook : HookHandler {
                     }
                 }
 
-                // Folders
                 root.optJSONObject("folders")?.let { foldersObj ->
                     foldersObj.keys().forEach { fid ->
                         val fJson = foldersObj.optJSONObject(fid)
@@ -694,28 +686,24 @@ object CloudDiscoveryHook : HookHandler {
                     }
                 }
 
-                // Calls
                 root.optJSONObject("calls")?.let { callsObj ->
                     callsObj.keys().forEach { id ->
                         callsObj.optJSONObject(id)?.let { discoveredCalls[id] = DiscoveredCloudCall.fromJson(it) }
                     }
                 }
 
-                // SMS
                 root.optJSONObject("sms")?.let { smsObj ->
                     smsObj.keys().forEach { id ->
                         smsObj.optJSONObject(id)?.let { discoveredSms[id] = DiscoveredCloudSms.fromJson(it) }
                     }
                 }
 
-                // Walls
                 root.optJSONObject("walls")?.let { wallsObj ->
                     wallsObj.keys().forEach { id ->
                         wallsObj.optJSONObject(id)?.let { discoveredWalls[id] = DiscoveredCloudWall.fromJson(it) }
                     }
                 }
 
-                // WiFi
                 root.optJSONObject("wifi")?.let { wifiObj ->
                     wifiObj.keys().forEach { id ->
                         wifiObj.optJSONObject(id)?.let { discoveredWifi[id] = DiscoveredCloudWifi.fromJson(it) }
@@ -840,7 +828,6 @@ object CloudDiscoveryHook : HookHandler {
                     } ?: false
 
                     if (snapshotHasData) {
-                        // RTDB has metadata for this app: let Swift Backup process the real metadata!
                         return@intercept chain.proceed()
                     }
 
@@ -852,7 +839,6 @@ object CloudDiscoveryHook : HookHandler {
                         jiInstance.javaClass.getDeclaredMethod("getCloudBackups").invoke(jiInstance)
                     }
                     if (existingCloudBackups != null && !isResultEmpty(existingCloudBackups)) {
-                        // Already has cloud backups from RTDB: do not overwrite!
                         return@intercept chain.proceed()
                     }
 
@@ -861,10 +847,6 @@ object CloudDiscoveryHook : HookHandler {
                         ensureScan(context, classLoader, targets)
                         findMatchingBackup(pkgName)?.let { matching ->
 
-                            // ── Strategy 1: Synthetic DataSnapshot injection ──
-                            // Synthesize a Firebase DataSnapshot from discovered metadata and
-                            // pass it into the native onDataChange pipeline so Swift Backup's
-                            // own AppCloudBackups.fromSnapshot() handles decoding and UI rendering.
                             val injected = attempt("synthetic snapshot injection", silent = true) {
                                 if (snapshot == null) return@attempt false
                                 val queryRef = snapshot.getFieldValue("query")
@@ -882,9 +864,6 @@ object CloudDiscoveryHook : HookHandler {
 
                             if (injected) return@intercept null
 
-                            // ── Strategy 2: Fallback — setCloudBackups + UI reflection ──
-                            // If DataSnapshot synthesis failed (Firebase classes unavailable,
-                            // constructor mismatch, etc.), fall back to the legacy approach.
                             Log.d(TAG, "[CloudDiscovery] Snapshot synthesis unavailable for $pkgName, falling back to UI reflection")
                             buildAppCloudBackup(matching, classLoader)?.let { cloudBackup ->
                                 createBackupsObject(cloudBackup, classLoader)?.let { backupsObj ->
@@ -1082,7 +1061,6 @@ object CloudDiscoveryHook : HookHandler {
                 } ?: false
 
                 if (snapshotHasData) {
-                    // RTDB has genuine sync stats metadata: let Swift Backup process it!
                     return@intercept chain.proceed()
                 }
 
@@ -1092,7 +1070,6 @@ object CloudDiscoveryHook : HookHandler {
 
                 if (!hasDiscovered) return@intercept chain.proceed()
 
-                // ── Strategy 1: Synthetic DataSnapshot injection ──
                 val injected = attempt("synthetic sync stats injection", silent = true) {
                     if (snapshot == null) return@attempt false
                     val queryRef = snapshot.getFieldValue("query")
@@ -1122,7 +1099,6 @@ object CloudDiscoveryHook : HookHandler {
 
                 if (injected) return@intercept null
 
-                // ── Strategy 2: Fallback — direct z8 → ex6.k() post ──
                 Log.d(TAG, "[CloudDiscovery] Sync stats snapshot synthesis unavailable, falling back to z8 reflection")
                 val jg1Instance = chain.thisObject ?: return@intercept chain.proceed()
                 val ng1Instance = jg1Instance.getFieldValue("q")
@@ -1253,7 +1229,7 @@ object CloudDiscoveryHook : HookHandler {
                     xr0Class.getDeclaredField("a").apply { isAccessible = true }.getInt(thisObj)
                 } ?: -1
 
-                if (aVal != 0) { // Case 1: wallpaper click
+                if (aVal != 0) {
                     val bObj = xr0Class.getDeclaredField("b").apply { isAccessible = true }.get(thisObj)
                     val cObj = xr0Class.getDeclaredField("c").apply { isAccessible = true }.get(thisObj)
                     val dObj = xr0Class.getDeclaredField("d").apply { isAccessible = true }.get(thisObj)
@@ -1454,7 +1430,6 @@ object CloudDiscoveryHook : HookHandler {
                 val fileId = fileObj.id
                 val fileSize = fileObj.size
 
-                // 1. Folders
                 val folderMatcher = folderRegex.matcher(fileName)
                 if (folderMatcher.matches()) {
                     val part = folderMatcher.group(1) ?: continue
@@ -1464,7 +1439,6 @@ object CloudDiscoveryHook : HookHandler {
                     continue
                 }
 
-                // 2. Call Logs (.cls)
                 val callMatcher = callRegex.matcher(fileName)
                 if (callMatcher.matches()) {
                     val ts = callMatcher.group(1)?.toLongOrNull() ?: fileObj.timestamp
@@ -1483,7 +1457,6 @@ object CloudDiscoveryHook : HookHandler {
                     }
                 }
 
-                // 3. SMS (.msg)
                 val smsMatcher = smsRegex.matcher(fileName)
                 if (smsMatcher.matches()) {
                     val ts = smsMatcher.group(1)?.toLongOrNull() ?: fileObj.timestamp
@@ -1502,7 +1475,6 @@ object CloudDiscoveryHook : HookHandler {
                     }
                 }
 
-                // 4. Wallpapers (.wal / .wal.png)
                 val wallMatcher = wallRegex.matcher(fileName)
                 if (wallMatcher.matches()) {
                     val rawTs = wallMatcher.group(1)
@@ -1528,7 +1500,6 @@ object CloudDiscoveryHook : HookHandler {
                     continue
                 }
 
-                // 5. WiFi (.wfi)
                 val wifiMatcher = wifiRegex.matcher(fileName)
                 if (wifiMatcher.matches()) {
                     discoveredWifi[fileId] = DiscoveredCloudWifi(fileId, fileName, fileSize, 1, providerName)
@@ -1536,7 +1507,6 @@ object CloudDiscoveryHook : HookHandler {
                     continue
                 }
 
-                // 6. Apps (.app, .dat, .extra, etc.)
                 val appMatcher = appRegex.matcher(fileName)
                 if (appMatcher.matches()) {
                     val pkg = appMatcher.group(1) ?: continue
@@ -1551,7 +1521,6 @@ object CloudDiscoveryHook : HookHandler {
                 }
             }
 
-            // Process Apps for this provider
             for ((key, parts) in appGroups) {
                 val (pkg, backupId, tag) = key
                 val sanitizedAppId = pkg.replace(".", "")
@@ -1610,7 +1579,6 @@ object CloudDiscoveryHook : HookHandler {
                 totalIndexedCount++
             }
 
-            // Process Folders for this provider
             for ((key, parts) in folderGroups) {
                 val (fid, tag) = key
                 val fldObj = parts["fld"]
