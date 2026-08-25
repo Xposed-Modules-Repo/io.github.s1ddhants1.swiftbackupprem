@@ -8,9 +8,9 @@ import io.github.libxposed.api.XposedInterface
 import io.github.libxposed.api.XposedModule
 import io.github.libxposed.api.XposedModuleInterface
 import io.github.s1ddhants1.swiftbackupprem.hook.*
-import io.github.s1ddhants1.swiftbackupprem.hook.advanced.BackupRebuilderHook
-import io.github.s1ddhants1.swiftbackupprem.hook.advanced.CloudDiscoveryHook
-import io.github.s1ddhants1.swiftbackupprem.hook.advanced.GoogleDriveScopeHook
+import io.github.s1ddhants1.swiftbackupprem.hook.experimental.BackupRebuilderHook
+import io.github.s1ddhants1.swiftbackupprem.hook.experimental.CloudDiscoveryHook
+import io.github.s1ddhants1.swiftbackupprem.hook.experimental.GoogleDriveScopeHook
 import io.github.s1ddhants1.swiftbackupprem.util.PreferencesManager
 import io.github.s1ddhants1.swiftbackupprem.util.attempt
 import java.util.concurrent.ConcurrentHashMap
