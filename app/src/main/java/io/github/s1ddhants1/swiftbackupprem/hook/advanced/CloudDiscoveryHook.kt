@@ -411,7 +411,12 @@ object CloudDiscoveryHook : HookHandler {
                 } else {
                     nodeFromJson.invoke(null, metadataMap)
                 }
-            } else null ?: run { Log.w(SYNTH_TAG, "NodeFromJSON returned null"); return@attempt null }
+            } else {
+                null
+            } ?: run {
+                Log.w(SYNTH_TAG, "NodeFromJSON returned null")
+                return@attempt null
+            }
 
             // Step 2: Node → IndexedNode via IndexedNode.from(Node) / sb4 constructor
             val indexedFromNode = fb.indexedNode.declaredMethods.firstOrNull { m ->
@@ -487,7 +492,12 @@ object CloudDiscoveryHook : HookHandler {
                 } else {
                     nodeFromJson.invoke(null, statsMap)
                 }
-            } else null ?: run { Log.w(SYNTH_TAG, "NodeFromJSON returned null for sync stats"); return@attempt null }
+            } else {
+                null
+            } ?: run {
+                Log.w(SYNTH_TAG, "NodeFromJSON returned null for sync stats")
+                return@attempt null
+            }
 
             // Step 2: Node → IndexedNode via IndexedNode.from(Node) / sb4 constructor
             val indexedFromNode = fb.indexedNode.declaredMethods.firstOrNull { m ->
