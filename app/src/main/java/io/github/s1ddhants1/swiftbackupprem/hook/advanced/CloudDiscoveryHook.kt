@@ -275,6 +275,161 @@ object CloudDiscoveryHook : HookHandler {
         }
     }
 
+    /**
+     * Synthesizes a Firebase DataSnapshot from a DiscoveredCloudApp's metadata.
+     *
+     * The snapshot structure mirrors what Swift Backup's official RTDB would
+     * store: a root node keyed by backupId, containing all CloudMetadata fields.
+     * When passed to the native onDataChange pipeline, Swift Backup's own
+     * AppCloudBackups.fromSnapshot() decodes it identically to a real RTDB entry.
+     */
+    private object FirebaseSnapshotSynthesizer {
+
+        private const val SYNTH_TAG = "$TAG-Synth"
+
+        private data class FirebaseClasses(
+            val nodeUtilities: Class<*>,
+            val indexedNode: Class<*>,
+            val node: Class<*>,
+            val dataSnapshot: Class<*>
+        )
+
+        private fun resolveFirebaseClasses(classLoader: ClassLoader): FirebaseClasses? {
+            val nodeUtils = listOf(
+                "com.google.firebase.database.snapshot.NodeUtilities",
+                "com.google.firebase.database.snapshot.NodeUtility"
+            ).firstNotNullOfOrNull { loadClassFlexible(classLoader, it) } ?: run {
+                Log.d(SYNTH_TAG, "NodeUtilities class not found")
+                return null
+            }
+
+            val node = loadClassFlexible(classLoader, "com.google.firebase.database.snapshot.Node") ?: run {
+                Log.d(SYNTH_TAG, "Node class not found")
+                return null
+            }
+
+            val indexedNode = loadClassFlexible(classLoader, "com.google.firebase.database.snapshot.IndexedNode") ?: run {
+                Log.d(SYNTH_TAG, "IndexedNode class not found")
+                return null
+            }
+
+            val dataSnapshot = loadClassFlexible(classLoader, "com.google.firebase.database.DataSnapshot") ?: run {
+                Log.d(SYNTH_TAG, "DataSnapshot class not found")
+                return null
+            }
+
+            return FirebaseClasses(nodeUtils, indexedNode, node, dataSnapshot)
+        }
+
+        private fun buildMetadataMap(app: DiscoveredCloudApp): Map<String, Any> {
+            val backupMap = mutableMapOf<String, Any>(
+                "appId" to app.sanitizedAppId,
+                "packageName" to app.packageName,
+                "name" to app.packageName,
+                "versionCode" to 1L,
+                "versionName" to "1.0",
+                "dateBackup" to app.dateBackup,
+                "dateBackupUpdated" to app.dateBackup,
+                "backupTag" to app.backupTag,
+                "minSBVersionCodeRequired" to 580L,
+                "keyVersion" to 1
+            )
+
+            fun addSlice(link: String?, size: Long, prefix: String, encrypted: Boolean = false) {
+                if (!link.isNullOrBlank()) {
+                    backupMap["${prefix}Link"] = link
+                    backupMap["${prefix}Size"] = size
+                    if (encrypted) {
+                        backupMap["is${prefix.replaceFirstChar { it.uppercase() }}Encrypted"] = true
+                        backupMap["${prefix}EncryptionMethod"] = "StandardEncryption"
+                    }
+                    backupMap["${prefix}BackupDate"] = app.dateBackup
+                    backupMap["${prefix}SBVersionCodeRequired"] = 580L
+                    backupMap["${prefix}SBVersionNameRequired"] = "v4.2.3"
+                }
+            }
+
+            addSlice(app.apkLink, app.apkSize, "apk")
+            addSlice(app.dataLink, app.dataSize, "data", encrypted = true)
+            addSlice(app.extDataLink, app.extDataSize, "extData", encrypted = true)
+
+            if (!app.splitsLink.isNullOrBlank()) {
+                backupMap["splitsLink"] = app.splitsLink
+                backupMap["splitsSize"] = app.splitsSize
+                backupMap["splitsSBVersionCodeRequired"] = 580L
+                backupMap["splitsSBVersionNameRequired"] = "v4.2.3"
+            }
+
+            if (!app.extraLink.isNullOrBlank()) {
+                backupMap["specialDataLink"] = app.extraLink
+                backupMap["specialDataSize"] = app.extraSize
+            }
+
+            app.ssaid?.let { backupMap["ssaid"] = it }
+            app.permissionStatesCsv?.let { backupMap["permissionStatesCsv"] = it }
+            app.notificationPolicyXml?.let { backupMap["notificationPolicyXml"] = it }
+
+            return mapOf(app.backupId to backupMap)
+        }
+
+        /**
+         * Creates a synthetic DataSnapshot that the native onDataChange pipeline
+         * will process identically to a real Firebase RTDB snapshot.
+         *
+         * Pipeline: Map → NodeFromJSON → IndexedNode.from → DataSnapshot(ref, indexed)
+         *
+         * Returns null if any step fails — caller must implement fallback.
+         */
+        fun createSyntheticSnapshot(
+            classLoader: ClassLoader,
+            queryRef: Any,
+            app: DiscoveredCloudApp
+        ): Any? = attempt("synthesize DataSnapshot for ${app.packageName}", silent = true) {
+            val fb = resolveFirebaseClasses(classLoader) ?: return@attempt null
+
+            val metadataMap = buildMetadataMap(app)
+
+            // Step 1: Map → Node via NodeUtilities.NodeFromJSON(Object)
+            val nodeFromJson = fb.nodeUtilities.declaredMethods.firstOrNull { m ->
+                m.parameterCount == 1 &&
+                m.parameterTypes[0] == Any::class.java &&
+                fb.node.isAssignableFrom(m.returnType)
+            } ?: fb.nodeUtilities.getMethod("NodeFromJSON", Any::class.java)
+
+            val nodeObj = nodeFromJson.invoke(null, metadataMap)
+                ?: run { Log.w(SYNTH_TAG, "NodeFromJSON returned null"); return@attempt null }
+
+            // Step 2: Node → IndexedNode via IndexedNode.from(Node)
+            val indexedFromNode = fb.indexedNode.declaredMethods.firstOrNull { m ->
+                m.parameterCount == 1 && fb.node.isAssignableFrom(m.parameterTypes[0])
+            } ?: fb.indexedNode.getMethod("from", fb.node)
+
+            val indexedNodeObj = indexedFromNode.invoke(null, nodeObj)
+                ?: run { Log.w(SYNTH_TAG, "IndexedNode.from returned null"); return@attempt null }
+
+            // Step 3: DataSnapshot(queryRef, indexedNode)
+            val ctor = fb.dataSnapshot.constructors
+                .filter { it.parameterCount == 2 }
+                .firstOrNull { c ->
+                    val p0 = c.parameterTypes[0]
+                    val p1 = c.parameterTypes[1]
+                    p0.isAssignableFrom(queryRef.javaClass) &&
+                    (p1.name.contains("IndexedNode") || p1.isAssignableFrom(indexedNodeObj.javaClass))
+                }
+
+            if (ctor == null) {
+                Log.w(SYNTH_TAG, "No matching DataSnapshot constructor found. Available: ${
+                    fb.dataSnapshot.constructors.joinToString { c ->
+                        "(${c.parameterTypes.joinToString { it.simpleName }})"
+                    }
+                }")
+                return@attempt null
+            }
+
+            ctor.newInstance(queryRef, indexedNodeObj)
+        }
+    }
+
     override fun apply(
         module: XposedModule,
         context: Context,
@@ -533,6 +688,32 @@ object CloudDiscoveryHook : HookHandler {
                     if (pkgName != null) {
                         ensureScan(context, classLoader, targets)
                         findMatchingBackup(pkgName)?.let { matching ->
+
+                            // ── Strategy 1: Synthetic DataSnapshot injection ──
+                            // Synthesize a Firebase DataSnapshot from discovered metadata and
+                            // pass it into the native onDataChange pipeline so Swift Backup's
+                            // own AppCloudBackups.fromSnapshot() handles decoding and UI rendering.
+                            val injected = attempt("synthetic snapshot injection", silent = true) {
+                                if (snapshot == null) return@attempt false
+                                val queryRef = snapshot.getFieldValue("query")
+                                    ?: snapshot.getFieldValue("a")
+                                    ?: return@attempt false
+
+                                val syntheticSnapshot = FirebaseSnapshotSynthesizer.createSyntheticSnapshot(
+                                    classLoader, queryRef, matching
+                                ) ?: return@attempt false
+
+                                chain.proceed(arrayOf(syntheticSnapshot))
+                                Log.i(TAG, "[CloudDiscovery] \u2713 Synthetic DataSnapshot injected for $pkgName")
+                                true
+                            } ?: false
+
+                            if (injected) return@intercept null
+
+                            // ── Strategy 2: Fallback — setCloudBackups + UI reflection ──
+                            // If DataSnapshot synthesis failed (Firebase classes unavailable,
+                            // constructor mismatch, etc.), fall back to the legacy approach.
+                            Log.d(TAG, "[CloudDiscovery] Snapshot synthesis unavailable for $pkgName, falling back to UI reflection")
                             buildAppCloudBackup(matching, classLoader)?.let { cloudBackup ->
                                 createBackupsObject(cloudBackup, classLoader)?.let { backupsObj ->
                                     val appCloudBackupsClass = loadClassFlexible(classLoader, "org.swiftapps.swiftbackup.model.app.AppCloudBackups")
@@ -560,10 +741,10 @@ object CloudDiscoveryHook : HookHandler {
 
                                         val yj2Instance = yj2Class.getConstructor(xj2Class, List::class.java).newInstance(backedUpEnum, listOf(wj2Item))
                                         ex6Instance.javaClass.getMethod("k", Any::class.java).invoke(ex6Instance, yj2Instance)
-                                        Log.i(TAG, "[CloudDiscovery] Rendered cloud backup for $pkgName in UI (no RTDB metadata)")
+                                        Log.i(TAG, "[CloudDiscovery] Rendered cloud backup for $pkgName via UI reflection fallback")
                                         return@intercept null
                                     } catch (t: Throwable) {
-                                        Log.e(TAG, "[CloudDiscovery] Direct UI render error: ${t.message}")
+                                        Log.e(TAG, "[CloudDiscovery] UI reflection fallback also failed: ${t.message}")
                                     }
                                 }
                             }
