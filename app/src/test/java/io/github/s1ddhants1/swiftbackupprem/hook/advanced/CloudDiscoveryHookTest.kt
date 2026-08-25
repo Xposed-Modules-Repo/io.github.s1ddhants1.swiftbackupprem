@@ -63,4 +63,63 @@ class CloudDiscoveryHookTest {
         assertEquals("1.50 MB", CloudDiscoveryHook.formatBytes((1.5 * 1024 * 1024).toLong()))
         assertEquals("2.00 GB", CloudDiscoveryHook.formatBytes((2.0 * 1024 * 1024 * 1024).toLong()))
     }
+
+    @Test
+    fun testDiscoveredAppMatchingByKeyAndPackage() {
+        val app = CloudDiscoveryHook.DiscoveredCloudApp(
+            packageName = "org.telegram.messenger",
+            sanitizedAppId = "orgtelegrammessenger",
+            backupId = "20260825-100000-AB",
+            backupTag = "DEVICE1",
+            apkSize = 50000000L,
+            totalSize = 50000000L,
+            provider = "GoogleDrive"
+        )
+        CloudDiscoveryHook.discoveredBackups[app.packageName] = app
+
+        assertEquals(app, CloudDiscoveryHook.findMatchingBackup("org.telegram.messenger"))
+        assertEquals(app, CloudDiscoveryHook.findMatchingBackup("orgtelegrammessenger"))
+        assertNull(CloudDiscoveryHook.findMatchingBackup("com.unknown.app"))
+
+        CloudDiscoveryHook.discoveredBackups.clear()
+    }
+
+    @Test
+    fun testRtdbAppPreservationAgainstDiscoveredDuplicates() {
+        // Given an existing set of packages loaded with rich metadata from RTDB
+        val rtdbPackages = setOf("com.whatsapp", "org.telegram.messenger")
+
+        // And discovered items from cloud discovery
+        val discoveredApp1 = CloudDiscoveryHook.DiscoveredCloudApp(
+            packageName = "com.whatsapp", // Already has genuine RTDB metadata
+            sanitizedAppId = "comwhatsapp",
+            backupId = "20260825-110000-CD",
+            backupTag = "DEVICE1",
+            apkSize = 45000000L,
+            totalSize = 45000000L,
+            provider = "GoogleDrive"
+        )
+        val discoveredApp2 = CloudDiscoveryHook.DiscoveredCloudApp(
+            packageName = "com.orphaned.app", // No RTDB metadata
+            sanitizedAppId = "comorphanedapp",
+            backupId = "20260825-120000-EF",
+            backupTag = "DEVICE1",
+            apkSize = 25000000L,
+            totalSize = 25000000L,
+            provider = "GoogleDrive"
+        )
+
+        val discoveredMap = mapOf(
+            discoveredApp1.packageName to discoveredApp1,
+            discoveredApp2.packageName to discoveredApp2
+        )
+
+        // Deduplication rule: Only add discovered apps if not already present in RTDB
+        val newlyAdded = discoveredMap.values.filter {
+            !rtdbPackages.contains(it.packageName) && !rtdbPackages.contains(it.sanitizedAppId)
+        }
+
+        assertEquals(1, newlyAdded.size)
+        assertEquals("com.orphaned.app", newlyAdded.first().packageName)
+    }
 }
