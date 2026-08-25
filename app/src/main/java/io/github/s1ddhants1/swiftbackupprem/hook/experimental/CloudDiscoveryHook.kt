@@ -23,6 +23,7 @@ import io.github.s1ddhants1.swiftbackupprem.hook.hookTracked
 import io.github.s1ddhants1.swiftbackupprem.util.BackupCrypto
 import io.github.s1ddhants1.swiftbackupprem.util.PreferencesManager
 import io.github.s1ddhants1.swiftbackupprem.util.AppUtils
+import io.github.s1ddhants1.swiftbackupprem.util.ApkRangeManifestParser
 import io.github.s1ddhants1.swiftbackupprem.util.attempt
 import io.github.s1ddhants1.swiftbackupprem.util.loadClassFlexible
 import org.json.JSONObject
@@ -211,20 +212,27 @@ object CloudDiscoveryHook : HookHandler {
         val sanitizedAppId: String,
         val backupId: String,
         val backupTag: String,
+        val appName: String? = null,
         val apkLink: String? = null,
         val apkSize: Long = 0,
+        val apkBackupDate: Long = 0L,
         val dataLink: String? = null,
         val dataSize: Long = 0,
+        val dataBackupDate: Long = 0L,
         val extDataLink: String? = null,
         val extDataSize: Long = 0,
+        val extDataBackupDate: Long = 0L,
         val splitsLink: String? = null,
         val splitsSize: Long = 0,
+        val splitsBackupDate: Long = 0L,
         val extraLink: String? = null,
         val extraSize: Long = 0,
         val totalSize: Long = 0,
         val ssaid: String? = null,
         val permissionStatesCsv: String? = null,
         val notificationPolicyXml: String? = null,
+        val versionCode: Long = 1L,
+        val versionName: String = "1.0",
         val dateBackup: Long = System.currentTimeMillis(),
         val provider: String = "Generic"
     ) {
@@ -233,20 +241,27 @@ object CloudDiscoveryHook : HookHandler {
             put("sanitizedAppId", sanitizedAppId)
             put("backupId", backupId)
             put("backupTag", backupTag)
+            appName?.let { put("appName", it) }
             apkLink?.let { put("apkLink", it) }
             put("apkSize", apkSize)
+            put("apkBackupDate", apkBackupDate)
             dataLink?.let { put("dataLink", it) }
             put("dataSize", dataSize)
+            put("dataBackupDate", dataBackupDate)
             extDataLink?.let { put("extDataLink", it) }
             put("extDataSize", extDataSize)
+            put("extDataBackupDate", extDataBackupDate)
             splitsLink?.let { put("splitsLink", it) }
             put("splitsSize", splitsSize)
+            put("splitsBackupDate", splitsBackupDate)
             extraLink?.let { put("extraLink", it) }
             put("extraSize", extraSize)
             put("totalSize", totalSize)
             ssaid?.let { put("ssaid", it) }
             permissionStatesCsv?.let { put("permissionStatesCsv", it) }
             notificationPolicyXml?.let { put("notificationPolicyXml", it) }
+            put("versionCode", versionCode)
+            put("versionName", versionName)
             put("dateBackup", dateBackup)
             put("provider", provider)
         }
@@ -260,14 +275,21 @@ object CloudDiscoveryHook : HookHandler {
                     sanitizedAppId = obj.optString("sanitizedAppId", pkg.replace(".", "")),
                     backupId = obj.optString("backupId", ""),
                     backupTag = obj.optString("backupTag", "DEFAULT"),
+                    appName = s("appName"),
                     apkLink = s("apkLink"), apkSize = l("apkSize"),
+                    apkBackupDate = l("apkBackupDate"),
                     dataLink = s("dataLink"), dataSize = l("dataSize"),
+                    dataBackupDate = l("dataBackupDate"),
                     extDataLink = s("extDataLink"), extDataSize = l("extDataSize"),
+                    extDataBackupDate = l("extDataBackupDate"),
                     splitsLink = s("splitsLink"), splitsSize = l("splitsSize"),
+                    splitsBackupDate = l("splitsBackupDate"),
                     extraLink = s("extraLink"), extraSize = l("extraSize"),
                     totalSize = l("totalSize"), ssaid = s("ssaid"),
                     permissionStatesCsv = s("permissionStatesCsv"),
                     notificationPolicyXml = s("notificationPolicyXml"),
+                    versionCode = obj.optLong("versionCode", 1L),
+                    versionName = obj.optString("versionName", "1.0"),
                     dateBackup = obj.optLong("dateBackup", System.currentTimeMillis()),
                     provider = obj.optString("provider", "Generic")
                 )
@@ -346,9 +368,9 @@ object CloudDiscoveryHook : HookHandler {
             val backupMap = mutableMapOf<String, Any>(
                 "appId" to app.sanitizedAppId,
                 "packageName" to app.packageName,
-                "name" to app.packageName,
-                "versionCode" to 1L,
-                "versionName" to "1.0",
+                "name" to (app.appName ?: app.packageName),
+                "versionCode" to app.versionCode,
+                "versionName" to app.versionName,
                 "dateBackup" to app.dateBackup,
                 "dateBackupUpdated" to app.dateBackup,
                 "backupTag" to app.backupTag,
@@ -356,27 +378,32 @@ object CloudDiscoveryHook : HookHandler {
                 "keyVersion" to 1
             )
 
-            fun addSlice(link: String?, size: Long, prefix: String, encrypted: Boolean = false) {
+            fun addSlice(link: String?, size: Long, backupDate: Long, prefix: String, encrypted: Boolean = false) {
                 if (!link.isNullOrBlank()) {
+                    val date = if (backupDate > 0) backupDate else app.dateBackup
                     backupMap["${prefix}Link"] = link
                     backupMap["${prefix}Size"] = size
+                    backupMap["${prefix}BackupDate"] = date
                     if (encrypted) {
+                        backupMap["${prefix}Encrypted"] = true
                         backupMap["is${prefix.replaceFirstChar { it.uppercase() }}Encrypted"] = true
                         backupMap["${prefix}EncryptionMethod"] = "StandardEncryption"
+                        backupMap["${prefix}SizeMirrored"] = size
                     }
-                    backupMap["${prefix}BackupDate"] = app.dateBackup
                     backupMap["${prefix}SBVersionCodeRequired"] = 580L
                     backupMap["${prefix}SBVersionNameRequired"] = "v4.2.3"
                 }
             }
 
-            addSlice(app.apkLink, app.apkSize, "apk")
-            addSlice(app.dataLink, app.dataSize, "data", encrypted = true)
-            addSlice(app.extDataLink, app.extDataSize, "extData", encrypted = true)
+            addSlice(app.apkLink, app.apkSize, app.apkBackupDate, "apk")
+            addSlice(app.dataLink, app.dataSize, app.dataBackupDate, "data", encrypted = true)
+            addSlice(app.extDataLink, app.extDataSize, app.extDataBackupDate, "extData", encrypted = true)
 
             if (!app.splitsLink.isNullOrBlank()) {
+                val splitsDate = if (app.splitsBackupDate > 0) app.splitsBackupDate else app.dateBackup
                 backupMap["splitsLink"] = app.splitsLink
                 backupMap["splitsSize"] = app.splitsSize
+                backupMap["splitsBackupDate"] = splitsDate
                 backupMap["splitsSBVersionCodeRequired"] = 580L
                 backupMap["splitsSBVersionNameRequired"] = "v4.2.3"
             }
@@ -1437,26 +1464,39 @@ object CloudDiscoveryHook : HookHandler {
         val backupClass = loadClassFlexible(classLoader, "org.swiftapps.swiftbackup.model.app.AppCloudBackup") ?: return null
         val metaCtor = metaClass.constructors.first { it.parameterCount >= 60 }
         val now = app.dateBackup
+        val apkDate = if (app.apkBackupDate > 0) app.apkBackupDate else now
+        val dataDate = if (app.dataBackupDate > 0) app.dataBackupDate else now
+        val extDataDate = if (app.extDataBackupDate > 0) app.extDataBackupDate else now
+        val splitsDate = if (app.splitsBackupDate > 0) app.splitsBackupDate else now
         val args = arrayOfNulls<Any>(metaCtor.parameterCount)
 
         fun set(idx: Int, value: Any?) { if (idx < args.size) args[idx] = value }
 
-        set(0, app.packageName); set(1, app.packageName); set(2, now); set(3, now); set(4, "1.0"); set(5, 1L)
+        set(0, app.packageName)
+        set(1, app.appName ?: app.packageName)
+        set(2, now)
+        set(3, now)
+        set(4, app.versionName)
+        set(5, app.versionCode)
         set(6, app.apkLink)
         if (app.apkSize > 0) set(7, app.apkSize)
-        if (app.apkLink != null) { set(8, now); set(9, 580L); set(10, "v4.2.3") }
+        if (app.apkLink != null) { set(8, apkDate); set(9, 580L); set(10, "v4.2.3") }
         set(11, app.splitsLink)
         if (app.splitsSize > 0) set(12, app.splitsSize)
-        if (app.splitsLink != null) { set(14, 580L); set(15, "v4.2.3") }
+        if (app.splitsLink != null) { set(13, splitsDate); set(14, 580L); set(15, "v4.2.3") }
         set(21, app.dataLink)
         if (app.dataSize > 0) set(22, app.dataSize)
-        if (app.dataLink != null) { set(24, true); set(25, "StandardEncryption"); set(27, now); set(28, 580L); set(29, "v4.2.3") }
+        if (app.dataLink != null) { set(23, dataDate); set(24, true); set(25, "StandardEncryption"); set(27, dataDate); set(28, 580L); set(29, "v4.2.3") }
         set(30, app.extDataLink)
         if (app.extDataSize > 0) set(31, app.extDataSize)
-        if (app.extDataLink != null) { set(33, true); set(34, "StandardEncryption"); set(36, now); set(37, 580L); set(38, "v4.2.3") }
-        set(54, 580L); set(56, app.permissionStatesCsv); set(58, app.extraLink)
+        if (app.extDataLink != null) { set(32, extDataDate); set(33, true); set(34, "StandardEncryption"); set(36, extDataDate); set(37, 580L); set(38, "v4.2.3") }
+        set(54, 580L)
+        set(56, app.permissionStatesCsv)
+        set(58, app.extraLink)
         if (app.extraSize > 0) set(59, app.extraSize)
-        set(61, app.ssaid); set(63, false); set(65, 1)
+        set(61, app.ssaid)
+        set(63, false)
+        set(65, 1)
 
         val metaObj = metaCtor.newInstance(*args)
         backupClass.getConstructor(String::class.java, metaClass).newInstance(app.backupId, metaObj)
@@ -1656,8 +1696,10 @@ object CloudDiscoveryHook : HookHandler {
                 var ssaid: String? = null
                 var permissionStatesCsv: String? = null
                 var notificationPolicyXml: String? = null
+                var versionCode = 1L
+                var versionName = "1.0"
 
-                val extraItem = parts["extra"]
+                val extraItem = parts["extra"] ?: parts["ext"]
                 val extraFileId = extraItem?.id
                 val extraSize = extraItem?.size ?: 0L
 
@@ -1669,39 +1711,77 @@ object CloudDiscoveryHook : HookHandler {
                             ssaid = extra.ssaid
                             permissionStatesCsv = extra.permissionStatesCsv
                             notificationPolicyXml = extra.notificationPolicyXml
+                            if (extra.versionCode > 0) versionCode = extra.versionCode
+                            if (extra.versionName.isNotBlank()) versionName = extra.versionName
                         }
                     }
                 }
 
-                val apkFileId = parts["apk"]?.id
-                val apkSize = parts["apk"]?.size ?: 0L
-                val dataFileId = parts["dat"]?.id
-                val dataSize = parts["dat"]?.size ?: 0L
-                val extDataFileId = parts["extdat"]?.id
-                val extDataSize = parts["extdat"]?.size ?: 0L
-                val splitsFileId = parts["splits"]?.id
-                val splitsSize = parts["splits"]?.size ?: 0L
+                val apkItem = parts["apk"] ?: parts["app"]
+                val apkFileId = apkItem?.id
+                val apkSize = apkItem?.size ?: 0L
+                val apkBackupDate = apkItem?.timestamp ?: 0L
+
+                var remoteManifest: ApkRangeManifestParser.ApkManifestInfo? = null
+                if (apkItem != null) {
+                    remoteManifest = ApkRangeManifestParser.parseFromScanner(context, sp, scanner, apkItem)
+                }
+
+                if (remoteManifest != null) {
+                    if (remoteManifest.versionCode > 0) versionCode = remoteManifest.versionCode
+                    if (remoteManifest.versionName.isNotBlank()) versionName = remoteManifest.versionName
+                }
+
+                val appName = remoteManifest?.appLabel?.takeIf { it.isNotBlank() }
+                    ?: BackupRebuilderHook.resolveAppLabel(context, pkg)
+
+                val dataItem = parts["dat"] ?: parts["data"]
+                val dataFileId = dataItem?.id
+                val dataSize = dataItem?.size ?: 0L
+                val dataBackupDate = dataItem?.timestamp ?: 0L
+
+                val extDataItem = parts["extdat"] ?: parts["extdata"]
+                val extDataFileId = extDataItem?.id
+                val extDataSize = extDataItem?.size ?: 0L
+                val extDataBackupDate = extDataItem?.timestamp ?: 0L
+
+                val splitsItem = parts["splits"] ?: parts["split"] ?: parts["apks"]
+                val splitsFileId = splitsItem?.id
+                val splitsSize = splitsItem?.size ?: 0L
+                val splitsBackupDate = splitsItem?.timestamp ?: 0L
+
+                val partTimestamps = parts.values.map { it.timestamp }.filter { it > 0L }
+                val maxPartTimestamp = partTimestamps.maxOrNull()
+                val parsedBackupIdDate = parseBackupIdDate(backupId)
+                val calculatedDateBackup = maxPartTimestamp ?: (parsedBackupIdDate ?: System.currentTimeMillis())
 
                 val discovered = DiscoveredCloudApp(
                     packageName = pkg,
                     sanitizedAppId = sanitizedAppId,
                     backupId = backupId,
                     backupTag = tag,
-                    dateBackup = parts.values.map { it.timestamp }.maxOrNull() ?: System.currentTimeMillis(),
+                    appName = appName,
+                    dateBackup = calculatedDateBackup,
                     apkLink = apkFileId,
                     apkSize = apkSize,
+                    apkBackupDate = if (apkBackupDate > 0L) apkBackupDate else calculatedDateBackup,
                     dataLink = dataFileId,
                     dataSize = dataSize,
+                    dataBackupDate = if (dataBackupDate > 0L) dataBackupDate else calculatedDateBackup,
                     extDataLink = extDataFileId,
                     extDataSize = extDataSize,
+                    extDataBackupDate = if (extDataBackupDate > 0L) extDataBackupDate else calculatedDateBackup,
                     splitsLink = splitsFileId,
                     splitsSize = splitsSize,
+                    splitsBackupDate = if (splitsBackupDate > 0L) splitsBackupDate else calculatedDateBackup,
                     extraLink = extraFileId,
                     extraSize = extraSize,
                     totalSize = apkSize + dataSize + extDataSize + splitsSize,
                     ssaid = ssaid,
                     permissionStatesCsv = permissionStatesCsv,
                     notificationPolicyXml = notificationPolicyXml,
+                    versionCode = versionCode,
+                    versionName = versionName,
                     provider = providerName
                 )
                 discoveredBackups[pkg] = discovered
@@ -1788,6 +1868,16 @@ object CloudDiscoveryHook : HookHandler {
         }
         Log.i(TAG, "[CloudDiscovery] Successfully indexed $totalIndexedCount cloud items across providers into catalog")
         return totalIndexedCount
+    }
+
+    fun parseBackupIdDate(backupId: String): Long? = attempt("parse backupId timestamp", silent = true) {
+        val prefix = backupId.take(15) // "20260826-001043"
+        if (prefix.length == 15 && prefix[8] == '-') {
+            val sdf = java.text.SimpleDateFormat("yyyyMMdd-HHmmss", java.util.Locale.US)
+            sdf.timeZone = java.util.TimeZone.getTimeZone("UTC")
+            return@attempt sdf.parse(prefix)?.time
+        }
+        null
     }
 
     fun decompressZstdOrRaw(bytes: ByteArray, classLoader: ClassLoader): String? =

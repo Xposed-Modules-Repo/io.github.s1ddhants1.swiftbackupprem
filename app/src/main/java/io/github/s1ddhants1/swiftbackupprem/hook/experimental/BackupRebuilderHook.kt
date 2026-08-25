@@ -143,6 +143,11 @@ object BackupRebuilderHook : HookHandler {
         }
     }
 
+    data class AppVersionInfo(
+        val versionCode: Long = 1L,
+        val versionName: String = "1.0"
+    )
+
     fun resolveAppLabel(context: Context?, pkgName: String, backupDir: File? = null): String {
         if (context != null) {
             attempt("resolve label for installed $pkgName", silent = true) {
@@ -170,6 +175,36 @@ object BackupRebuilderHook : HookHandler {
             }
         }
         return pkgName
+    }
+
+    fun resolveAppVersion(context: Context?, pkgName: String, backupDir: File? = null): AppVersionInfo {
+        if (context != null) {
+            attempt("resolve version for installed $pkgName", silent = true) {
+                val pm = context.packageManager
+                val pInfo = pm.getPackageInfo(pkgName, 0)
+                val code = PackageInfoCompat.getLongVersionCode(pInfo)
+                val name = pInfo.versionName ?: "1.0"
+                if (code > 0L || name.isNotBlank()) {
+                    return AppVersionInfo(if (code > 0L) code else 1L, name.ifBlank { "1.0" })
+                }
+            }
+            if (backupDir != null && backupDir.exists()) {
+                val apkFile = File(backupDir, "$pkgName.app").takeIf { it.exists() }
+                    ?: File(backupDir, "$pkgName.apk").takeIf { it.exists() }
+                if (apkFile != null) {
+                    attempt("resolve version from apk $pkgName", silent = true) {
+                        val pm = context.packageManager
+                        val info = pm.getPackageArchiveInfo(apkFile.absolutePath, 0)
+                        if (info != null) {
+                            val code = PackageInfoCompat.getLongVersionCode(info)
+                            val name = info.versionName ?: "1.0"
+                            return AppVersionInfo(if (code > 0L) code else 1L, name.ifBlank { "1.0" })
+                        }
+                    }
+                }
+            }
+        }
+        return AppVersionInfo(1L, "1.0")
     }
 
     fun rebuildFromBackupInstance(

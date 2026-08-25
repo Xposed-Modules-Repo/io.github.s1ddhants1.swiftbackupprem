@@ -9,7 +9,7 @@ data class CloudFileItem(
     val id: String,
     val name: String,
     val size: Long = 0L,
-    val timestamp: Long = System.currentTimeMillis(),
+    val timestamp: Long = 0L,
     val thumbnailLink: String? = null,
     val provider: String = "Generic",
     val customDownloadUrl: String? = null
@@ -21,4 +21,11 @@ interface CloudScanner {
     fun isConfigured(context: Context, prefs: SharedPreferences): Boolean
     fun listFiles(context: Context, prefs: SharedPreferences): List<CloudFileItem>
     fun downloadFileText(context: Context, prefs: SharedPreferences, fileItem: CloudFileItem): String?
+    fun downloadByteRange(
+        context: Context,
+        prefs: SharedPreferences,
+        fileItem: CloudFileItem,
+        startByte: Long,
+        endByte: Long
+    ): ByteArray? = null
 }

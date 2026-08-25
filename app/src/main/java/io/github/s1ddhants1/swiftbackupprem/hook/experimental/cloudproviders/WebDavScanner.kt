@@ -189,6 +189,39 @@ object WebDavScanner : CloudScanner {
         return executeGet(downloadUrl, authHeader)
     }
 
+    override fun downloadByteRange(
+        context: Context,
+        prefs: SharedPreferences,
+        fileItem: CloudFileItem,
+        startByte: Long,
+        endByte: Long
+    ): ByteArray? {
+        val authHeader = resolveAuthHeader(prefs)
+        val downloadUrl = fileItem.customDownloadUrl ?: fileItem.id
+        return executeGetRange(downloadUrl, authHeader, startByte, endByte)
+    }
+
+    private fun executeGetRange(urlStr: String, authHeader: String?, startByte: Long, endByte: Long): ByteArray? = attempt("WebDAV GET Range", silent = true) {
+        val conn = (URL(urlStr).openConnection() as HttpURLConnection).apply {
+            requestMethod = "GET"
+            if (!authHeader.isNullOrBlank()) {
+                setRequestProperty("Authorization", authHeader)
+            }
+            setRequestProperty("Range", "bytes=$startByte-$endByte")
+            connectTimeout = 15000
+            readTimeout = 15000
+        }
+        try {
+            if (conn.responseCode == 200 || conn.responseCode == 206) {
+                conn.inputStream.use { it.readBytes() }
+            } else {
+                null
+            }
+        } finally {
+            conn.disconnect()
+        }
+    }
+
     private fun executePropfind(urlStr: String, authHeader: String?): String? = attempt("WebDAV PROPFIND", silent = true) {
         val conn = (URL(urlStr).openConnection() as HttpURLConnection).apply {
             requestMethod = "PROPFIND"

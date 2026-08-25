@@ -46,8 +46,26 @@ object GoogleDriveScanner : CloudScanner {
                 val name = fileObj.optString("name")
                 val size = fileObj.optLong("size", 0L)
                 val thumbnailLink = fileObj.optString("thumbnailLink").takeIf { it.isNotBlank() }
+                val timeStr = fileObj.optString("modifiedTime").ifBlank { fileObj.optString("createdTime") }
+                val timestamp = if (timeStr.isNotBlank()) {
+                    try {
+                        java.time.Instant.parse(timeStr).toEpochMilli()
+                    } catch (_: Throwable) {
+                        0L
+                    }
+                } else 0L
+
                 if (id.isNotBlank() && name.isNotBlank()) {
-                    items.add(CloudFileItem(id = id, name = name, size = size, thumbnailLink = thumbnailLink, provider = providerName))
+                    items.add(
+                        CloudFileItem(
+                            id = id,
+                            name = name,
+                            size = size,
+                            timestamp = timestamp,
+                            thumbnailLink = thumbnailLink,
+                            provider = providerName
+                        )
+                    )
                 }
             }
 
@@ -62,6 +80,38 @@ object GoogleDriveScanner : CloudScanner {
         val token = prefs.getString("nogms_access_token", null) ?: return null
         val urlStr = "https://www.googleapis.com/drive/v3/files/${fileItem.id}?alt=media"
         return executeGet(urlStr, token)
+    }
+
+    override fun downloadByteRange(
+        context: Context,
+        prefs: SharedPreferences,
+        fileItem: CloudFileItem,
+        startByte: Long,
+        endByte: Long
+    ): ByteArray? {
+        val token = prefs.getString("nogms_access_token", null) ?: return null
+        val urlStr = "https://www.googleapis.com/drive/v3/files/${fileItem.id}?alt=media"
+        return executeGetRange(urlStr, token, startByte, endByte)
+    }
+
+    private fun executeGetRange(urlStr: String, token: String, startByte: Long, endByte: Long): ByteArray? = attempt("Drive HTTP GET Range", silent = true) {
+        val conn = (URL(urlStr).openConnection() as HttpURLConnection).apply {
+            requestMethod = "GET"
+            setRequestProperty("Authorization", "Bearer $token")
+            setRequestProperty("Range", "bytes=$startByte-$endByte")
+            connectTimeout = 15000
+            readTimeout = 15000
+        }
+        try {
+            if (conn.responseCode == 200 || conn.responseCode == 206) {
+                conn.inputStream.use { it.readBytes() }
+            } else {
+                Log.w(TAG, "[GoogleDriveScanner] HTTP Range GET returned ${conn.responseCode} for $urlStr (bytes=$startByte-$endByte)")
+                null
+            }
+        } finally {
+            conn.disconnect()
+        }
     }
 
     private fun executeGet(urlStr: String, token: String): String? = attempt("Drive HTTP GET", silent = true) {

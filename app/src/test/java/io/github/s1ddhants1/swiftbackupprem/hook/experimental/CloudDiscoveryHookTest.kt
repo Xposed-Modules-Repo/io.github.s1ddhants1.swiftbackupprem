@@ -213,4 +213,48 @@ class CloudDiscoveryHookTest {
         assertEquals(true, meta["isExtDataEncrypted"])
         assertEquals("StandardEncryption", meta["extDataEncryptionMethod"])
     }
+
+    @Test
+    fun testAppSliceExtensionMatching() {
+        val app = CloudDiscoveryHook.DiscoveredCloudApp(
+            packageName = "com.caydey.ffshare",
+            sanitizedAppId = "comcaydeyffshare",
+            backupId = "20260825-233823-DB",
+            backupTag = "CPH2573",
+            appName = "FFShare",
+            apkLink = "1D7PApDB2KgFggfYSjrRs-Nb2cBcCJ84j",
+            apkSize = 76712163L,
+            apkBackupDate = 1787683259040L,
+            dataLink = "14fQSZm6fhEClnhK_Zox5Za7O7DGm4dKU",
+            dataSize = 31431L,
+            dataBackupDate = 1787683247390L,
+            totalSize = 76743594L,
+            versionCode = 23L,
+            versionName = "2.0.0"
+        )
+
+        assertEquals("1D7PApDB2KgFggfYSjrRs-Nb2cBcCJ84j", app.apkLink)
+        assertEquals(76712163L, app.apkSize)
+        assertEquals(76743594L, app.totalSize)
+        assertEquals("FFShare", app.appName)
+        assertEquals(23L, app.versionCode)
+        assertEquals("2.0.0", app.versionName)
+
+        val rootMap = CloudDiscoveryHook.FirebaseSnapshotSynthesizer.buildMetadataMap(app)
+        @Suppress("UNCHECKED_CAST")
+        val meta = rootMap["20260825-233823-DB"] as Map<String, Any>
+        assertEquals("1D7PApDB2KgFggfYSjrRs-Nb2cBcCJ84j", meta["apkLink"])
+        assertEquals(76712163L, meta["apkSize"])
+        assertEquals(1787683259040L, meta["apkBackupDate"])
+        assertEquals("14fQSZm6fhEClnhK_Zox5Za7O7DGm4dKU", meta["dataLink"])
+        assertEquals(31431L, meta["dataSize"])
+        assertEquals(1787683247390L, meta["dataBackupDate"])
+        assertEquals(true, meta["dataEncrypted"])
+        assertEquals(true, meta["isDataEncrypted"])
+        assertEquals("FFShare", meta["name"])
+        assertEquals(23L, meta["versionCode"])
+        assertEquals("2.0.0", meta["versionName"])
+    }
 }
+
+
