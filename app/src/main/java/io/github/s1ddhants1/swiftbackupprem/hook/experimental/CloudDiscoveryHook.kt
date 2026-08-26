@@ -1874,7 +1874,7 @@ object CloudDiscoveryHook : HookHandler {
         val prefix = backupId.take(15) // "20260826-001043"
         if (prefix.length == 15 && prefix[8] == '-') {
             val sdf = java.text.SimpleDateFormat("yyyyMMdd-HHmmss", java.util.Locale.US)
-            sdf.timeZone = java.util.TimeZone.getTimeZone("UTC")
+            sdf.timeZone = java.util.TimeZone.getDefault()
             return@attempt sdf.parse(prefix)?.time
         }
         null

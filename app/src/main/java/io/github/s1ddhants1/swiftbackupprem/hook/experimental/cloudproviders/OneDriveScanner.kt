@@ -61,6 +61,14 @@ object OneDriveScanner : CloudScanner {
                         val id = itemObj.optString("id")
                         val name = itemObj.optString("name")
                         val size = itemObj.optLong("size", 0L)
+                        val timeStr = itemObj.optString("lastModifiedDateTime").ifBlank {
+                            itemObj.optJSONObject("fileSystemInfo")?.optString("lastModifiedDateTime") ?: ""
+                        }
+                        val timestamp = if (timeStr.isNotBlank()) {
+                            attempt("parse OneDrive ISO date", silent = true) {
+                                java.time.Instant.parse(timeStr).toEpochMilli()
+                            } ?: 0L
+                        } else 0L
                         val downloadUrl = itemObj.optString("@microsoft.graph.downloadUrl").takeIf { it.isNotBlank() }
                         val isFolder = itemObj.has("folder") || itemObj.optJSONObject("remoteItem")?.has("folder") == true
 
@@ -75,6 +83,7 @@ object OneDriveScanner : CloudScanner {
                                     id = id,
                                     name = name,
                                     size = size,
+                                    timestamp = timestamp,
                                     provider = providerName,
                                     customDownloadUrl = downloadUrl
                                 )
