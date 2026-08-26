@@ -573,8 +573,8 @@ object CloudDiscoveryHook : HookHandler {
      * field types remain stable (Long for size/timestamp, String for links).
      */
     private class DriveFileItemFactory(classLoader: ClassLoader) {
-        val pg1Class: Class<*>? = loadClassFlexible(classLoader, "pg1")
-        val ui1Class: Class<*>? = loadClassFlexible(classLoader, "ui1")
+        val pg1Class: Class<*>? = loadClassFlexible(classLoader, "pg1") ?: loadClassFlexible(classLoader, "defpackage.pg1")
+        val ui1Class: Class<*>? = loadClassFlexible(classLoader, "ui1") ?: loadClassFlexible(classLoader, "defpackage.ui1")
         private val pg1Ctor = pg1Class?.constructors?.firstOrNull {
             it.parameterCount == 2 && it.parameterTypes[0] == String::class.java && it.parameterTypes[1] == String::class.java
         }
@@ -834,8 +834,13 @@ object CloudDiscoveryHook : HookHandler {
                             findMatchingBackup(pkgName)?.let { app ->
                                 buildAppCloudBackup(app, classLoader)?.let { backup ->
                                     val backupsObj = createBackupsObject(backup, classLoader)
-                                    val resultCtor = m.returnType.getConstructor(appCloudBackupsClass, loadClassFlexible(classLoader, "wc2"))
-                                    return@intercept resultCtor.newInstance(backupsObj, null)
+                                    val wc2Class = loadClassFlexible(classLoader, "wc2") ?: loadClassFlexible(classLoader, "defpackage.wc2")
+                                    val resultCtor = if (wc2Class != null) {
+                                        m.returnType.getConstructor(appCloudBackupsClass, wc2Class)
+                                    } else {
+                                        m.returnType.constructors.firstOrNull { it.parameterCount == 2 && it.parameterTypes[0] == appCloudBackupsClass }
+                                    }
+                                    resultCtor?.newInstance(backupsObj, null)?.let { return@intercept it }
                                 }
                             }
                         }
@@ -920,9 +925,9 @@ object CloudDiscoveryHook : HookHandler {
 
                                     try {
                                         val ex6Instance = mk2Instance.getFieldValue("l") ?: return@let
-                                        val wj2Class = loadClassFlexible(classLoader, "wj2")!!
-                                        val yj2Class = loadClassFlexible(classLoader, "yj2")!!
-                                        val xj2Class = loadClassFlexible(classLoader, "xj2")!!
+                                        val wj2Class = loadClassFlexible(classLoader, "wj2") ?: loadClassFlexible(classLoader, "defpackage.wj2") ?: return@let
+                                        val yj2Class = loadClassFlexible(classLoader, "yj2") ?: loadClassFlexible(classLoader, "defpackage.yj2") ?: return@let
+                                        val xj2Class = loadClassFlexible(classLoader, "xj2") ?: loadClassFlexible(classLoader, "defpackage.xj2") ?: return@let
                                         val backedUpEnum = xj2Class.enumConstants?.firstOrNull { it.toString() == "BackedUp" }
 
                                         val apkSizeStr = formatBytes(matching.apkSize + matching.splitsSize)
@@ -930,13 +935,13 @@ object CloudDiscoveryHook : HookHandler {
                                         val extDataSizeStr = if (matching.extDataSize > 0) "${formatBytes(matching.extDataSize)} \uD83D\uDD12" else ""
                                         val totalSizeStr = formatBytes(matching.totalSize)
 
-                                        val wj2Item = wj2Class.constructors.first().newInstance(
+                                        val wj2Item = wj2Class.constructors.firstOrNull()?.newInstance(
                                             cloudBackup, apkSizeStr, matching.splitsLink != null, false,
                                             dataSizeStr, matching.dataLink != null, "StandardEncryption",
                                             extDataSizeStr, matching.extDataLink != null, "StandardEncryption",
                                             "", false, null, "", totalSizeStr, "Cloud Backup ($totalSizeStr)",
                                             "Version: 1.0", "Version: 1.0 (1)", false
-                                        )
+                                        ) ?: return@let
 
                                         val yj2Instance = yj2Class.getConstructor(xj2Class, List::class.java).newInstance(backedUpEnum, listOf(wj2Item))
                                         ex6Instance.javaClass.getMethod("k", Any::class.java).invoke(ex6Instance, yj2Instance)

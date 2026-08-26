@@ -18,3 +18,4 @@ data class ResolvedTargets(
     val isFullyResolved: Boolean
         get() = listOf(clientIdClass, vClass, homeViewModelClass, authUserClass).all { it != null }
 }
+

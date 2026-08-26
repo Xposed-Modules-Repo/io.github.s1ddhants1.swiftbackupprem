@@ -96,9 +96,9 @@ object BackupRebuilderHook : HookHandler {
         classLoader: ClassLoader,
         targets: ResolvedTargets
     ) {
-        val isValidMethod = attempt("find hk.E", silent = true) {
+        val isValidMethod = attempt("find isValid method on AppBackup", silent = true) {
             appBackupClass.declaredMethods.firstOrNull {
-                it.returnType == Boolean::class.javaPrimitiveType && it.parameterTypes.isEmpty() && it.name == "E"
+                it.returnType == Boolean::class.javaPrimitiveType && it.parameterTypes.isEmpty() && (it.name == "E" || it.name == "isValid" || java.lang.reflect.Modifier.isPublic(it.modifiers))
             }
         } ?: return
 
@@ -122,9 +122,9 @@ object BackupRebuilderHook : HookHandler {
         classLoader: ClassLoader,
         targets: ResolvedTargets
     ) {
-        val getMetadataMethod = attempt("find hk.u", silent = true) {
+        val getMetadataMethod = attempt("find getMetadata method on AppBackup", silent = true) {
             appBackupClass.declaredMethods.firstOrNull {
-                it.parameterTypes.isEmpty() && (it.returnType.name.contains("LocalMetadata") || it.name == "u")
+                it.parameterTypes.isEmpty() && (it.returnType.name.contains("LocalMetadata") || it.name == "u" || it.name == "getMetadata")
             }
         } ?: return
 
@@ -213,8 +213,17 @@ object BackupRebuilderHook : HookHandler {
         targets: ResolvedTargets,
         context: Context? = null
     ): Boolean = attempt("rebuildFromBackupInstance", silent = true) {
-        val backupId = backupInstance.javaClass.getDeclaredField("a").apply { isAccessible = true }.get(backupInstance) as? String ?: return false
-        val pkgName = backupInstance.javaClass.getDeclaredField("b").apply { isAccessible = true }.get(backupInstance) as? String ?: return false
+        val stringFields = backupInstance.javaClass.declaredFields
+            .filter { it.type == String::class.java }
+            .onEach { it.isAccessible = true }
+
+        val backupId = (attempt("get backupId by name a", silent = true) {
+            backupInstance.javaClass.getDeclaredField("a").apply { isAccessible = true }.get(backupInstance) as? String
+        } ?: stringFields.getOrNull(0)?.get(backupInstance) as? String) ?: return false
+
+        val pkgName = (attempt("get pkgName by name b", silent = true) {
+            backupInstance.javaClass.getDeclaredField("b").apply { isAccessible = true }.get(backupInstance) as? String
+        } ?: stringFields.getOrNull(1)?.get(backupInstance) as? String) ?: return false
 
         val accountsDir = File(Environment.getExternalStorageDirectory(), "SwiftBackup/accounts")
         if (!accountsDir.exists()) return false
