@@ -12,6 +12,7 @@ import java.net.URL
 import java.nio.charset.StandardCharsets
 import java.util.LinkedList
 import java.util.Queue
+import java.util.regex.Pattern
 
 @Keep
 object OneDriveScanner : CloudScanner {
@@ -32,23 +33,26 @@ object OneDriveScanner : CloudScanner {
         return null
     }
 
+    private data class FolderTarget(val url: String, val isRoot: Boolean)
+    private val SWIFT_BACKUP_ROOT_REGEX = Pattern.compile("^Swift Backup(?: \\([0-9a-zA-Z]{16}\\))?$", Pattern.CASE_INSENSITIVE)
+
     override fun listFiles(context: Context, prefs: SharedPreferences): List<CloudFileItem> {
         val token = resolveToken(prefs) ?: return emptyList()
         val items = mutableListOf<CloudFileItem>()
 
-        val folderQueue: Queue<String> = LinkedList()
+        val folderQueue: Queue<FolderTarget> = LinkedList()
         val visited = mutableSetOf<String>()
 
-        folderQueue.add("https://graph.microsoft.com/v1.0/me/drive/root/children")
-        folderQueue.add("https://graph.microsoft.com/v1.0/me/drive/special/approot/children")
+        folderQueue.add(FolderTarget("https://graph.microsoft.com/v1.0/me/drive/root/children", isRoot = true))
+        folderQueue.add(FolderTarget("https://graph.microsoft.com/v1.0/me/drive/special/approot/children", isRoot = false))
 
         var scannedCount = 0
         while (folderQueue.isNotEmpty() && scannedCount < 50) {
-            val startUrl = folderQueue.poll() ?: break
-            if (!visited.add(startUrl)) continue
+            val target = folderQueue.poll() ?: break
+            if (!visited.add(target.url)) continue
             scannedCount++
 
-            var currentUrl: String? = startUrl
+            var currentUrl: String? = target.url
             while (currentUrl != null) {
                 val urlToFetch = currentUrl
                 val respText = executeGet(urlToFetch, token) ?: break
@@ -75,9 +79,15 @@ object OneDriveScanner : CloudScanner {
                         if (isFolder) {
                             val childUrl = "https://graph.microsoft.com/v1.0/me/drive/items/$id/children"
                             if (!visited.contains(childUrl)) {
-                                folderQueue.add(childUrl)
+                                if (target.isRoot) {
+                                    if (SWIFT_BACKUP_ROOT_REGEX.matcher(name).matches()) {
+                                        folderQueue.add(FolderTarget(childUrl, isRoot = false))
+                                    }
+                                } else {
+                                    folderQueue.add(FolderTarget(childUrl, isRoot = false))
+                                }
                             }
-                        } else if (name.isNotBlank() && id.isNotBlank()) {
+                        } else if (!target.isRoot && name.isNotBlank() && id.isNotBlank()) {
                             items.add(
                                 CloudFileItem(
                                     id = id,
