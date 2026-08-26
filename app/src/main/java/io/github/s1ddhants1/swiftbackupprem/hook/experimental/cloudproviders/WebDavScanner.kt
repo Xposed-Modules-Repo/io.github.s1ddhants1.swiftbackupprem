@@ -6,6 +6,7 @@ import android.util.Base64
 import android.util.Log
 import androidx.annotation.Keep
 import io.github.s1ddhants1.swiftbackupprem.Consts
+import io.github.s1ddhants1.swiftbackupprem.util.AppUtils
 import io.github.s1ddhants1.swiftbackupprem.util.attempt
 import org.w3c.dom.Element
 import org.w3c.dom.Node
@@ -240,7 +241,7 @@ object WebDavScanner : CloudScanner {
             if (code in 200..299) {
                 conn.inputStream.bufferedReader(StandardCharsets.UTF_8).use { it.readText() }
             } else {
-                Log.w(TAG, "[WebDavScanner] PROPFIND returned $code for $urlStr")
+                Log.w(TAG, "[WebDavScanner] PROPFIND returned $code for ${AppUtils.sanitizeUrl(urlStr)}")
                 null
             }
         } finally {
@@ -261,7 +262,7 @@ object WebDavScanner : CloudScanner {
             if (conn.responseCode == 200) {
                 conn.inputStream.bufferedReader(StandardCharsets.UTF_8).use { it.readText() }
             } else {
-                Log.w(TAG, "[WebDavScanner] HTTP GET returned ${conn.responseCode} for $urlStr")
+                Log.w(TAG, "[WebDavScanner] HTTP GET returned ${conn.responseCode} for ${AppUtils.sanitizeUrl(urlStr)}")
                 null
             }
         } finally {

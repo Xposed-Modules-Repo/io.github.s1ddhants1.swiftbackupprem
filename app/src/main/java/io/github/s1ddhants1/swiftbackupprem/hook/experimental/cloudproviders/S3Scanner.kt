@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import android.util.Log
 import androidx.annotation.Keep
 import io.github.s1ddhants1.swiftbackupprem.Consts
+import io.github.s1ddhants1.swiftbackupprem.util.AppUtils
 import io.github.s1ddhants1.swiftbackupprem.util.attempt
 import org.w3c.dom.Element
 import java.io.ByteArrayInputStream
@@ -254,7 +255,7 @@ object S3Scanner : CloudScanner {
             if (code in 200..299) {
                 conn.inputStream.bufferedReader(StandardCharsets.UTF_8).use { it.readText() }
             } else {
-                Log.w(TAG, "[S3Scanner] S3 HTTP $method error $code for $urlStr")
+                Log.w(TAG, "[S3Scanner] S3 HTTP $method error $code for ${AppUtils.sanitizeUrl(urlStr)}")
                 null
             }
         } finally {

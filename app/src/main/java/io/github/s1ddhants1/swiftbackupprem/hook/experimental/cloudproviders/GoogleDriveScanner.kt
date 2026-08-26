@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import android.util.Log
 import androidx.annotation.Keep
 import io.github.s1ddhants1.swiftbackupprem.Consts
+import io.github.s1ddhants1.swiftbackupprem.util.AppUtils
 import io.github.s1ddhants1.swiftbackupprem.util.attempt
 import org.json.JSONArray
 import org.json.JSONObject
@@ -106,7 +107,7 @@ object GoogleDriveScanner : CloudScanner {
             if (conn.responseCode == 200 || conn.responseCode == 206) {
                 conn.inputStream.use { it.readBytes() }
             } else {
-                Log.w(TAG, "[GoogleDriveScanner] HTTP Range GET returned ${conn.responseCode} for $urlStr (bytes=$startByte-$endByte)")
+                Log.w(TAG, "[GoogleDriveScanner] HTTP Range GET returned ${conn.responseCode} for ${AppUtils.sanitizeUrl(urlStr)} (bytes=$startByte-$endByte)")
                 null
             }
         } finally {
@@ -125,7 +126,7 @@ object GoogleDriveScanner : CloudScanner {
             if (conn.responseCode == 200) {
                 conn.inputStream.bufferedReader(StandardCharsets.UTF_8).use { it.readText() }
             } else {
-                Log.w(TAG, "[GoogleDriveScanner] HTTP GET returned ${conn.responseCode} for $urlStr")
+                Log.w(TAG, "[GoogleDriveScanner] HTTP GET returned ${conn.responseCode} for ${AppUtils.sanitizeUrl(urlStr)}")
                 null
             }
         } finally {

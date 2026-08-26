@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import android.util.Log
 import androidx.annotation.Keep
 import io.github.s1ddhants1.swiftbackupprem.Consts
+import io.github.s1ddhants1.swiftbackupprem.util.AppUtils
 import io.github.s1ddhants1.swiftbackupprem.util.attempt
 import org.json.JSONObject
 import java.net.HttpURLConnection
@@ -99,7 +100,7 @@ object BoxScanner : CloudScanner {
             if (conn.responseCode in 200..299) {
                 conn.inputStream.bufferedReader(StandardCharsets.UTF_8).use { it.readText() }
             } else {
-                Log.w(TAG, "[BoxScanner] HTTP GET returned ${conn.responseCode} for $urlStr")
+                Log.w(TAG, "[BoxScanner] HTTP GET returned ${conn.responseCode} for ${AppUtils.sanitizeUrl(urlStr)}")
                 null
             }
         } finally {

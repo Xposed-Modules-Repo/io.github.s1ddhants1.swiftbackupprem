@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import android.util.Log
 import androidx.annotation.Keep
 import io.github.s1ddhants1.swiftbackupprem.Consts
+import io.github.s1ddhants1.swiftbackupprem.util.AppUtils
 import io.github.s1ddhants1.swiftbackupprem.util.attempt
 import org.json.JSONObject
 import java.net.HttpURLConnection
@@ -154,7 +155,7 @@ object OneDriveScanner : CloudScanner {
             if (conn.responseCode in 200..299) {
                 conn.inputStream.use { it.readBytes() }
             } else {
-                Log.w(TAG, "[OneDriveScanner] HTTP Range GET returned ${conn.responseCode} for $urlStr (bytes=$startByte-$endByte)")
+                Log.w(TAG, "[OneDriveScanner] HTTP Range GET returned ${conn.responseCode} for ${AppUtils.sanitizeUrl(urlStr)} (bytes=$startByte-$endByte)")
                 null
             }
         } finally {
@@ -175,7 +176,7 @@ object OneDriveScanner : CloudScanner {
             if (conn.responseCode in 200..299) {
                 conn.inputStream.bufferedReader(StandardCharsets.UTF_8).use { it.readText() }
             } else {
-                Log.w(TAG, "[OneDriveScanner] HTTP GET returned ${conn.responseCode} for $urlStr")
+                Log.w(TAG, "[OneDriveScanner] HTTP GET returned ${conn.responseCode} for ${AppUtils.sanitizeUrl(urlStr)}")
                 null
             }
         } finally {
