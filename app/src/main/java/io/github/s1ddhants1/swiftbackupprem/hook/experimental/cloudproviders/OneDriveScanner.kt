@@ -40,10 +40,10 @@ object OneDriveScanner : CloudScanner {
         val visited = mutableSetOf<String>()
 
         folderQueue.add("https://graph.microsoft.com/v1.0/me/drive/root/children")
-        folderQueue.add("https://graph.microsoft.com/v1.0/me/drive/root:/SwiftBackup:/children")
+        folderQueue.add("https://graph.microsoft.com/v1.0/me/drive/special/approot/children")
 
         var scannedCount = 0
-        while (folderQueue.isNotEmpty() && scannedCount < 30) {
+        while (folderQueue.isNotEmpty() && scannedCount < 50) {
             val startUrl = folderQueue.poll() ?: break
             if (!visited.add(startUrl)) continue
             scannedCount++
@@ -62,11 +62,11 @@ object OneDriveScanner : CloudScanner {
                         val name = itemObj.optString("name")
                         val size = itemObj.optLong("size", 0L)
                         val downloadUrl = itemObj.optString("@microsoft.graph.downloadUrl").takeIf { it.isNotBlank() }
-                        val isFolder = itemObj.has("folder")
+                        val isFolder = itemObj.has("folder") || itemObj.optJSONObject("remoteItem")?.has("folder") == true
 
                         if (isFolder) {
                             val childUrl = "https://graph.microsoft.com/v1.0/me/drive/items/$id/children"
-                            if (visited.add(childUrl)) {
+                            if (!visited.contains(childUrl)) {
                                 folderQueue.add(childUrl)
                             }
                         } else if (name.isNotBlank() && id.isNotBlank()) {
@@ -101,6 +101,46 @@ object OneDriveScanner : CloudScanner {
         if (token.isNullOrBlank()) return null
         val fallbackUrl = "https://graph.microsoft.com/v1.0/me/drive/items/${fileItem.id}/content"
         return executeGet(fallbackUrl, token)
+    }
+
+    override fun downloadByteRange(
+        context: Context,
+        prefs: SharedPreferences,
+        fileItem: CloudFileItem,
+        startByte: Long,
+        endByte: Long
+    ): ByteArray? {
+        val token = resolveToken(prefs)
+        if (!fileItem.customDownloadUrl.isNullOrBlank()) {
+            val direct = executeGetRange(fileItem.customDownloadUrl, token = null, startByte, endByte)
+            if (direct != null) return direct
+        }
+
+        if (token.isNullOrBlank()) return null
+        val fallbackUrl = "https://graph.microsoft.com/v1.0/me/drive/items/${fileItem.id}/content"
+        return executeGetRange(fallbackUrl, token, startByte, endByte)
+    }
+
+    private fun executeGetRange(urlStr: String, token: String?, startByte: Long, endByte: Long): ByteArray? = attempt("OneDrive HTTP GET Range", silent = true) {
+        val conn = (URL(urlStr).openConnection() as HttpURLConnection).apply {
+            requestMethod = "GET"
+            if (!token.isNullOrBlank()) {
+                setRequestProperty("Authorization", "Bearer $token")
+            }
+            setRequestProperty("Range", "bytes=$startByte-$endByte")
+            connectTimeout = 15000
+            readTimeout = 15000
+        }
+        try {
+            if (conn.responseCode in 200..299) {
+                conn.inputStream.use { it.readBytes() }
+            } else {
+                Log.w(TAG, "[OneDriveScanner] HTTP Range GET returned ${conn.responseCode} for $urlStr (bytes=$startByte-$endByte)")
+                null
+            }
+        } finally {
+            conn.disconnect()
+        }
     }
 
     private fun executeGet(urlStr: String, token: String?): String? = attempt("OneDrive HTTP GET", silent = true) {
