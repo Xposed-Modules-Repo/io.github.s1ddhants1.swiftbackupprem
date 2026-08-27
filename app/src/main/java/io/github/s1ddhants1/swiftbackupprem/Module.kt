@@ -126,8 +126,8 @@ class Module : XposedModule() {
             PremiumFeatureHook.hookSwiftAppPremium(this, swiftAppInstance, prefs.enablePremium)
         }
 
-        // Export detected UIDs to shared storage for Manager app / Migrator UI
-        attempt("export detected UIDs to storage", silent = true) {
+        // Export detected UIDs and auth state to shared storage for Manager app / Migrator UI
+        attempt("export detected UIDs and auth state to storage", silent = true) {
             val uids = BackupCrypto.resolveCandidateUids(ctx, cl, targets)
             val exportDirs = listOf(
                 java.io.File("/storage/emulated/0/SwiftBackup"),
@@ -139,6 +139,16 @@ class Module : XposedModule() {
                     if (!dir.exists()) dir.mkdirs()
                     if (dir.exists() && dir.isDirectory) {
                         java.io.File(dir, ".sbp_detected_uids").writeText(uids.joinToString("\n"))
+                    }
+                }
+            }
+
+            val sbPrefs = ctx.getSharedPreferences("org.swiftapps.swiftbackup_preferences", Context.MODE_PRIVATE)
+            val authState = sbPrefs.getString("nogms_auth_state", null)
+            if (!authState.isNullOrBlank()) {
+                for (dir in exportDirs) {
+                    if (dir != null && dir.exists() && dir.isDirectory) {
+                        java.io.File(dir, ".sbp_auth_state").writeText(authState)
                     }
                 }
             }

@@ -51,6 +51,7 @@ object FirebaseSyncEngine {
 
         // 1. Try reading Swift Backup preferences
         val prefsContent = readSwiftBackupPreferences(context)
+        Log.d(TAG, "[FirebaseSync] readSwiftBackupPreferences content length: ${prefsContent?.length ?: 0}, apiKey present: ${apiKey != null}, clientId: ${prefs.clientId.isNotBlank()}")
         if (!prefsContent.isNullOrBlank()) {
             val creds = parseCredentialsFromPrefsContent(prefsContent, apiKey, prefs.clientId.trim())
             if (creds != null) return creds
@@ -62,6 +63,7 @@ object FirebaseSyncEngine {
             ?: fallbackUids.firstOrNull()
 
         return if (!selectedUid.isNullOrBlank()) {
+            Log.d(TAG, "[FirebaseSync] Using fallback unauthenticated UID: $selectedUid")
             AuthCredentials(uid = selectedUid, idToken = null)
         } else {
             null
@@ -70,6 +72,11 @@ object FirebaseSyncEngine {
 
     private fun readSwiftBackupPreferences(context: Context?): String? {
         val candidateFiles = listOf(
+            File("/storage/emulated/0/SwiftBackup/.sbp_auth_state"),
+            File("/sdcard/SwiftBackup/.sbp_auth_state"),
+            File(context?.getExternalFilesDir(null), ".sbp_auth_state"),
+            File("/storage/emulated/0/Android/data/${Consts.packageName}/files/.sbp_auth_state"),
+            File("/storage/emulated/0/Android/data/io.github.s1ddhants1.swiftbackupprem/files/.sbp_auth_state"),
             File("/data/data/org.swiftapps.swiftbackup/shared_prefs/org.swiftapps.swiftbackup_preferences.xml"),
             File("/data/user/0/org.swiftapps.swiftbackup/shared_prefs/org.swiftapps.swiftbackup_preferences.xml")
         )
@@ -77,7 +84,7 @@ object FirebaseSyncEngine {
         for (f in candidateFiles) {
             if (f.exists() && f.canRead()) {
                 try {
-                    val txt = f.readText(StandardCharsets.UTF_8)
+                    val txt = f.readText(StandardCharsets.UTF_8).trim()
                     if (txt.isNotBlank()) return txt
                 } catch (_: Throwable) {}
             }
@@ -103,29 +110,39 @@ object FirebaseSyncEngine {
         return null
     }
 
-    private fun parseCredentialsFromPrefsContent(xmlText: String, apiKey: String?, prefClientId: String): AuthCredentials? {
+    private fun parseCredentialsFromPrefsContent(rawText: String, apiKey: String?, prefClientId: String): AuthCredentials? {
         var refreshToken: String? = null
         var clientId: String? = prefClientId.takeIf { it.isNotBlank() }
         var rawGoogleIdToken: String? = null
 
-        // Extract from nogms_auth_state
-        val matcherNoGms = Pattern.compile("name=\"nogms_auth_state\">([^<]+)<").matcher(xmlText)
-        if (matcherNoGms.find()) {
-            val rawJsonStr = matcherNoGms.group(1)?.replace("&quot;", "\"")?.replace("&amp;", "&")?.replace("\\/", "/")
-            if (!rawJsonStr.isNullOrBlank()) {
-                attempt("parse nogms_auth_state", silent = true) {
-                    val jsonObj = JSONObject(rawJsonStr)
-                    refreshToken = jsonObj.optString("refreshToken").takeIf { it.isNotBlank() }
-                        ?: jsonObj.optString("refresh_token").takeIf { it.isNotBlank() }
-                    
-                    jsonObj.optJSONObject("lastAuthorizationResponse")?.optJSONObject("request")?.optString("clientId")?.let {
-                        if (clientId.isNullOrBlank() && it.isNotBlank()) clientId = it
-                    }
-                    jsonObj.optJSONObject("mLastTokenResponse")?.optString("id_token")?.let {
-                        if (it.isNotBlank()) rawGoogleIdToken = it
-                    }
-                }
+        val trimmed = rawText.trim()
+        val jsonObj: JSONObject? = if (trimmed.startsWith("{")) {
+            try { JSONObject(trimmed) } catch (_: Throwable) { null }
+        } else {
+            val matcherNoGms = Pattern.compile("name=\"nogms_auth_state\">([^<]+)<").matcher(rawText)
+            if (matcherNoGms.find()) {
+                val rawJsonStr = matcherNoGms.group(1)?.replace("&quot;", "\"")?.replace("&amp;", "&")?.replace("\\/", "/")
+                if (!rawJsonStr.isNullOrBlank()) {
+                    try { JSONObject(rawJsonStr) } catch (_: Throwable) { null }
+                } else null
+            } else null
+        }
+
+        if (jsonObj != null) {
+            val lastAuthReq = jsonObj.optJSONObject("lastAuthorizationResponse")?.optJSONObject("request")
+            val lastTokenReq = jsonObj.optJSONObject("mLastTokenResponse")?.optJSONObject("request")
+
+            refreshToken = jsonObj.optString("refreshToken").takeIf { it.isNotBlank() }
+                ?: jsonObj.optString("refresh_token").takeIf { it.isNotBlank() }
+                ?: jsonObj.optJSONObject("mLastTokenResponse")?.optString("refresh_token")?.takeIf { it.isNotBlank() }
+
+            if (clientId.isNullOrBlank()) {
+                clientId = lastAuthReq?.optString("clientId")?.takeIf { it.isNotBlank() }
+                    ?: lastTokenReq?.optString("clientId")?.takeIf { it.isNotBlank() }
             }
+            rawGoogleIdToken = jsonObj.optJSONObject("mLastTokenResponse")?.optString("id_token")?.takeIf { it.isNotBlank() }
+
+            Log.d(TAG, "[FirebaseSync] Parsed auth state: refreshToken present: ${!refreshToken.isNullOrBlank()}, clientId: $clientId, rawGoogleIdToken: ${!rawGoogleIdToken.isNullOrBlank()}")
         }
 
         // If refreshToken and apiKey and clientId are available, exchange for fresh Firebase Auth token
@@ -147,7 +164,7 @@ object FirebaseSyncEngine {
         refreshToken: String,
         clientId: String,
         apiKey: String
-    ): AuthCredentials? = attempt("exchange refresh token for Firebase ID token", silent = true) {
+    ): AuthCredentials? = attempt("exchange refresh token for Firebase ID token", silent = false) {
         // 1. Refresh Google OAuth Token
         val oauthEndpoint = "https://oauth2.googleapis.com/token"
         val postBody = "client_id=" + java.net.URLEncoder.encode(clientId, "UTF-8") +
@@ -164,7 +181,8 @@ object FirebaseSyncEngine {
 
         OutputStreamWriter(conn.outputStream, StandardCharsets.UTF_8).use { it.write(postBody); it.flush() }
         if (conn.responseCode !in 200..299) {
-            Log.w(TAG, "[FirebaseSync] Failed to refresh Google OAuth token (HTTP ${conn.responseCode})")
+            val err = attempt("read err stream", silent = true) { conn.errorStream?.bufferedReader()?.use { it.readText() } }
+            Log.w(TAG, "[FirebaseSync] Failed to refresh Google OAuth token (HTTP ${conn.responseCode}): $err")
             conn.disconnect()
             return@attempt null
         }
@@ -172,7 +190,10 @@ object FirebaseSyncEngine {
         val googleResp = BufferedReader(InputStreamReader(conn.inputStream, StandardCharsets.UTF_8)).use { it.readText() }
         conn.disconnect()
         val googleIdToken = JSONObject(googleResp).optString("id_token")
-        if (googleIdToken.isBlank()) return@attempt null
+        if (googleIdToken.isBlank()) {
+            Log.w(TAG, "[FirebaseSync] No id_token returned from Google OAuth refresh: $googleResp")
+            return@attempt null
+        }
 
         // 2. Exchange with Firebase Identity Toolkit
         exchangeGoogleIdTokenForFirebaseToken(googleIdToken, apiKey)
@@ -181,7 +202,7 @@ object FirebaseSyncEngine {
     private fun exchangeGoogleIdTokenForFirebaseToken(
         googleIdToken: String,
         apiKey: String
-    ): AuthCredentials? = attempt("exchange Google ID token for Firebase Auth ID token", silent = true) {
+    ): AuthCredentials? = attempt("exchange Google ID token for Firebase Auth ID token", silent = false) {
         val endpoint = "https://identitytoolkit.googleapis.com/v1/accounts:signInWithIdp?key=$apiKey"
         val payload = JSONObject().apply {
             put("postBody", "id_token=$googleIdToken&providerId=google.com")
@@ -199,7 +220,8 @@ object FirebaseSyncEngine {
 
         OutputStreamWriter(conn.outputStream, StandardCharsets.UTF_8).use { it.write(payload.toString()); it.flush() }
         if (conn.responseCode !in 200..299) {
-            Log.w(TAG, "[FirebaseSync] Failed to exchange token with Firebase Auth (HTTP ${conn.responseCode})")
+            val err = attempt("read err stream", silent = true) { conn.errorStream?.bufferedReader()?.use { it.readText() } }
+            Log.w(TAG, "[FirebaseSync] Failed to exchange token with Firebase Auth (HTTP ${conn.responseCode}): $err")
             conn.disconnect()
             return@attempt null
         }
