@@ -30,6 +30,7 @@
     <string name="btn_enable_drive_api">Enable Drive API</string>
     <string name="btn_view_source_github">View Source on GitHub</string>
     <string name="btn_github">GitHub</string>
+    <string name="btn_telegram_support">Telegram Support Group</string>
 
     <string name="msg_config_exported">Config exported</string>
     <string name="msg_export_failed">Export failed: %1$s</string>
@@ -68,7 +69,7 @@
     <string name="wizard_title_step_5">Review &amp; Finish</string>
 
     <string name="wizard_firebase_configured_title">Firebase Configured</string>
-    <string name="wizard_firebase_configured_desc">Force stop and restart Swift Backup to apply changes.</string>
+    <string name="wizard_firebase_configured_desc">Force stop and restart Swift Backup to apply changes</string>
     <string name="wizard_guided_setup_title">Guided Manual Setup</string>
     <string name="wizard_one_tap_import_title">One-Tap Import</string>
     <string name="wizard_or_divider">OR</string>
@@ -89,7 +90,7 @@
     <string name="label_client_id">Client ID</string>
 
     <!-- About Screen -->
-    <string name="about_app_summary">An advanced Xposed / LSPosed module for Swift Backup providing Premium features, privacy controls, and custom Firebase backend integration.</string>
+    <string name="about_app_summary">An advanced Xposed / LSPosed module for Swift Backup providing Premium features, privacy controls, and custom Firebase backend integration</string>
     <string name="about_version_format">Version %1$s (%2$d)</string>
     <string name="about_authors_maintainers">Authors &amp; Maintainers</string>
     <string name="about_original_author_role">Original Author</string>
@@ -106,4 +107,72 @@
     <string name="cd_author_avatar">Author Avatar</string>
     <string name="cd_maintainer_avatar">Maintainer Avatar</string>
     <string name="cd_github_icon">GitHub Icon</string>
+    <string name="cd_telegram_icon">Telegram Icon</string>
+    <string name="btn_close">Close</string>
+
+    <!-- Backup Migrator & Decryptor Tool -->
+    <string name="screen_migrator">Backup Migrator</string>
+    <string name="menu_migrator">Backup Migrator</string>
+    <string name="migrator_title">Backup Migrator</string>
+    <string name="migrator_summary">Decrypt and migrate backup folders between Firebase accounts or export to open formats</string>
+    <string name="migrator_step1_title">1. Source Folder</string>
+    <string name="migrator_source_path_label">Source Path</string>
+    <string name="migrator_step2_title">2. Decryption Key (Source UID)</string>
+    <string name="migrator_source_uid_label">Source Firebase UID</string>
+    <string name="migrator_detected_uids">Key Presets &amp; Detected UIDs:</string>
+    <string name="migrator_chip_anon_key">Shared Anonymous Key</string>
+    <string name="migrator_step3_title">3. Target Encryption Mode</string>
+    <string name="migrator_mode_anon_title">Shared Anonymous Key (Recommended)</string>
+    <string name="migrator_mode_anon_desc">Restorable offline in Swift Backup without login</string>
+    <string name="migrator_mode_custom_title">Custom Firebase UID</string>
+    <string name="migrator_mode_custom_desc">Re-encrypt for your custom Firebase account UID</string>
+    <string name="migrator_target_uid_label">Target UID</string>
+    <string name="migrator_mode_unencrypted_title">Unencrypted Backups</string>
+    <string name="migrator_mode_unencrypted_desc">Strips AES Conceal encryption, keeps Swift Backup directory layout</string>
+    <string name="migrator_mode_portable_checkbox">Convert to standard portable formats (.apk, .tar.gz, .json)</string>
+    <string name="migrator_mode_portable_checkbox_desc">Extracts standard APKs and tar archives for PC or external tools</string>
+    <string name="migrator_step4_title">4. Destination Folder</string>
+    <string name="migrator_output_path_label">Output Path</string>
+    <string name="migrator_btn_start">Start Migration</string>
+    <string name="migrator_result_success_title">Migration Completed Successfully</string>
+    <string name="migrator_result_fail_title">Migration Completed with Warnings</string>
+    <string name="migrator_result_summary_format">Successfully migrated %1$d apps and %2$d folders.\nTarget Account Hash: %3$s</string>
+    <string name="migrator_logs_title">Execution Logs</string>
+
+    <!-- Backup Migration Hub -->
+    <string name="screen_experimental_hub">Backup Migration</string>
+    <string name="menu_experimental_hub">Backup Migration</string>
+    <string name="btn_open_migrator">Open Migrator</string>
+    <string name="tab_local_migrator">Local Migration</string>
+    <string name="tab_cloud_discovery">Cloud Discovery &amp; Injection</string>
+
+    <string name="cloud_tab_header_title">Universal Cloud Discovery</string>
+    <string name="cloud_tab_header_desc">Manage Backup Migration Locally or Across Cloud Providers</string>
+
+    <string name="pref_drive_oauth_scope_title">Google Drive Full OAuth Scope</string>
+    <string name="pref_drive_oauth_scope_desc">Requests auth/drive to discover existing Drive backups</string>
+
+    <string name="pref_cloud_discovery_title">Universal Cloud Discovery</string>
+    <string name="pref_cloud_discovery_desc">Scans all configured cloud providers during restore refresh</string>
+
+    <string name="pref_snapshot_injection_title">Realtime DB Snapshot Injection</string>
+    <string name="pref_snapshot_injection_desc">Injects discovered cloud backups into restore lists</string>
+
+    <string name="pref_backup_rebuilder_title">Local Metadata Reconstruction</string>
+    <string name="pref_backup_rebuilder_desc">Rebuilds missing metadata from raw slices on storage</string>
+
+    <string name="pref_sync_metadata_firebase_title">Sync Metadata to Custom Firebase</string>
+    <string name="pref_sync_metadata_firebase_desc">Syncs reconstructed metadata to your Firebase instance</string>
+
+    <string name="migrator_option_sync_firebase_title">Sync Metadata to Custom Firebase</string>
+    <string name="migrator_option_sync_firebase_desc">Pushes reconstructed metadata to your Firebase instance</string>
+
+    <string name="btn_sync_all_firebase">Sync Now</string>
+    <string name="msg_sync_firebase_started">Syncing metadata to Custom Firebase...</string>
+    <string name="msg_sync_firebase_success">Synced %1$d metadata records to Custom Firebase</string>
+    <string name="msg_sync_firebase_no_new">No new backup records found to sync</string>
+    <string name="cloud_cache_title">Cloud Discovery Cache</string>
+    <string name="cloud_cache_desc">Local cache for instant offline navigation</string>
+    <string name="btn_clear_cloud_cache">Clear Cloud Cache</string>
+    <string name="msg_cloud_cache_cleared">Cloud discovery cache cleared</string>
 </resources>

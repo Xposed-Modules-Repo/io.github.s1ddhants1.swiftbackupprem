@@ -4,7 +4,9 @@ import android.annotation.SuppressLint
 import android.content.Context
 import io.github.s1ddhants1.swiftbackupprem.hook.ResolvedTargets
 import org.json.JSONObject
+import java.io.BufferedReader
 import java.io.File
+import java.io.InputStreamReader
 import java.nio.charset.StandardCharsets
 import java.security.SecureRandom
 import java.util.Base64
@@ -38,6 +40,24 @@ object BackupCrypto {
         cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(key, "AES"), GCMParameterSpec(128, iv))
         cipher.updateAAD(aad)
         return cipher.doFinal(cipherTextAndTag)
+    }
+
+    fun concealDecryptRawBytes(raw: ByteArray, key: ByteArray): ByteArray {
+        if (raw.size < 14) return raw
+        val version = raw[0]
+        val cipherId = raw[1]
+        if (version != 1.toByte() || cipherId != 2.toByte()) return raw
+        return try {
+            val iv = raw.copyOfRange(2, 14)
+            val cipherTextAndTag = raw.copyOfRange(14, raw.size)
+            val aad = byteArrayOf(version, cipherId) + CONCEAL_ENTITY.toByteArray(StandardCharsets.UTF_8)
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(key, "AES"), GCMParameterSpec(128, iv))
+            cipher.updateAAD(aad)
+            cipher.doFinal(cipherTextAndTag)
+        } catch (_: Throwable) {
+            raw
+        }
     }
 
     fun concealEncrypt(plaintext: String, key: ByteArray): String {
@@ -146,7 +166,9 @@ object BackupCrypto {
     @SuppressLint("SdCardPath")
     fun resolveCandidateUids(context: Context?, classLoader: ClassLoader, targets: ResolvedTargets? = null): List<String> {
         val uids = LinkedHashSet<String>()
+        uids.add(BackupMigratorEngine.SWIFT_BACKUP_ANONYMOUS_UID)
 
+        // 1. Obfuscated user singleton in Swift Backup process
         for (className in listOf("d45", "b45")) {
             attempt("resolve UID via $className", silent = true) {
                 val user = loadClassFlexible(classLoader, className)?.getDeclaredMethod("a")?.invoke(null)
@@ -155,6 +177,7 @@ object BackupCrypto {
             }
         }
 
+        // 2. FirebaseAuth.getInstance().getCurrentUser().getUid()
         attempt("resolve UID via FirebaseAuth", silent = true) {
             val fbAuthClass = classLoader.loadClass("com.google.firebase.auth.FirebaseAuth")
             val authInstance = fbAuthClass.getDeclaredMethod("getInstance").invoke(null)
@@ -163,16 +186,97 @@ object BackupCrypto {
             if (!uid.isNullOrBlank()) uids.add(uid)
         }
 
-        attempt("resolve UIDs from shared_prefs Store XMLs", silent = true) {
-            val sharedPrefsDir = if (context != null) File(context.filesDir?.parentFile, "shared_prefs") else File("/data/data/org.swiftapps.swiftbackup/shared_prefs")
-            if (sharedPrefsDir.exists()) {
-                sharedPrefsDir.listFiles { file -> file.name.startsWith("com.google.firebase.auth.api.Store") }?.forEach { storeFile ->
-                    val matcher = Pattern.compile("com\\.google\\.firebase\\.auth\\.GET_TOKEN_RESPONSE\\.([a-zA-Z0-9_-]+)").matcher(storeFile.readText(StandardCharsets.UTF_8))
-                    while (matcher.find()) {
-                        val uid = matcher.group(1)
-                        if (!uid.isNullOrBlank()) uids.add(uid)
+        val knownAccountHashes = HashSet<String>()
+        attempt("find local account folder hashes", silent = true) {
+            val accountsDir = File("/storage/emulated/0/SwiftBackup/accounts")
+            if (accountsDir.exists() && accountsDir.isDirectory) {
+                accountsDir.listFiles()?.filter { it.isDirectory }?.forEach { knownAccountHashes.add(it.name) }
+            }
+        }
+
+        fun extractUidsFromText(text: String) {
+            if (text.isBlank()) return
+            // A. Firebase Auth GET_TOKEN_RESPONSE keys: com.google.firebase.auth.GET_TOKEN_RESPONSE.<UID>
+            val matcherAuth = Pattern.compile("com\\.google\\.firebase\\.auth\\.GET_TOKEN_RESPONSE\\.([a-zA-Z0-9]{20,36})").matcher(text)
+            while (matcherAuth.find()) {
+                val uid = matcherAuth.group(1)
+                if (!uid.isNullOrBlank()) uids.add(uid)
+            }
+            // B. JSON UID fields: "uid": "..."
+            val matcherJsonUid = Pattern.compile("[\"\\\\]+uid[\"\\\\]+[:=]+[\"\\\\]+([a-zA-Z0-9]{20,36})[\"\\\\]+").matcher(text)
+            while (matcherJsonUid.find()) {
+                val uid = matcherJsonUid.group(1)
+                if (!uid.isNullOrBlank()) uids.add(uid)
+            }
+            // C. JSON localId fields
+            val matcherLocalId = Pattern.compile("[\"\\\\]+localId[\"\\\\]+[:=]+[\"\\\\]+([a-zA-Z0-9]{20,36})[\"\\\\]+").matcher(text)
+            while (matcherLocalId.find()) {
+                val uid = matcherLocalId.group(1)
+                if (!uid.isNullOrBlank()) uids.add(uid)
+            }
+            // D. Tokens matching known account hashes on disk
+            val matcherCandidates = Pattern.compile("(?<=[^a-zA-Z0-9]|^)([a-zA-Z0-9]{28})(?=[^a-zA-Z0-9]|$)").matcher(text)
+            while (matcherCandidates.find()) {
+                val candidate = matcherCandidates.group(1)
+                if (!candidate.isNullOrBlank() && knownAccountHashes.contains(BackupMigratorEngine.computeAccountHash(candidate))) {
+                    uids.add(candidate)
+                }
+            }
+        }
+
+        // 3. Direct SharedPreferences file access (if readable)
+        attempt("resolve UIDs from shared_prefs Store XMLs and app preferences", silent = true) {
+            val candidateDirs = mutableListOf<File>()
+            if (context != null) {
+                context.filesDir?.parentFile?.let { File(it, "shared_prefs").takeIf { f -> f.exists() }?.let { d -> candidateDirs.add(d) } }
+            }
+            candidateDirs.add(File("/data/data/org.swiftapps.swiftbackup/shared_prefs"))
+
+            for (sharedPrefsDir in candidateDirs) {
+                if (sharedPrefsDir.exists()) {
+                    sharedPrefsDir.listFiles()?.forEach { file ->
+                        try {
+                            extractUidsFromText(file.readText(StandardCharsets.UTF_8))
+                        } catch (_: Throwable) {}
                     }
                 }
+            }
+        }
+
+        // 4. Shared storage sync files written by LSPosed hook or backup migrator
+        attempt("resolve UIDs from shared storage sync files", silent = true) {
+            val syncFiles = listOf(
+                File("/storage/emulated/0/SwiftBackup/.sbp_detected_uids"),
+                File("/storage/emulated/0/SwiftBackup/.sbp_detected_uid"),
+                File("/storage/emulated/0/Android/data/org.swiftapps.swiftbackup/files/.sbp_detected_uids"),
+                File("/storage/emulated/0/Android/data/org.swiftapps.swiftbackup/files/.sbp_detected_uid")
+            )
+            for (file in syncFiles) {
+                if (file.exists() && file.canRead()) {
+                    extractUidsFromText(file.readText(StandardCharsets.UTF_8))
+                }
+            }
+        }
+
+        // 5. Root Shell execution with multiple su binary fallbacks & timeout
+        attempt("resolve UIDs via root shell from Swift Backup", silent = true) {
+            val suBins = listOf("su", "/system/bin/su", "/data/adb/ksu/bin/su", "/data/adb/ap/bin/su", "/data/adb/magisk/su")
+            for (suBin in suBins) {
+                try {
+                    val proc = Runtime.getRuntime().exec(arrayOf(suBin, "-c", "cat /data/data/org.swiftapps.swiftbackup/shared_prefs/* 2>/dev/null"))
+                    val reader = BufferedReader(InputStreamReader(proc.inputStream, StandardCharsets.UTF_8))
+                    val out = StringBuilder()
+                    var line: String?
+                    while (reader.readLine().also { line = it } != null) {
+                        out.appendLine(line)
+                    }
+                    proc.waitFor(1500, java.util.concurrent.TimeUnit.MILLISECONDS)
+                    val result = out.toString()
+                    if (result.isNotBlank()) {
+                        extractUidsFromText(result)
+                        break
+                    }
+                } catch (_: Throwable) {}
             }
         }
 

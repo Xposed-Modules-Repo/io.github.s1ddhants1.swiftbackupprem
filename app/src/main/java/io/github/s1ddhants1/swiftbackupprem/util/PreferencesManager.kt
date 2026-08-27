@@ -67,13 +67,21 @@ class PreferencesManager(
 
     var enablePremium by booleanPreference("enable_premium", true)
     var disableTelemetry by booleanPreference("disable_telemetry", true)
-    var enableDriveDiscovery by booleanPreference("enable_drive_discovery", false)
+    var enableCloudDiscovery by booleanPreference("enable_cloud_discovery", false)
+    var enableGoogleDriveScope by booleanPreference("enable_google_drive_scope", false)
+    var enableSnapshotInjection by booleanPreference("enable_snapshot_injection", true)
+    var enableBackupRebuilder by booleanPreference("enable_backup_rebuilder", true)
+    var syncMetadataToFirebase by booleanPreference("sync_metadata_to_firebase", false)
     var customFirebaseApp by booleanPreference("custom_firebase_app")
 
     fun toConfig(): SbpConfig = SbpConfig(
         enablePremium = enablePremium,
         disableTelemetry = disableTelemetry,
-        enableDriveDiscovery = enableDriveDiscovery,
+        enableCloudDiscovery = enableCloudDiscovery,
+        enableGoogleDriveScope = enableGoogleDriveScope,
+        enableSnapshotInjection = enableSnapshotInjection,
+        enableBackupRebuilder = enableBackupRebuilder,
+        syncMetadataToFirebase = syncMetadataToFirebase,
         customFirebaseApp = customFirebaseApp,
         googleAppId = googleAppId,
         googleApiKey = googleApiKey,
@@ -88,7 +96,11 @@ class PreferencesManager(
         enablePremium = config.enablePremium
         disableTelemetry = config.disableTelemetry
         customFirebaseApp = config.customFirebaseApp
-        enableDriveDiscovery = if (config.customFirebaseApp) config.enableDriveDiscovery else false
+        enableCloudDiscovery = if (config.customFirebaseApp) config.enableCloudDiscovery else false
+        enableGoogleDriveScope = if (config.customFirebaseApp) config.enableGoogleDriveScope else false
+        enableSnapshotInjection = config.enableSnapshotInjection
+        enableBackupRebuilder = config.enableBackupRebuilder
+        syncMetadataToFirebase = if (config.customFirebaseApp) config.syncMetadataToFirebase else false
         googleAppId = config.googleAppId
         googleApiKey = config.googleApiKey
         firebaseDatabaseUrl = config.firebaseDatabaseUrl

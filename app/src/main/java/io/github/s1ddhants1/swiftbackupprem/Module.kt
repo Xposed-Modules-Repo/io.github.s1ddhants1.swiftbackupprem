@@ -11,6 +11,7 @@ import io.github.s1ddhants1.swiftbackupprem.hook.*
 import io.github.s1ddhants1.swiftbackupprem.hook.experimental.BackupRebuilderHook
 import io.github.s1ddhants1.swiftbackupprem.hook.experimental.CloudDiscoveryHook
 import io.github.s1ddhants1.swiftbackupprem.hook.experimental.GoogleDriveScopeHook
+import io.github.s1ddhants1.swiftbackupprem.util.BackupCrypto
 import io.github.s1ddhants1.swiftbackupprem.util.PreferencesManager
 import io.github.s1ddhants1.swiftbackupprem.util.attempt
 import java.util.concurrent.ConcurrentHashMap
@@ -123,6 +124,24 @@ class Module : XposedModule() {
 
         if (swiftAppInstance != null) {
             PremiumFeatureHook.hookSwiftAppPremium(this, swiftAppInstance, prefs.enablePremium)
+        }
+
+        // Export detected UIDs to shared storage for Manager app / Migrator UI
+        attempt("export detected UIDs to storage", silent = true) {
+            val uids = BackupCrypto.resolveCandidateUids(ctx, cl, targets)
+            val exportDirs = listOf(
+                java.io.File("/storage/emulated/0/SwiftBackup"),
+                ctx.getExternalFilesDir(null),
+                java.io.File("/storage/emulated/0/Android/data/${Consts.packageName}/files")
+            )
+            for (dir in exportDirs) {
+                if (dir != null) {
+                    if (!dir.exists()) dir.mkdirs()
+                    if (dir.exists() && dir.isDirectory) {
+                        java.io.File(dir, ".sbp_detected_uids").writeText(uids.joinToString("\n"))
+                    }
+                }
+            }
         }
 
         return Pair(targets, prefs)

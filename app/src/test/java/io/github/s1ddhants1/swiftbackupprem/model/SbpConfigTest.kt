@@ -17,7 +17,11 @@ class SbpConfigTest {
         val config = SbpConfig()
         assertTrue(config.enablePremium)
         assertTrue(config.disableTelemetry)
-        assertFalse(config.enableDriveDiscovery)
+        assertFalse(config.enableGoogleDriveScope)
+        assertFalse(config.enableCloudDiscovery)
+        assertTrue(config.enableSnapshotInjection)
+        assertTrue(config.enableBackupRebuilder)
+        assertFalse(config.syncMetadataToFirebase)
         assertFalse(config.customFirebaseApp)
         assertEquals("", config.googleAppId)
         assertEquals("", config.googleApiKey)
@@ -60,7 +64,7 @@ class SbpConfigTest {
         val original = SbpConfig(
             enablePremium = true,
             disableTelemetry = false,
-            enableDriveDiscovery = true,
+            enableCloudDiscovery = true,
             customFirebaseApp = true,
             googleAppId = "app-id-123",
             googleApiKey = "api-key-456",

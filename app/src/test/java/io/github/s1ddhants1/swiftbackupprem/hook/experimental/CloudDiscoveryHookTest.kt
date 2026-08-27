@@ -75,11 +75,46 @@ class CloudDiscoveryHookTest {
             totalSize = 50000000L,
             provider = "GoogleDrive"
         )
-        CloudDiscoveryHook.discoveredBackups[app.packageName] = app
+        CloudDiscoveryHook.addDiscoveredBackup(app)
 
         assertEquals(app, CloudDiscoveryHook.findMatchingBackup("org.telegram.messenger"))
         assertEquals(app, CloudDiscoveryHook.findMatchingBackup("orgtelegrammessenger"))
         assertNull(CloudDiscoveryHook.findMatchingBackup("com.unknown.app"))
+
+        CloudDiscoveryHook.discoveredBackups.clear()
+    }
+
+    @Test
+    fun testMultiBackupGroupingAndTags() {
+        val app1 = CloudDiscoveryHook.DiscoveredCloudApp(
+            packageName = "com.whatsapp",
+            sanitizedAppId = "comwhatsapp",
+            backupId = "20260825-100000-W1",
+            backupTag = "PHONE_A",
+            apkSize = 40000000L,
+            totalSize = 40000000L
+        )
+        val app2 = CloudDiscoveryHook.DiscoveredCloudApp(
+            packageName = "com.whatsapp",
+            sanitizedAppId = "comwhatsapp",
+            backupId = "20260825-200000-W2",
+            backupTag = "PHONE_B",
+            apkSize = 42000000L,
+            totalSize = 42000000L
+        )
+
+        CloudDiscoveryHook.addDiscoveredBackup(app1)
+        CloudDiscoveryHook.addDiscoveredBackup(app2)
+
+        val backups = CloudDiscoveryHook.findMatchingBackups("com.whatsapp")
+        assertEquals(2, backups.size)
+        assertEquals("PHONE_A", backups[0].backupTag)
+        assertEquals("PHONE_B", backups[1].backupTag)
+
+        val multiMap = CloudDiscoveryHook.FirebaseSnapshotSynthesizer.buildMetadataMap(backups)
+        assertEquals(2, multiMap.size)
+        assertTrue(multiMap.containsKey("20260825-100000-W1"))
+        assertTrue(multiMap.containsKey("20260825-200000-W2"))
 
         CloudDiscoveryHook.discoveredBackups.clear()
     }

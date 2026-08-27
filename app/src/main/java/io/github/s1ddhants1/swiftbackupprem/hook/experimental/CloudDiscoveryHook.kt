@@ -26,11 +26,13 @@ import io.github.s1ddhants1.swiftbackupprem.util.AppUtils
 import io.github.s1ddhants1.swiftbackupprem.util.ApkRangeManifestParser
 import io.github.s1ddhants1.swiftbackupprem.util.attempt
 import io.github.s1ddhants1.swiftbackupprem.util.loadClassFlexible
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.nio.charset.StandardCharsets
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.regex.Pattern
@@ -40,7 +42,7 @@ object CloudDiscoveryHook : HookHandler {
 
     private const val TAG = Consts.TAG
     private const val CACHE_FILE_NAME = "cloud_discovered_cache.json"
-    val discoveredBackups = ConcurrentHashMap<String, DiscoveredCloudApp>()
+    val discoveredBackups = ConcurrentHashMap<String, CopyOnWriteArrayList<DiscoveredCloudApp>>()
     val discoveredFolders = ConcurrentHashMap<String, DiscoveredCloudFolder>()
     val discoveredCalls = ConcurrentHashMap<String, DiscoveredCloudCall>()
     val discoveredSms = ConcurrentHashMap<String, DiscoveredCloudSms>()
@@ -364,7 +366,7 @@ object CloudDiscoveryHook : HookHandler {
                     }?.apply { isAccessible = true }?.get(snapshot)
                 }
 
-        internal fun buildMetadataMap(app: DiscoveredCloudApp): Map<String, Any> {
+        internal fun buildSingleBackupMap(app: DiscoveredCloudApp): Map<String, Any> {
             val backupMap = mutableMapOf<String, Any>(
                 "appId" to app.sanitizedAppId,
                 "packageName" to app.packageName,
@@ -417,25 +419,24 @@ object CloudDiscoveryHook : HookHandler {
             app.permissionStatesCsv?.let { backupMap["permissionStatesCsv"] = it }
             app.notificationPolicyXml?.let { backupMap["notificationPolicyXml"] = it }
 
-            return mapOf(app.backupId to backupMap)
+            return backupMap
         }
 
+        internal fun buildMetadataMap(app: DiscoveredCloudApp): Map<String, Any> =
+            mapOf(app.backupId to buildSingleBackupMap(app))
+
+        internal fun buildMetadataMap(apps: List<DiscoveredCloudApp>): Map<String, Any> =
+            apps.associate { it.backupId to buildSingleBackupMap(it) }
+
         /**
-         * Creates a synthetic DataSnapshot that the native onDataChange pipeline
-         * will process identically to a real Firebase RTDB snapshot.
-         *
-         * Pipeline: Map → NodeFromJSON → IndexedNode.from → DataSnapshot(ref, indexed)
-         *
-         * Returns null if any step fails — caller must implement fallback.
+         * Creates a synthetic DataSnapshot from an arbitrary map hierarchy.
          */
-        fun createSyntheticSnapshot(
+        internal fun createSnapshotFromMap(
             classLoader: ClassLoader,
             queryRef: Any,
-            app: DiscoveredCloudApp
-        ): Any? = attempt("synthesize DataSnapshot for ${app.packageName}", silent = true) {
+            dataMap: Map<String, Any>
+        ): Any? = attempt("createSnapshotFromMap", silent = true) {
             val fb = resolveFirebaseClasses(classLoader) ?: return@attempt null
-
-            val metadataMap = buildMetadataMap(app)
 
             val nodeFromJson = fb.nodeUtilities.declaredMethods.firstOrNull { m ->
                 (m.parameterCount == 1 && m.parameterTypes[0] == Any::class.java && fb.node.isAssignableFrom(m.returnType)) ||
@@ -444,9 +445,9 @@ object CloudDiscoveryHook : HookHandler {
 
             val nodeObj = if (nodeFromJson != null) {
                 if (nodeFromJson.parameterCount == 2) {
-                    nodeFromJson.invoke(null, metadataMap, null)
+                    nodeFromJson.invoke(null, dataMap, null)
                 } else {
-                    nodeFromJson.invoke(null, metadataMap)
+                    nodeFromJson.invoke(null, dataMap)
                 }
             } else {
                 null
@@ -491,6 +492,84 @@ object CloudDiscoveryHook : HookHandler {
         }
 
         /**
+         * Creates a synthetic DataSnapshot that the native onDataChange pipeline
+         * will process identically to a real Firebase RTDB snapshot.
+         */
+        fun createSyntheticSnapshot(
+            classLoader: ClassLoader,
+            queryRef: Any,
+            apps: List<DiscoveredCloudApp>
+        ): Any? = attempt("synthesize DataSnapshot for multi-backup", silent = true) {
+            if (apps.isEmpty()) return@attempt null
+            val metadataMap = buildMetadataMap(apps)
+            createSnapshotFromMap(classLoader, queryRef, metadataMap)
+        }
+
+        fun createSyntheticSnapshot(
+            classLoader: ClassLoader,
+            queryRef: Any,
+            app: DiscoveredCloudApp
+        ): Any? = createSyntheticSnapshot(classLoader, queryRef, listOf(app))
+
+        /**
+         * Merges existing Firebase RTDB DataSnapshot entries with discovered cloud backups.
+         * RTDB data is retained for matching backupIds, while missing backupIds are added.
+         * Returns null if all discovered backups already exist in the snapshot.
+         */
+        fun mergeSnapshotData(
+            classLoader: ClassLoader,
+            queryRef: Any,
+            existingSnapshot: Any,
+            discoveredApps: List<DiscoveredCloudApp>
+        ): Any? = attempt("mergeSnapshotData", silent = true) {
+            if (discoveredApps.isEmpty()) return@attempt null
+
+            val mergedMap = mutableMapOf<String, Any>()
+
+            val childrenIter = attempt("get snapshot children", silent = true) {
+                existingSnapshot.javaClass.getMethod("getChildren").invoke(existingSnapshot) as? Iterable<*>
+            }
+
+            if (childrenIter != null) {
+                for (child in childrenIter) {
+                    if (child == null) continue
+                    val key = child.javaClass.getMethod("getKey").invoke(child) as? String ?: continue
+                    val value = child.javaClass.getMethod("getValue").invoke(child) ?: continue
+                    mergedMap[key] = value
+                }
+            }
+
+            if (mergedMap.isEmpty()) {
+                val existingVal = attempt("get snapshot value map", silent = true) {
+                    existingSnapshot.javaClass.getMethod("getValue").invoke(existingSnapshot)
+                }
+                if (existingVal is Map<*, *>) {
+                    for ((k, v) in existingVal) {
+                        if (k != null && v != null) {
+                            mergedMap[k.toString()] = v
+                        }
+                    }
+                }
+            }
+
+            var addedCount = 0
+            for (app in discoveredApps) {
+                if (!mergedMap.containsKey(app.backupId)) {
+                    mergedMap[app.backupId] = buildSingleBackupMap(app)
+                    addedCount++
+                }
+            }
+
+            if (addedCount == 0) {
+                // All discovered backups already exist in the RTDB snapshot
+                return@attempt null
+            }
+
+            Log.i(SYNTH_TAG, "Merged $addedCount discovered backup(s) into existing RTDB snapshot (${mergedMap.size} total)")
+            createSnapshotFromMap(classLoader, queryRef, mergedMap)
+        }
+
+        /**
          * Creates a synthetic DataSnapshot containing cloud sync statistics.
          *
          * The RTDB schema for sync stats stores aggregate counts:
@@ -505,8 +584,6 @@ object CloudDiscoveryHook : HookHandler {
             callLogs: Int,
             folders: Int
         ): Any? = attempt("synthesize sync stats DataSnapshot", silent = true) {
-            val fb = resolveFirebaseClasses(classLoader) ?: return@attempt null
-
             val statsMap = mutableMapOf<String, Any>(
                 "apps" to apps,
                 "cloudStorageUsed" to cloudStorageUsed,
@@ -514,54 +591,7 @@ object CloudDiscoveryHook : HookHandler {
                 "callLogs" to callLogs,
                 "folders" to folders
             )
-
-            val nodeFromJson = fb.nodeUtilities.declaredMethods.firstOrNull { m ->
-                (m.parameterCount == 1 && m.parameterTypes[0] == Any::class.java && fb.node.isAssignableFrom(m.returnType)) ||
-                (m.parameterCount == 2 && m.parameterTypes[0] == Any::class.java && fb.node.isAssignableFrom(m.parameterTypes[1]) && fb.node.isAssignableFrom(m.returnType))
-            } ?: attempt("fallback NodeFromJSON for stats", silent = true) { fb.nodeUtilities.getMethod("NodeFromJSON", Any::class.java) }
-
-            val nodeObj = if (nodeFromJson != null) {
-                if (nodeFromJson.parameterCount == 2) {
-                    nodeFromJson.invoke(null, statsMap, null)
-                } else {
-                    nodeFromJson.invoke(null, statsMap)
-                }
-            } else {
-                null
-            } ?: run {
-                Log.w(SYNTH_TAG, "NodeFromJSON returned null for sync stats")
-                return@attempt null
-            }
-
-            val indexedFromNode = fb.indexedNode.declaredMethods.firstOrNull { m ->
-                m.parameterCount == 1 && fb.node.isAssignableFrom(m.parameterTypes[0]) && fb.indexedNode.isAssignableFrom(m.returnType)
-            } ?: attempt("fallback IndexedNode.from for stats", silent = true) { fb.indexedNode.getMethod("from", fb.node) }
-
-            val indexedNodeObj = if (indexedFromNode != null) {
-                indexedFromNode.invoke(null, nodeObj)
-            } else {
-                val defaultIndex = attempt("get default index for stats", silent = true) {
-                    fb.indexedNode.declaredFields.firstOrNull { java.lang.reflect.Modifier.isStatic(it.modifiers) && it.type != fb.indexedNode }?.apply { isAccessible = true }?.get(null)
-                }
-                val ctor = fb.indexedNode.constructors.firstOrNull { it.parameterCount == 2 && it.parameterTypes[0].isAssignableFrom(nodeObj.javaClass) }
-                ctor?.newInstance(nodeObj, defaultIndex)
-            } ?: run { Log.w(SYNTH_TAG, "IndexedNode.from returned null for sync stats"); return@attempt null }
-
-            val ctor = fb.dataSnapshot.constructors
-                .filter { it.parameterCount == 2 }
-                .firstOrNull { c ->
-                    val p0 = c.parameterTypes[0]
-                    val p1 = c.parameterTypes[1]
-                    (p0.isAssignableFrom(queryRef.javaClass) || p0.name.contains("Query") || p0.name.contains("zc2")) &&
-                    (p1.isAssignableFrom(indexedNodeObj.javaClass) || p1.name.contains("IndexedNode") || p1.name.contains("sb4"))
-                } ?: fb.dataSnapshot.constructors.firstOrNull { it.parameterCount == 2 }
-
-            if (ctor == null) {
-                Log.w(SYNTH_TAG, "No matching DataSnapshot constructor for sync stats")
-                return@attempt null
-            }
-
-            ctor.newInstance(queryRef, indexedNodeObj)
+            createSnapshotFromMap(classLoader, queryRef, statsMap)
         }
     }
 
@@ -640,8 +670,8 @@ object CloudDiscoveryHook : HookHandler {
         targets: ResolvedTargets,
         prefs: PreferencesManager
     ) {
-        if (!prefs.customFirebaseApp || !prefs.enableDriveDiscovery) {
-            Log.d(TAG, "Cloud Discovery is disabled (requires custom Firebase app and Drive discovery)")
+        if (!prefs.customFirebaseApp || !prefs.enableCloudDiscovery) {
+            Log.d(TAG, "Cloud Discovery is disabled (requires custom Firebase app and Cloud Discovery enabled)")
             return
         }
 
@@ -664,15 +694,20 @@ object CloudDiscoveryHook : HookHandler {
     fun startDriveScanWithRetry(context: Context, classLoader: ClassLoader, targets: ResolvedTargets) =
         startCloudScanWithRetry(context, classLoader, targets)
 
+    @Volatile
+    var lastScanTime = 0L
+    private const val SCAN_CACHE_TTL_MS = 60_000L
+
     fun startCloudScanWithRetry(context: Context, classLoader: ClassLoader, targets: ResolvedTargets) {
         if (!isScanRunning.compareAndSet(false, true)) return
         scanExecutor.execute {
             try {
-                for (delay in longArrayOf(500L, 2000L, 5000L, 10000L)) {
+                for (delay in longArrayOf(0L, 1000L, 3000L)) {
                     try {
-                        Thread.sleep(delay)
+                        if (delay > 0L) Thread.sleep(delay)
                         val count = discoverAllCloudBackups(context, classLoader, targets)
                         if (count > 0 || discoveredBackups.isNotEmpty()) {
+                            lastScanTime = System.currentTimeMillis()
                             Log.i(TAG, "[CloudDiscovery] Background scan completed with ${discoveredBackups.size} apps")
                             break
                         }
@@ -686,18 +721,46 @@ object CloudDiscoveryHook : HookHandler {
         }
     }
 
-    private fun ensureScan(context: Context, classLoader: ClassLoader, targets: ResolvedTargets) {
-        if (discoveredBackups.isEmpty()) startCloudScanWithRetry(context, classLoader, targets)
+    fun getAllDiscoveredApps(): List<DiscoveredCloudApp> = discoveredBackups.values.flatten()
+
+    fun addDiscoveredBackup(app: DiscoveredCloudApp) {
+        val list = discoveredBackups.getOrPut(app.packageName) { CopyOnWriteArrayList() }
+        val existingIndex = list.indexOfFirst { it.backupId == app.backupId }
+        if (existingIndex >= 0) {
+            list[existingIndex] = app
+        } else {
+            list.add(app)
+        }
     }
 
-    fun findMatchingBackup(key: String): DiscoveredCloudApp? =
-        discoveredBackups[key] ?: discoveredBackups.values.firstOrNull {
+    fun ensureScan(context: Context, classLoader: ClassLoader, targets: ResolvedTargets, force: Boolean = false) {
+        val isStale = System.currentTimeMillis() - lastScanTime > SCAN_CACHE_TTL_MS
+        if (discoveredBackups.isEmpty() || isStale || force) {
+            startCloudScanWithRetry(context, classLoader, targets)
+        }
+    }
+
+    fun findMatchingBackups(key: String): List<DiscoveredCloudApp> {
+        discoveredBackups[key]?.let { if (it.isNotEmpty()) return it }
+        val matchingPackage = discoveredBackups.keys().toList().firstOrNull {
+            it == key || it.replace(".", "") == key
+        }
+        if (matchingPackage != null) {
+            discoveredBackups[matchingPackage]?.let { if (it.isNotEmpty()) return it }
+        }
+        return discoveredBackups.values.flatten().filter {
             it.sanitizedAppId == key || it.packageName == key || it.sanitizedAppId == key.replace(".", "")
         }
+    }
+
+    fun findMatchingBackup(key: String): DiscoveredCloudApp? = findMatchingBackups(key).firstOrNull()
+
+    private fun createBackupsObject(cloudBackups: List<Any>, classLoader: ClassLoader): Any? =
+        loadClassFlexible(classLoader, "org.swiftapps.swiftbackup.model.app.AppCloudBackups")
+            ?.getConstructor(List::class.java)?.newInstance(cloudBackups)
 
     private fun createBackupsObject(cloudBackup: Any, classLoader: ClassLoader): Any? =
-        loadClassFlexible(classLoader, "org.swiftapps.swiftbackup.model.app.AppCloudBackups")
-            ?.getConstructor(List::class.java)?.newInstance(listOf(cloudBackup))
+        createBackupsObject(listOf(cloudBackup), classLoader)
 
     @SuppressLint("SdCardPath")
     private fun loadDiskCache(context: Context) {
@@ -710,9 +773,18 @@ object CloudDiscoveryHook : HookHandler {
                 val appsObj = root.optJSONObject("apps") ?: root
                 appsObj.keys().forEach { pkg ->
                     if (AppUtils.isValidPackageName(pkg)) {
-                        val appJson = appsObj.optJSONObject(pkg)
-                        if (appJson != null) {
-                            discoveredBackups[pkg] = DiscoveredCloudApp.fromJson(pkg, appJson)
+                        val appArray = appsObj.optJSONArray(pkg)
+                        if (appArray != null) {
+                            for (i in 0 until appArray.length()) {
+                                appArray.optJSONObject(i)?.let { appJson ->
+                                    addDiscoveredBackup(DiscoveredCloudApp.fromJson(pkg, appJson))
+                                }
+                            }
+                        } else {
+                            val appJson = appsObj.optJSONObject(pkg)
+                            if (appJson != null) {
+                                addDiscoveredBackup(DiscoveredCloudApp.fromJson(pkg, appJson))
+                            }
                         }
                     }
                 }
@@ -750,7 +822,9 @@ object CloudDiscoveryHook : HookHandler {
                     }
                 }
 
-                Log.i(TAG, "[CloudDiscovery] Loaded ${discoveredBackups.size} apps, ${discoveredFolders.size} folders, ${discoveredCalls.size} calls, ${discoveredSms.size} sms, ${discoveredWalls.size} walls, ${discoveredWifi.size} wifi from cache")
+                val allAppsCount = getAllDiscoveredApps().size
+                lastScanTime = cacheFile.lastModified()
+                Log.i(TAG, "[CloudDiscovery] Loaded $allAppsCount apps (${discoveredBackups.size} packages), ${discoveredFolders.size} folders, ${discoveredCalls.size} calls, ${discoveredSms.size} sms, ${discoveredWalls.size} walls, ${discoveredWifi.size} wifi from cache")
             }
         } catch (t: Throwable) {
             Log.d(TAG, "[CloudDiscovery] Error loading cache: ${t.message}")
@@ -762,7 +836,11 @@ object CloudDiscoveryHook : HookHandler {
         try {
             val root = JSONObject()
             val appsObj = JSONObject()
-            discoveredBackups.forEach { (pkg, app) -> appsObj.put(pkg, app.toJson()) }
+            discoveredBackups.forEach { (pkg, appList) ->
+                val arr = JSONArray()
+                appList.forEach { app -> arr.put(app.toJson()) }
+                appsObj.put(pkg, arr)
+            }
             root.put("apps", appsObj)
 
             val foldersObj = JSONObject()
@@ -816,10 +894,10 @@ object CloudDiscoveryHook : HookHandler {
                         }
 
                         if (key != null) {
-                            findMatchingBackup(key)?.let { app ->
-                                buildAppCloudBackup(app, classLoader)?.let { backup ->
-                                    return@intercept createBackupsObject(backup, classLoader)
-                                }
+                            val matchingList = findMatchingBackups(key)
+                            val cloudBackups = matchingList.mapNotNull { buildAppCloudBackup(it, classLoader) }
+                            if (cloudBackups.isNotEmpty()) {
+                                return@intercept createBackupsObject(cloudBackups, classLoader)
                             }
                         }
                         null
@@ -831,17 +909,17 @@ object CloudDiscoveryHook : HookHandler {
                         val pkgName = chain.args.firstOrNull() as? String
                         if (pkgName != null && (initialResult == null || isResultEmpty(initialResult))) {
                             ensureScan(context, classLoader, targets)
-                            findMatchingBackup(pkgName)?.let { app ->
-                                buildAppCloudBackup(app, classLoader)?.let { backup ->
-                                    val backupsObj = createBackupsObject(backup, classLoader)
-                                    val wc2Class = loadClassFlexible(classLoader, "wc2") ?: loadClassFlexible(classLoader, "defpackage.wc2")
-                                    val resultCtor = if (wc2Class != null) {
-                                        m.returnType.getConstructor(appCloudBackupsClass, wc2Class)
-                                    } else {
-                                        m.returnType.constructors.firstOrNull { it.parameterCount == 2 && it.parameterTypes[0] == appCloudBackupsClass }
-                                    }
-                                    resultCtor?.newInstance(backupsObj, null)?.let { return@intercept it }
+                            val matchingList = findMatchingBackups(pkgName)
+                            val cloudBackups = matchingList.mapNotNull { buildAppCloudBackup(it, classLoader) }
+                            if (cloudBackups.isNotEmpty()) {
+                                val backupsObj = createBackupsObject(cloudBackups, classLoader)
+                                val wc2Class = loadClassFlexible(classLoader, "wc2") ?: loadClassFlexible(classLoader, "defpackage.wc2")
+                                val resultCtor = if (wc2Class != null) {
+                                    m.returnType.getConstructor(appCloudBackupsClass, wc2Class)
+                                } else {
+                                    m.returnType.constructors.firstOrNull { it.parameterCount == 2 && it.parameterTypes[0] == appCloudBackupsClass }
                                 }
+                                resultCtor?.newInstance(backupsObj, null)?.let { return@intercept it }
                             }
                         }
                         initialResult
@@ -872,13 +950,41 @@ object CloudDiscoveryHook : HookHandler {
                         }
                     } ?: false
 
-                    if (snapshotHasData) {
-                        return@intercept chain.proceed()
-                    }
-
                     val lk2Instance = chain.thisObject ?: return@intercept chain.proceed()
                     val mk2Instance = lk2Instance.getFieldValue("a") ?: return@intercept chain.proceed()
                     val jiInstance = mk2Instance.getFieldValue("e") ?: return@intercept chain.proceed()
+
+                    val pkgName = jiInstance.javaClass.getDeclaredMethod("getPackageName").invoke(jiInstance) as? String
+                    if (pkgName != null) {
+                        ensureScan(context, classLoader, targets)
+                        val matchingList = findMatchingBackups(pkgName)
+                        if (matchingList.isNotEmpty()) {
+                            if (snapshot != null) {
+                                val queryRef = FirebaseSnapshotSynthesizer.extractQueryRef(snapshot)
+                                if (queryRef != null) {
+                                    val mergedOrSyntheticSnapshot = if (snapshotHasData) {
+                                        FirebaseSnapshotSynthesizer.mergeSnapshotData(
+                                            classLoader, queryRef, snapshot, matchingList
+                                        )
+                                    } else {
+                                        FirebaseSnapshotSynthesizer.createSyntheticSnapshot(
+                                            classLoader, queryRef, matchingList
+                                        )
+                                    }
+
+                                    if (mergedOrSyntheticSnapshot != null) {
+                                        chain.proceed(arrayOf(mergedOrSyntheticSnapshot))
+                                        Log.i(TAG, "[CloudDiscovery] ✓ ${if (snapshotHasData) "Merged" else "Synthetic"} DataSnapshot injected for $pkgName with ${matchingList.size} backup(s)")
+                                        return@intercept null
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if (snapshotHasData) {
+                        return@intercept chain.proceed()
+                    }
 
                     val existingCloudBackups = attempt("getCloudBackups", silent = true) {
                         jiInstance.javaClass.getDeclaredMethod("getCloudBackups").invoke(jiInstance)
@@ -887,36 +993,9 @@ object CloudDiscoveryHook : HookHandler {
                         return@intercept chain.proceed()
                     }
 
-                    val pkgName = jiInstance.javaClass.getDeclaredMethod("getPackageName").invoke(jiInstance) as? String
                     if (pkgName != null) {
-                        ensureScan(context, classLoader, targets)
-                        findMatchingBackup(pkgName)?.let { matching ->
-
-                            // Always populate in-memory ji.cloudBackups property so other screens / filters recognize it
-                            buildAppCloudBackup(matching, classLoader)?.let { cloudBackup ->
-                                createBackupsObject(cloudBackup, classLoader)?.let { backupsObj ->
-                                    val appCloudBackupsClass = loadClassFlexible(classLoader, "org.swiftapps.swiftbackup.model.app.AppCloudBackups")
-                                    if (appCloudBackupsClass != null) {
-                                        jiInstance.javaClass.getDeclaredMethod("setCloudBackups", appCloudBackupsClass).invoke(jiInstance, backupsObj)
-                                    }
-                                }
-                            }
-
-                            val injected = attempt("synthetic snapshot injection", silent = true) {
-                                if (snapshot == null) return@attempt false
-                                val queryRef = FirebaseSnapshotSynthesizer.extractQueryRef(snapshot) ?: return@attempt false
-
-                                val syntheticSnapshot = FirebaseSnapshotSynthesizer.createSyntheticSnapshot(
-                                    classLoader, queryRef, matching
-                                ) ?: return@attempt false
-
-                                chain.proceed(arrayOf(syntheticSnapshot))
-                                Log.i(TAG, "[CloudDiscovery] ✓ Synthetic DataSnapshot injected for $pkgName")
-                                true
-                            } ?: false
-
-                            if (injected) return@intercept null
-
+                        val matching = findMatchingBackup(pkgName)
+                        if (matching != null) {
                             Log.d(TAG, "[CloudDiscovery] Snapshot synthesis unavailable for $pkgName, falling back to UI reflection")
                             buildAppCloudBackup(matching, classLoader)?.let { cloudBackup ->
                                 createBackupsObject(cloudBackup, classLoader)?.let { backupsObj ->
@@ -986,9 +1065,10 @@ object CloudDiscoveryHook : HookHandler {
                 val appBackupsCtor = appCloudBackupsClass.getConstructor(List::class.java)
 
                 val freshList = mutableListOf<Any>()
-                for (app in discoveredBackups.values) {
-                    buildAppCloudBackup(app, classLoader)?.let { cloudBackup ->
-                        val backupsObj = appBackupsCtor.newInstance(listOf(cloudBackup))
+                for ((_, appList) in discoveredBackups) {
+                    val cloudBackups = appList.mapNotNull { buildAppCloudBackup(it, classLoader) }
+                    if (cloudBackups.isNotEmpty()) {
+                        val backupsObj = appBackupsCtor.newInstance(cloudBackups)
                         fromCloudBackupsMethod.invoke(companionObj ?: jiClass, backupsObj)?.let {
                             freshList.add(it)
                         }
@@ -1000,7 +1080,8 @@ object CloudDiscoveryHook : HookHandler {
                 val successEnum = hk6Class?.enumConstants?.firstOrNull { it.toString() == "Success" }
                 if (ik6Class != null && successEnum != null) {
                     val ctor = ik6Class.getConstructor(hk6Class, List::class.java, Boolean::class.javaPrimitiveType, Int::class.javaPrimitiveType)
-                    Log.i(TAG, "[CloudDiscovery] Returned ${freshList.size} fresh apps for Cloud Synced Apps / Batch Cloud Restore (from ${discoveredBackups.size} cloud backups)")
+                    val allAppsCount = getAllDiscoveredApps().size
+                    Log.i(TAG, "[CloudDiscovery] Returned ${freshList.size} fresh apps for Cloud Synced Apps / Batch Cloud Restore (from $allAppsCount cloud backups across ${discoveredBackups.size} packages)")
                     return@intercept ctor.newInstance(successEnum, freshList, false, 12)
                 }
 
@@ -1030,13 +1111,15 @@ object CloudDiscoveryHook : HookHandler {
             for (item in items) {
                 if (item == null) continue
                 val pkg = attempt("getPkg", silent = true) { getPkgMethod.invoke(item) as? String } ?: continue
-                val matching = findMatchingBackup(pkg) ?: continue
+                val matchingList = findMatchingBackups(pkg)
+                if (matchingList.isEmpty()) continue
                 val existing = attempt("getCloudBackups", silent = true) {
                     item.javaClass.getDeclaredMethod("getCloudBackups").invoke(item)
                 }
                 if (existing == null || isResultEmpty(existing)) {
-                    buildAppCloudBackup(matching, classLoader)?.let { cloudBackup ->
-                        val backupsObj = appBackupsCtor.newInstance(listOf(cloudBackup))
+                    val cloudBackups = matchingList.mapNotNull { buildAppCloudBackup(it, classLoader) }
+                    if (cloudBackups.isNotEmpty()) {
+                        val backupsObj = appBackupsCtor.newInstance(cloudBackups)
                         setCloudBackupsMethod.invoke(item, backupsObj)
                     }
                 }
@@ -1072,7 +1155,7 @@ object CloudDiscoveryHook : HookHandler {
                 for (item in listArg) {
                     if (item == null) continue
                     val pkg = attempt("getPkg", silent = true) { getPkgMethod.invoke(item) as? String } ?: continue
-                    val hasBackup = findMatchingBackup(pkg) != null
+                    val hasBackup = findMatchingBackups(pkg).isNotEmpty()
 
                     if (hasBackup && filterName == "Synced") {
                         filteredList.add(item)
@@ -1152,7 +1235,7 @@ object CloudDiscoveryHook : HookHandler {
                 )
 
                 val totalApps = discoveredBackups.size
-                val totalSpace = discoveredBackups.values.sumOf { it.totalSize } +
+                val totalSpace = getAllDiscoveredApps().sumOf { it.totalSize } +
                         discoveredFolders.values.sumOf { it.totalSize } +
                         discoveredCalls.values.sumOf { it.size } +
                         discoveredSms.values.sumOf { it.size } +
@@ -1177,7 +1260,7 @@ object CloudDiscoveryHook : HookHandler {
             module.hookTracked(m, idPrefix = "cloud-discovery-backup-tags").intercept { chain ->
                 val result = chain.proceed() as? List<*> ?: mutableListOf<String>()
                 val tags = result.filterIsInstance<String>().toMutableList()
-                for (app in discoveredBackups.values) {
+                for (app in getAllDiscoveredApps()) {
                     if (app.backupTag.isNotBlank() && !tags.contains(app.backupTag)) {
                         tags.add(app.backupTag)
                     }
@@ -1392,7 +1475,7 @@ object CloudDiscoveryHook : HookHandler {
                         if (firstWifi != null) {
                             attempt("inject discovered wifi into us8.c", silent = true) {
                                 val ctor = wifiCloudDetailsClass.constructors.firstOrNull { it.parameterCount == 3 }
-                                    ?: wifiCloudDetailsClass.getConstructor(String::class.java, Long::class.javaObjectType, Integer::class.javaObjectType)
+                                    ?: wifiCloudDetailsClass.getConstructor(String::class.java, Long::class.javaObjectType, Int::class.javaObjectType)
                                 val details = ctor.newInstance(firstWifi.fileId, firstWifi.size, firstWifi.count)
                                 Log.i(TAG, "[CloudDiscovery] ✓ Injected WifiCloudDetails for us8.c: fileId=${firstWifi.fileId}, size=${firstWifi.size}, count=${firstWifi.count}")
                                 return@intercept details
@@ -1697,48 +1780,56 @@ object CloudDiscoveryHook : HookHandler {
             for ((key, parts) in appGroups) {
                 val (pkg, backupId, tag) = key
                 val sanitizedAppId = pkg.replace(".", "")
-
+                var versionCode: Long = 0L
+                var versionName: String = ""
                 var ssaid: String? = null
                 var permissionStatesCsv: String? = null
                 var notificationPolicyXml: String? = null
-                var versionCode = 1L
-                var versionName = "1.0"
 
                 val extraItem = parts["extra"] ?: parts["ext"]
                 val extraFileId = extraItem?.id
                 val extraSize = extraItem?.size ?: 0L
-
-                if (extraItem != null) {
-                    val rawExtraText = scanner.downloadFileText(context, sp, extraItem)
-                    if (rawExtraText != null) {
-                        val extra = BackupCrypto.parseExtraPayload(rawExtraText, candidateUids, classLoader)
-                        if (extra != null) {
-                            ssaid = extra.ssaid
-                            permissionStatesCsv = extra.permissionStatesCsv
-                            notificationPolicyXml = extra.notificationPolicyXml
-                            if (extra.versionCode > 0) versionCode = extra.versionCode
-                            if (extra.versionName.isNotBlank()) versionName = extra.versionName
-                        }
-                    }
-                }
 
                 val apkItem = parts["apk"] ?: parts["app"]
                 val apkFileId = apkItem?.id
                 val apkSize = apkItem?.size ?: 0L
                 val apkBackupDate = apkItem?.timestamp ?: 0L
 
-                var remoteManifest: ApkRangeManifestParser.ApkManifestInfo? = null
-                if (apkItem != null) {
-                    remoteManifest = ApkRangeManifestParser.parseFromScanner(context, sp, scanner, apkItem)
-                }
+                val existingApp = findMatchingBackups(pkg).firstOrNull { it.backupId == backupId }
+                var appName = existingApp?.appName?.takeIf { it.isNotBlank() } ?: BackupRebuilderHook.resolveAppLabel(context, pkg)
 
-                if (remoteManifest != null) {
-                    if (remoteManifest.versionCode > 0) versionCode = remoteManifest.versionCode
-                    if (remoteManifest.versionName.isNotBlank()) versionName = remoteManifest.versionName
-                }
+                if (existingApp != null && existingApp.versionCode > 0) {
+                    versionCode = existingApp.versionCode
+                    versionName = existingApp.versionName
+                    ssaid = existingApp.ssaid
+                    permissionStatesCsv = existingApp.permissionStatesCsv
+                    notificationPolicyXml = existingApp.notificationPolicyXml
+                } else {
+                    if (extraItem != null) {
+                        val rawExtraText = scanner.downloadFileText(context, sp, extraItem)
+                        if (rawExtraText != null) {
+                            val extra = BackupCrypto.parseExtraPayload(rawExtraText, candidateUids, classLoader)
+                            if (extra != null) {
+                                ssaid = extra.ssaid
+                                permissionStatesCsv = extra.permissionStatesCsv
+                                notificationPolicyXml = extra.notificationPolicyXml
+                                if (extra.versionCode > 0) versionCode = extra.versionCode
+                                if (extra.versionName.isNotBlank()) versionName = extra.versionName
+                            }
+                        }
+                    }
 
-                val appName = remoteManifest?.appLabel?.takeIf { it.isNotBlank() }
-                    ?: BackupRebuilderHook.resolveAppLabel(context, pkg)
+                    var remoteManifest: ApkRangeManifestParser.ApkManifestInfo? = null
+                    if (apkItem != null) {
+                        remoteManifest = ApkRangeManifestParser.parseFromScanner(context, sp, scanner, apkItem)
+                    }
+
+                    if (remoteManifest != null) {
+                        if (remoteManifest.versionCode > 0) versionCode = remoteManifest.versionCode
+                        if (remoteManifest.versionName.isNotBlank()) versionName = remoteManifest.versionName
+                        if (!remoteManifest.appLabel.isNullOrBlank()) appName = remoteManifest.appLabel
+                    }
+                }
 
                 val dataItem = parts["dat"] ?: parts["data"]
                 val dataFileId = dataItem?.id
@@ -1785,11 +1876,11 @@ object CloudDiscoveryHook : HookHandler {
                     ssaid = ssaid,
                     permissionStatesCsv = permissionStatesCsv,
                     notificationPolicyXml = notificationPolicyXml,
-                    versionCode = versionCode,
-                    versionName = versionName,
+                    versionCode = if (versionCode > 0L) versionCode else 1L,
+                    versionName = versionName.ifBlank { "1.0" },
                     provider = providerName
                 )
-                discoveredBackups[pkg] = discovered
+                addDiscoveredBackup(discovered)
                 totalIndexedCount++
             }
 

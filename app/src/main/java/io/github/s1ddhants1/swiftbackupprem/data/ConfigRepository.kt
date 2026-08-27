@@ -56,7 +56,25 @@ class ConfigRepositoryImpl(
     override fun parseConfig(jsonStr: String, prefs: PreferencesManager): SbpConfig {
         val rawJson = JSONObject(jsonStr)
         val isGoogleServices = rawJson.has("client") && rawJson.has("project_info")
-        val hasSbpKeys = listOf("enablePremium", "disableTelemetry", "suppressTelemetry", "enableDriveDiscovery", "customFirebaseApp", "googleAppId", "projectId").any { rawJson.has(it) }
+        val hasSbpKeys = listOf(
+            "enablePremium",
+            "disableTelemetry",
+            "suppressTelemetry",
+            "enableDriveDiscovery",
+            "enableGoogleDriveScope",
+            "enableCloudDiscovery",
+            "enableSnapshotInjection",
+            "enableBackupRebuilder",
+            "syncMetadataToFirebase",
+            "customFirebaseApp",
+            "googleAppId",
+            "googleApiKey",
+            "firebaseDatabaseUrl",
+            "gcmDefaultSenderId",
+            "googleStorageBucket",
+            "projectId",
+            "clientId"
+        ).any { rawJson.has(it) }
 
         if (!isGoogleServices && !hasSbpKeys) {
             throw IllegalArgumentException("Unrecognized or invalid configuration file format")
@@ -83,7 +101,18 @@ class ConfigRepositoryImpl(
                 rawJson.has("disableTelemetry") -> rawJson.optBoolean("disableTelemetry", true)
                 rawJson.has("suppressTelemetry") -> rawJson.optBoolean("suppressTelemetry", true)
                 else -> decoded.disableTelemetry
-            }
+            },
+            enableGoogleDriveScope = if (rawJson.has("enableGoogleDriveScope")) rawJson.optBoolean("enableGoogleDriveScope", decoded.enableGoogleDriveScope) else decoded.enableGoogleDriveScope,
+            enableCloudDiscovery = if (rawJson.has("enableCloudDiscovery")) {
+                rawJson.optBoolean("enableCloudDiscovery", decoded.enableCloudDiscovery)
+            } else if (rawJson.has("enableDriveDiscovery")) {
+                rawJson.optBoolean("enableDriveDiscovery", decoded.enableCloudDiscovery)
+            } else {
+                decoded.enableCloudDiscovery
+            },
+            enableSnapshotInjection = if (rawJson.has("enableSnapshotInjection")) rawJson.optBoolean("enableSnapshotInjection", decoded.enableSnapshotInjection) else decoded.enableSnapshotInjection,
+            enableBackupRebuilder = if (rawJson.has("enableBackupRebuilder")) rawJson.optBoolean("enableBackupRebuilder", decoded.enableBackupRebuilder) else decoded.enableBackupRebuilder,
+            syncMetadataToFirebase = if (rawJson.has("syncMetadataToFirebase")) rawJson.optBoolean("syncMetadataToFirebase", decoded.syncMetadataToFirebase) else decoded.syncMetadataToFirebase
         )
 
         prefs.applyConfig(finalConfig)

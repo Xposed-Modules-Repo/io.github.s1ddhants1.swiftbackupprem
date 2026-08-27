@@ -128,6 +128,64 @@ class CloudScannerTest {
     }
 
     @Test
+    fun testOneDriveParentReferencePathResolution() {
+        val sampleJson = """
+        {
+          "value": [
+            {
+              "id": "01ABCDEF12345678",
+              "name": "com.dv.adm.apk (CPH2573) (id-20260821-232918)",
+              "size": 15000000,
+              "parentReference": {
+                "driveId": "c127d293d2e2aa69",
+                "path": "/drive/root:/Swift Backup"
+              },
+              "@microsoft.graph.downloadUrl": "https://download.onedrive.com/file1"
+            },
+            {
+              "id": "01ABCDEF87654321",
+              "name": "com.dv.adm.data (CPH2573) (id-20260821-232918)",
+              "size": 500000,
+              "parentReference": {
+                "driveId": "c127d293d2e2aa69",
+                "path": "/drive/root:/Swift Backup (12345)/DEFAULT"
+              }
+            }
+          ]
+        }
+        """.trimIndent()
+
+        val root = JSONObject(sampleJson)
+        val valueArr = root.getJSONArray("value")
+        val items = mutableListOf<CloudFileItem>()
+
+        for (i in 0 until valueArr.length()) {
+            val obj = valueArr.getJSONObject(i)
+            val name = obj.getString("name")
+            val parentRef = obj.optJSONObject("parentReference")
+            val parentPath = parentRef?.optString("path")
+            val relParent = if (!parentPath.isNullOrBlank() && parentPath.contains("root:")) {
+                parentPath.substringAfter("root:").trim('/')
+            } else ""
+            val relPath = if (relParent.isNotBlank()) "$relParent/$name" else name
+
+            items.add(
+                CloudFileItem(
+                    id = relPath,
+                    name = name,
+                    size = obj.getLong("size"),
+                    customDownloadUrl = obj.optString("@microsoft.graph.downloadUrl"),
+                    provider = "OneDrive"
+                )
+            )
+        }
+
+        assertEquals(2, items.size)
+        assertEquals("Swift Backup/com.dv.adm.apk (CPH2573) (id-20260821-232918)", items[0].id)
+        assertEquals("Swift Backup (12345)/DEFAULT/com.dv.adm.data (CPH2573) (id-20260821-232918)", items[1].id)
+    }
+
+    @Test
     fun testPCloudJsonParsing() {
         val sampleJson = """
         {
@@ -205,5 +263,26 @@ class CloudScannerTest {
         assertEquals("GoogleDrive", map["org.telegram.messenger"]?.provider)
         assertEquals("WebDAV", map["com.whatsapp"]?.provider)
         assertEquals(95000000L, map.values.sumOf { it.totalSize })
+    }
+
+    @Test
+    fun testOneDriveTokenResolution() {
+        val testPrefs = object : android.content.SharedPreferences {
+            val map = mutableMapOf<String, Any?>("msal_account_token_onedrive" to "fake-token-123")
+            override fun getAll(): MutableMap<String, *> = map
+            override fun getString(key: String?, defValue: String?): String? = map[key]?.toString() ?: defValue
+            override fun getStringSet(key: String?, defValues: MutableSet<String>?): MutableSet<String>? = null
+            override fun getInt(key: String?, defValue: Int): Int = 0
+            override fun getLong(key: String?, defValue: Long): Long = 0L
+            override fun getFloat(key: String?, defValue: Float): Float = 0f
+            override fun getBoolean(key: String?, defValue: Boolean): Boolean = false
+            override fun contains(key: String?): Boolean = map.containsKey(key)
+            override fun edit(): android.content.SharedPreferences.Editor = throw UnsupportedOperationException()
+            override fun registerOnSharedPreferenceChangeListener(listener: android.content.SharedPreferences.OnSharedPreferenceChangeListener?) {}
+            override fun unregisterOnSharedPreferenceChangeListener(listener: android.content.SharedPreferences.OnSharedPreferenceChangeListener?) {}
+        }
+
+        val resolved = OneDriveScanner.resolveToken(testPrefs)
+        assertEquals("fake-token-123", resolved)
     }
 }

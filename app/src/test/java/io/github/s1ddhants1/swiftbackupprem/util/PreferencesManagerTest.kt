@@ -13,6 +13,11 @@ class PreferencesManagerTest {
 
         assertTrue(prefs.enablePremium)
         assertTrue(prefs.disableTelemetry)
+        assertFalse(prefs.enableGoogleDriveScope)
+        assertFalse(prefs.enableCloudDiscovery)
+        assertTrue(prefs.enableSnapshotInjection)
+        assertTrue(prefs.enableBackupRebuilder)
+        assertFalse(prefs.syncMetadataToFirebase)
         assertFalse(prefs.customFirebaseApp)
         assertEquals("", prefs.googleAppId)
         assertEquals("", prefs.googleApiKey)

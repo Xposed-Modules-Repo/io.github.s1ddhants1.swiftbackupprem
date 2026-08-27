@@ -18,10 +18,11 @@
 
 ## Table of Contents
 
-- [Features](#-features)
-- [Compatibility & Prerequisites](#-compatibility--prerequisites)
-- [Installation & Activation](#-installation--activation)
-- [Custom Firebase Setup Guide](#-custom-firebase-setup-guide)
+- [Features](#features)
+- [How it works](#how-it-works)
+- [Compatibility & Prerequisites](#compatibility--prerequisites)
+- [Installation & Activation](#installation--activation)
+- [Custom Firebase Setup Guide](#custom-firebase-setup-guide)
   - [Why Use Your Own Firebase Instance?](#why-use-your-own-firebase-instance)
   - [Step 1: Create a Firebase Project](#step-1-create-a-firebase-project)
   - [Step 2: Set Up Realtime Database & Security Rules](#step-2-set-up-realtime-database--security-rules)
@@ -29,7 +30,7 @@
   - [Step 4: Register Android App & OAuth Client](#step-4-register-android-app--oauth-client)
   - [Step 5: Enable Google Drive API & OAuth Scopes](#step-5-enable-google-drive-api--oauth-scopes)
   - [Step 6: Import or Enter Credentials in SwiftBackupPrem](#step-6-import-or-enter-credentials-in-swiftbackupprem)
-- [Guide: Migrating & Accessing Backups from Default Firebase](#guide-migrating--accessing-backups-from-default-firebase)
+- [Migrating & Accessing Backups from Default Firebase](#migrating--accessing-backups-from-default-firebase)
 - [Automated Backup Rebuild & Restore](#automated-backup-rebuild--restore)
 - [Configuration Export & Migration](#configuration-export--migration)
 - [Building from Source](#building-from-source)
@@ -537,6 +538,23 @@ Join the official Telegram group for discussion, support, release updates, and a
 <details>
 <summary><b>Q: Why do uninstalled apps show as package names (e.g. <code>com.whatsapp</code>) or missing icons during Cloud Restore?</b></summary>
 <p>When backups are indexed directly from cloud metadata for apps not currently installed on your device, Swift Backup falls back to displaying the package identifier recorded in the backup headers. Once restored or installed locally, Android resolves the full display name and application icon normally.</p>
+</details>
+
+<details>
+<summary><b>Q: How do I use the Experimental Features &amp; Backup Hub?</b></summary>
+<p>SwiftBackupPrem includes a unified <b>Experimental Features &amp; Backup Hub</b> (accessible via the main screen card or Top Menu &gt; Experimental &amp; Migrator):</p>
+<ul>
+  <li><b>Local Migration Tab:</b> Decrypts full backup folders with your old Firebase UID, rebuilds missing metadata, supports 3 destination modes (Shared Anonymous User, Custom Firebase UID, or Unencrypted Backups), and offers an option to sync reconstructed metadata directly to your private Firebase Realtime Database.</li>
+  <li><b>Cloud Discovery &amp; Injection Tab:</b> Granular switches for:
+    <ul>
+      <li><b>Google Drive Full OAuth Scope Expansion:</b> Requests full <code>auth/drive</code> scope during sign-in to see all existing Google Drive backups.</li>
+      <li><b>Universal Cloud Discovery &amp; Restore:</b> Scans and indexes backups across Google Drive, WebDAV, S3, Dropbox, OneDrive, Box &amp; pCloud.</li>
+      <li><b>Firebase Realtime Database Snapshot Injection:</b> Injects discovered cloud backups into restore queries on the fly.</li>
+      <li><b>Automatic Local Metadata Reconstruction:</b> Repairs missing <code>.xml</code> and folder <code>metadata.json</code> on local storage.</li>
+      <li><b>Sync Reconstructed Metadata to Custom Firebase:</b> Directly pushes all reconstructed local and discovered cloud backup metadata to your private Firebase Realtime Database.</li>
+    </ul>
+  </li>
+</ul>
 </details>
 
 <details>
