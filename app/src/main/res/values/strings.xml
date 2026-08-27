@@ -157,12 +157,15 @@
 
     <string name="pref_snapshot_injection_title">Realtime DB Snapshot Injection</string>
     <string name="pref_snapshot_injection_desc">Injects discovered cloud backups into restore lists</string>
+    <string name="pref_snapshot_injection_requires_discovery">Requires Universal Cloud Discovery to be enabled</string>
 
     <string name="pref_backup_rebuilder_title">Local Metadata Reconstruction</string>
     <string name="pref_backup_rebuilder_desc">Rebuilds missing metadata from raw slices on storage</string>
 
     <string name="pref_sync_metadata_firebase_title">Sync Metadata to Custom Firebase</string>
     <string name="pref_sync_metadata_firebase_desc">Syncs reconstructed metadata to your Firebase instance</string>
+    <string name="pref_rtdb_not_configured">Firebase Database URL not configured</string>
+    <string name="pref_rtdb_requires_config">Requires Firebase Database URL in setup</string>
 
     <string name="migrator_option_sync_firebase_title">Sync Metadata to Custom Firebase</string>
     <string name="migrator_option_sync_firebase_desc">Pushes reconstructed metadata to your Firebase instance</string>

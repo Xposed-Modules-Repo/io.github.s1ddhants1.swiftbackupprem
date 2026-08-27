@@ -645,6 +645,8 @@ private fun CloudDiscoveryTabContent(prefs: PreferencesManager) {
     val coroutineScope = rememberCoroutineScope()
     val scrollState = rememberScrollState()
     val isCustomFirebase = prefs.customFirebaseApp
+    val isDbConfigured = prefs.firebaseDatabaseUrl.isNotBlank()
+    val canSyncFirebase = isCustomFirebase && isDbConfigured
     var isSyncingFirebase by remember { mutableStateOf(false) }
 
     Column(
@@ -690,10 +692,10 @@ private fun CloudDiscoveryTabContent(prefs: PreferencesManager) {
                 val isCloudDiscoveryEnabled = isCustomFirebase && prefs.enableCloudDiscovery
                 SettingsSwitch(
                     label = stringResource(R.string.pref_snapshot_injection_title),
-                    secondaryLabel = if (isCloudDiscoveryEnabled) {
-                        stringResource(R.string.pref_snapshot_injection_desc)
-                    } else {
-                        stringResource(R.string.pref_enable_drive_discovery_requires_custom_firebase)
+                    secondaryLabel = when {
+                        !isCustomFirebase -> stringResource(R.string.pref_enable_drive_discovery_requires_custom_firebase)
+                        !prefs.enableCloudDiscovery -> stringResource(R.string.pref_snapshot_injection_requires_discovery)
+                        else -> stringResource(R.string.pref_snapshot_injection_desc)
                     },
                     pref = if (isCloudDiscoveryEnabled) prefs.enableSnapshotInjection else false,
                     enabled = isCloudDiscoveryEnabled,
@@ -702,84 +704,86 @@ private fun CloudDiscoveryTabContent(prefs: PreferencesManager) {
             }
         }
 
-        if (isCustomFirebase && prefs.firebaseDatabaseUrl.isNotBlank()) {
-            OutlinedCard(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
-                colors = CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.surface),
-                shape = RoundedCornerShape(16.dp)
-            ) {
-                Column(modifier = Modifier.padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Icon(Icons.Default.CloudUpload, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "Firebase RTDB",
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                text = prefs.firebaseDatabaseUrl,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
+        OutlinedCard(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+            colors = CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.surface),
+            shape = RoundedCornerShape(16.dp)
+        ) {
+            Column(modifier = Modifier.padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Icon(Icons.Default.CloudUpload, contentDescription = null, tint = if (canSyncFirebase) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Firebase RTDB",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = if (isDbConfigured) prefs.firebaseDatabaseUrl else stringResource(R.string.pref_rtdb_not_configured),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
+                }
 
-                    HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
-                    SettingsSwitch(
-                        label = stringResource(R.string.pref_sync_metadata_firebase_title),
-                        secondaryLabel = stringResource(R.string.pref_sync_metadata_firebase_desc),
-                        pref = prefs.syncMetadataToFirebase,
-                        enabled = true,
-                        onPrefChange = { prefs.syncMetadataToFirebase = it }
-                    )
+                SettingsSwitch(
+                    label = stringResource(R.string.pref_sync_metadata_firebase_title),
+                    secondaryLabel = when {
+                        !isCustomFirebase -> stringResource(R.string.pref_enable_drive_discovery_requires_custom_firebase)
+                        !isDbConfigured -> stringResource(R.string.pref_rtdb_requires_config)
+                        else -> stringResource(R.string.pref_sync_metadata_firebase_desc)
+                    },
+                    pref = if (canSyncFirebase) prefs.syncMetadataToFirebase else false,
+                    enabled = canSyncFirebase,
+                    onPrefChange = { prefs.syncMetadataToFirebase = it }
+                )
 
-                    Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
-                        Button(
-                            onClick = {
-                                if (isSyncingFirebase) return@Button
-                                isSyncingFirebase = true
-                                val appContext = context.applicationContext
-                                Toast.makeText(appContext, appContext.getString(R.string.msg_sync_firebase_started), Toast.LENGTH_SHORT).show()
+                Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+                    Button(
+                        onClick = {
+                            if (isSyncingFirebase || !canSyncFirebase) return@Button
+                            isSyncingFirebase = true
+                            val appContext = context.applicationContext
+                            Toast.makeText(appContext, appContext.getString(R.string.msg_sync_firebase_started), Toast.LENGTH_SHORT).show()
 
-                                coroutineScope.launch(Dispatchers.IO) {
-                                    val result = FirebaseSyncEngine.syncAll(appContext, prefs)
+                            coroutineScope.launch(Dispatchers.IO) {
+                                val result = FirebaseSyncEngine.syncAll(appContext, prefs)
 
-                                    withContext(Dispatchers.Main) {
-                                        isSyncingFirebase = false
-                                        val msg = if (result.totalSynced > 0) {
-                                            appContext.getString(R.string.msg_sync_firebase_success, result.totalSynced)
-                                        } else if (result.errors.isNotEmpty()) {
-                                            "Sync failed: " + result.errors.first()
-                                        } else {
-                                            appContext.getString(R.string.msg_sync_firebase_no_new)
-                                        }
-                                        Toast.makeText(
-                                            appContext,
-                                            msg,
-                                            Toast.LENGTH_LONG
-                                        ).show()
+                                withContext(Dispatchers.Main) {
+                                    isSyncingFirebase = false
+                                    val msg = if (result.totalSynced > 0) {
+                                        appContext.getString(R.string.msg_sync_firebase_success, result.totalSynced)
+                                    } else if (result.errors.isNotEmpty()) {
+                                        "Sync failed: " + result.errors.first()
+                                    } else {
+                                        appContext.getString(R.string.msg_sync_firebase_no_new)
                                     }
+                                    Toast.makeText(
+                                        appContext,
+                                        msg,
+                                        Toast.LENGTH_LONG
+                                    ).show()
                                 }
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(10.dp),
-                            enabled = !isSyncingFirebase
-                        ) {
-                            if (isSyncingFirebase) {
-                                CircularProgressIndicator(modifier = Modifier.size(18.dp), color = MaterialTheme.colorScheme.onPrimary, strokeWidth = 2.dp)
-                                Spacer(Modifier.width(8.dp))
-                                Text("Syncing...")
-                            } else {
-                                Icon(Icons.Default.Sync, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(Modifier.width(8.dp))
-                                Text(stringResource(R.string.btn_sync_all_firebase), fontWeight = FontWeight.SemiBold)
                             }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(10.dp),
+                        enabled = canSyncFirebase && !isSyncingFirebase
+                    ) {
+                        if (isSyncingFirebase) {
+                            CircularProgressIndicator(modifier = Modifier.size(18.dp), color = MaterialTheme.colorScheme.onPrimary, strokeWidth = 2.dp)
+                            Spacer(Modifier.width(8.dp))
+                            Text("Syncing...")
+                        } else {
+                            Icon(Icons.Default.Sync, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text(stringResource(R.string.btn_sync_all_firebase), fontWeight = FontWeight.SemiBold)
                         }
                     }
                 }
