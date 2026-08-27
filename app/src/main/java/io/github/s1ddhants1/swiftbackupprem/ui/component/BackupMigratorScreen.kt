@@ -687,11 +687,16 @@ private fun CloudDiscoveryTabContent(prefs: PreferencesManager) {
 
                 HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
+                val isCloudDiscoveryEnabled = isCustomFirebase && prefs.enableCloudDiscovery
                 SettingsSwitch(
                     label = stringResource(R.string.pref_snapshot_injection_title),
-                    secondaryLabel = stringResource(R.string.pref_snapshot_injection_desc),
-                    pref = prefs.enableSnapshotInjection,
-                    enabled = true,
+                    secondaryLabel = if (isCloudDiscoveryEnabled) {
+                        stringResource(R.string.pref_snapshot_injection_desc)
+                    } else {
+                        stringResource(R.string.pref_enable_drive_discovery_requires_custom_firebase)
+                    },
+                    pref = if (isCloudDiscoveryEnabled) prefs.enableSnapshotInjection else false,
+                    enabled = isCloudDiscoveryEnabled,
                     onPrefChange = { prefs.enableSnapshotInjection = it }
                 )
             }
@@ -804,11 +809,10 @@ private fun CloudDiscoveryTabContent(prefs: PreferencesManager) {
                     onClick = {
                         try {
                             val appContext = context.applicationContext
-                            val cacheDir = appContext.cacheDir
-                            val cacheFile = File(cacheDir, "cloud_discovered_cache.json")
+                            val cacheFile = File(Environment.getExternalStorageDirectory(), "SwiftBackup/cloud_discovered_cache.json")
                             if (cacheFile.exists()) cacheFile.delete()
-                            val externalCache = File(appContext.getExternalFilesDir(null), "cloud_discovered_cache.json")
-                            if (externalCache.exists()) externalCache.delete()
+                            val fallbackFile = File("/sdcard/SwiftBackup/cloud_discovered_cache.json")
+                            if (fallbackFile.exists()) fallbackFile.delete()
                             Toast.makeText(appContext, appContext.getString(R.string.msg_cloud_cache_cleared), Toast.LENGTH_SHORT).show()
                         } catch (_: Throwable) {}
                     },

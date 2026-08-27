@@ -332,41 +332,34 @@ object FirebaseSyncEngine {
     } ?: false
 
     /**
-     * Reads cloud discovery cache JSON from disk or root shell.
+     * Reads cloud discovery cache JSON from disk.
      */
     fun readCloudDiscoveryCache(context: Context?): JSONObject? {
-        val candidateFiles = listOf(
-            File("/data/data/org.swiftapps.swiftbackup/cloud_discovered_cache.json"),
-            File("/data/user/0/org.swiftapps.swiftbackup/cloud_discovered_cache.json"),
-            context?.filesDir?.parentFile?.let { File(it, "cloud_discovered_cache.json") }
-        ).filterNotNull()
-
-        for (f in candidateFiles) {
-            if (f.exists() && f.canRead()) {
-                try {
-                    val txt = f.readText(StandardCharsets.UTF_8)
-                    if (txt.isNotBlank()) return JSONObject(txt)
-                } catch (_: Throwable) {}
+        val canonicalFile = File(Environment.getExternalStorageDirectory(), "SwiftBackup/cloud_discovered_cache.json")
+        if (canonicalFile.exists() && canonicalFile.canRead()) {
+            try {
+                val txt = canonicalFile.readText(StandardCharsets.UTF_8)
+                if (txt.isNotBlank() && txt.startsWith("{")) {
+                    Log.i(TAG, "[FirebaseSync] Loaded cloud discovery cache from: ${canonicalFile.absolutePath} (${txt.length} bytes)")
+                    return JSONObject(txt)
+                }
+            } catch (t: Throwable) {
+                Log.w(TAG, "[FirebaseSync] Failed reading cache file ${canonicalFile.absolutePath}: ${t.message}")
             }
         }
 
-        // Root shell fallback
-        val suBins = listOf("su", "/system/bin/su", "/data/adb/ksu/bin/su", "/data/adb/ap/bin/su", "/data/adb/magisk/su")
-        for (su in suBins) {
+        // Secondary fallback in case storage path alias differs
+        val fallbackFile = File("/sdcard/SwiftBackup/cloud_discovered_cache.json")
+        if (fallbackFile.exists() && fallbackFile.canRead()) {
             try {
-                val proc = Runtime.getRuntime().exec(arrayOf(su, "-c", "cat /data/data/org.swiftapps.swiftbackup/cloud_discovered_cache.json 2>/dev/null"))
-                val reader = BufferedReader(InputStreamReader(proc.inputStream, StandardCharsets.UTF_8))
-                val out = StringBuilder()
-                var line: String?
-                while (reader.readLine().also { line = it } != null) {
-                    out.appendLine(line)
+                val txt = fallbackFile.readText(StandardCharsets.UTF_8)
+                if (txt.isNotBlank() && txt.startsWith("{")) {
+                    return JSONObject(txt)
                 }
-                proc.waitFor(1500, java.util.concurrent.TimeUnit.MILLISECONDS)
-                val res = out.toString().trim()
-                if (res.isNotBlank()) return JSONObject(res)
             } catch (_: Throwable) {}
         }
 
+        Log.w(TAG, "[FirebaseSync] Cloud discovery cache not found at /sdcard/SwiftBackup/cloud_discovered_cache.json")
         return null
     }
 

@@ -663,6 +663,9 @@ object CloudDiscoveryHook : HookHandler {
         }
     }
 
+    @Volatile
+    private var preferences: PreferencesManager? = null
+
     override fun apply(
         module: XposedModule,
         context: Context,
@@ -670,6 +673,7 @@ object CloudDiscoveryHook : HookHandler {
         targets: ResolvedTargets,
         prefs: PreferencesManager
     ) {
+        preferences = prefs
         if (!prefs.customFirebaseApp || !prefs.enableCloudDiscovery) {
             Log.d(TAG, "Cloud Discovery is disabled (requires custom Firebase app and Cloud Discovery enabled)")
             return
@@ -691,6 +695,16 @@ object CloudDiscoveryHook : HookHandler {
         startCloudScanWithRetry(context, classLoader, targets)
     }
 
+    private fun isCloudDiscoveryEnabled(): Boolean {
+        val p = preferences ?: return false
+        return p.customFirebaseApp && p.enableCloudDiscovery
+    }
+
+    private fun isSnapshotInjectionEnabled(): Boolean {
+        val p = preferences ?: return false
+        return p.customFirebaseApp && p.enableCloudDiscovery && p.enableSnapshotInjection
+    }
+
     fun startDriveScanWithRetry(context: Context, classLoader: ClassLoader, targets: ResolvedTargets) =
         startCloudScanWithRetry(context, classLoader, targets)
 
@@ -699,6 +713,7 @@ object CloudDiscoveryHook : HookHandler {
     private const val SCAN_CACHE_TTL_MS = 60_000L
 
     fun startCloudScanWithRetry(context: Context, classLoader: ClassLoader, targets: ResolvedTargets) {
+        if (!isCloudDiscoveryEnabled()) return
         if (!isScanRunning.compareAndSet(false, true)) return
         scanExecutor.execute {
             try {
@@ -762,12 +777,32 @@ object CloudDiscoveryHook : HookHandler {
     private fun createBackupsObject(cloudBackup: Any, classLoader: ClassLoader): Any? =
         createBackupsObject(listOf(cloudBackup), classLoader)
 
+    private fun getCanonicalCacheFile(): File {
+        val dir = File(Environment.getExternalStorageDirectory(), "SwiftBackup")
+        if (!dir.exists()) dir.mkdirs()
+        return File(dir, CACHE_FILE_NAME)
+    }
+
     @SuppressLint("SdCardPath")
     private fun loadDiskCache(context: Context) {
         try {
-            val cacheFile = File(context.filesDir?.parentFile, CACHE_FILE_NAME)
-            val fileToRead = if (cacheFile.exists()) cacheFile else File("/data/data/org.swiftapps.swiftbackup/$CACHE_FILE_NAME")
-            if (fileToRead.exists()) {
+            val cacheFile = getCanonicalCacheFile()
+            // Check canonical file first, fallback to legacy internal app file if migrating
+            val legacyFile = File(context.filesDir?.parentFile, CACHE_FILE_NAME)
+            val fileToRead = when {
+                cacheFile.exists() && cacheFile.canRead() -> cacheFile
+                legacyFile.exists() && legacyFile.canRead() -> {
+                    // Migrate legacy file to canonical location
+                    try {
+                        legacyFile.copyTo(cacheFile, overwrite = true)
+                        legacyFile.delete()
+                    } catch (_: Throwable) {}
+                    cacheFile
+                }
+                else -> null
+            }
+
+            if (fileToRead != null && fileToRead.exists()) {
                 val root = JSONObject(fileToRead.readText(StandardCharsets.UTF_8))
                 
                 val appsObj = root.optJSONObject("apps") ?: root
@@ -823,15 +858,14 @@ object CloudDiscoveryHook : HookHandler {
                 }
 
                 val allAppsCount = getAllDiscoveredApps().size
-                lastScanTime = cacheFile.lastModified()
-                Log.i(TAG, "[CloudDiscovery] Loaded $allAppsCount apps (${discoveredBackups.size} packages), ${discoveredFolders.size} folders, ${discoveredCalls.size} calls, ${discoveredSms.size} sms, ${discoveredWalls.size} walls, ${discoveredWifi.size} wifi from cache")
+                lastScanTime = fileToRead.lastModified()
+                Log.i(TAG, "[CloudDiscovery] Loaded $allAppsCount apps (${discoveredBackups.size} packages), ${discoveredFolders.size} folders, ${discoveredCalls.size} calls, ${discoveredSms.size} sms, ${discoveredWalls.size} walls, ${discoveredWifi.size} wifi from cache: ${fileToRead.absolutePath}")
             }
         } catch (t: Throwable) {
             Log.d(TAG, "[CloudDiscovery] Error loading cache: ${t.message}")
         }
     }
 
-    @SuppressLint("SetWorldReadable")
     private fun saveDiskCache(context: Context) {
         try {
             val root = JSONObject()
@@ -863,10 +897,14 @@ object CloudDiscoveryHook : HookHandler {
             discoveredWifi.forEach { (id, w) -> wifiObj.put(id, w.toJson()) }
             root.put("wifi", wifiObj)
 
-            val cacheFile = File(context.filesDir?.parentFile, CACHE_FILE_NAME)
-            cacheFile.writeText(root.toString(2), StandardCharsets.UTF_8)
+            val jsonStr = root.toString(2)
+            val cacheFile = getCanonicalCacheFile()
+            cacheFile.writeText(jsonStr, StandardCharsets.UTF_8)
             cacheFile.setReadable(true, false)
-        } catch (_: Throwable) {}
+            Log.d(TAG, "[CloudDiscovery] Saved cloud discovery cache to ${cacheFile.absolutePath}")
+        } catch (t: Throwable) {
+            Log.w(TAG, "[CloudDiscovery] Failed to save cache: ${t.message}")
+        }
     }
 
     private fun hookAppCloudBackups(
@@ -883,7 +921,7 @@ object CloudDiscoveryHook : HookHandler {
                 "fromSnapshot" -> attempt("hook fromSnapshot", silent = true) {
                     module.hookTracked(m, idPrefix = "cloud-discovery-app-backups-fromSnapshot").intercept { chain ->
                         val initialResult = chain.proceed()
-                        if (initialResult != null) return@intercept initialResult
+                        if (!isCloudDiscoveryEnabled() || initialResult != null) return@intercept initialResult
 
                         ensureScan(context, classLoader, targets)
                         val key = chain.args.firstOrNull()?.let { arg ->
@@ -906,6 +944,7 @@ object CloudDiscoveryHook : HookHandler {
                 "fetchForPackage" -> attempt("hook fetchForPackage", silent = true) {
                     module.hookTracked(m, idPrefix = "cloud-discovery-app-backups-fetchForPackage").intercept { chain ->
                         val initialResult = chain.proceed()
+                        if (!isCloudDiscoveryEnabled()) return@intercept initialResult
                         val pkgName = chain.args.firstOrNull() as? String
                         if (pkgName != null && (initialResult == null || isResultEmpty(initialResult))) {
                             ensureScan(context, classLoader, targets)
@@ -939,6 +978,7 @@ object CloudDiscoveryHook : HookHandler {
         lk2Class.declaredMethods.filter { it.name == "onDataChange" }.forEach { m ->
             attempt("hook lk2.onDataChange", silent = true) {
                 module.hookTracked(m, idPrefix = "cloud-discovery-detail-listener-onDataChange").intercept { chain ->
+                    if (!isCloudDiscoveryEnabled()) return@intercept chain.proceed()
                     val snapshot = chain.args.firstOrNull()
                     val snapshotHasData = attempt("check snapshot exists", silent = true) {
                         if (snapshot == null) false
@@ -955,7 +995,7 @@ object CloudDiscoveryHook : HookHandler {
                     val jiInstance = mk2Instance.getFieldValue("e") ?: return@intercept chain.proceed()
 
                     val pkgName = jiInstance.javaClass.getDeclaredMethod("getPackageName").invoke(jiInstance) as? String
-                    if (pkgName != null) {
+                    if (pkgName != null && isSnapshotInjectionEnabled()) {
                         ensureScan(context, classLoader, targets)
                         val matchingList = findMatchingBackups(pkgName)
                         if (matchingList.isNotEmpty()) {
@@ -993,7 +1033,7 @@ object CloudDiscoveryHook : HookHandler {
                         return@intercept chain.proceed()
                     }
 
-                    if (pkgName != null) {
+                    if (pkgName != null && isSnapshotInjectionEnabled()) {
                         val matching = findMatchingBackup(pkgName)
                         if (matching != null) {
                             Log.d(TAG, "[CloudDiscovery] Snapshot synthesis unavailable for $pkgName, falling back to UI reflection")
@@ -1048,6 +1088,7 @@ object CloudDiscoveryHook : HookHandler {
         val ua1Class = loadClassFlexible(classLoader, "ua1") ?: return
         ua1Class.declaredMethods.filter { it.name == "a" && it.parameterCount == 0 }.forEach { m ->
             module.hookTracked(m, idPrefix = "cloud-discovery-batch-loader").intercept { chain ->
+                if (!isCloudDiscoveryEnabled()) return@intercept chain.proceed()
                 ensureScan(context, classLoader, targets)
 
                 if (discoveredBackups.isEmpty()) return@intercept chain.proceed()
@@ -1107,7 +1148,7 @@ object CloudDiscoveryHook : HookHandler {
 
         // Helper to attach discovered backups to a list of ji items
         fun attachDiscoveredBackups(items: List<*>) {
-            if (discoveredBackups.isEmpty() || getPkgMethod == null || setCloudBackupsMethod == null || appBackupsCtor == null) return
+            if (!isCloudDiscoveryEnabled() || discoveredBackups.isEmpty() || getPkgMethod == null || setCloudBackupsMethod == null || appBackupsCtor == null) return
             for (item in items) {
                 if (item == null) continue
                 val pkg = attempt("getPkg", silent = true) { getPkgMethod.invoke(item) as? String } ?: continue
@@ -1129,6 +1170,7 @@ object CloudDiscoveryHook : HookHandler {
         // Hook qq.a: Populate in-memory metadata before complex label/tag filters execute
         qqClass.declaredMethods.filter { it.name == "a" }.forEach { m ->
             module.hookTracked(m, idPrefix = "cloud-discovery-filter-helper-a").intercept { chain ->
+                if (!isCloudDiscoveryEnabled()) return@intercept chain.proceed()
                 ensureScan(context, classLoader, targets)
                 (chain.args.firstOrNull() as? List<*>)?.let { attachDiscoveredBackups(it) }
                 chain.proceed()
@@ -1138,6 +1180,7 @@ object CloudDiscoveryHook : HookHandler {
         // Hook qq.b: Direct filter for Synced / NotSynced apps bypassing broken RTDB network query
         qqClass.declaredMethods.filter { it.name == "b" && it.parameterCount == 2 }.forEach { m ->
             module.hookTracked(m, idPrefix = "cloud-discovery-filter-helper-b").intercept { chain ->
+                if (!isCloudDiscoveryEnabled()) return@intercept chain.proceed()
                 val listArg = chain.args.getOrNull(0) as? List<*> ?: return@intercept chain.proceed()
                 val ce3Arg = chain.args.getOrNull(1) ?: return@intercept chain.proceed()
 
@@ -1180,6 +1223,7 @@ object CloudDiscoveryHook : HookHandler {
         ng1Class?.declaredMethods?.filter { it.name == "c" }?.forEach { m ->
             module.hookTracked(m, idPrefix = "cloud-discovery-sync-tab-vm").intercept { chain ->
                 val result = chain.proceed()
+                if (!isCloudDiscoveryEnabled() || !isSnapshotInjectionEnabled()) return@intercept result
                 ensureScan(context, classLoader, targets)
                 val ng1Instance = chain.thisObject
                 if (discoveredBackups.isNotEmpty() || discoveredFolders.isNotEmpty() ||
@@ -1194,6 +1238,7 @@ object CloudDiscoveryHook : HookHandler {
         val jg1Class = loadClassFlexible(classLoader, "jg1")
         jg1Class?.declaredMethods?.filter { it.name == "onDataChange" }?.forEach { m ->
             module.hookTracked(m, idPrefix = "cloud-discovery-sync-tab-listener").intercept { chain ->
+                if (!isCloudDiscoveryEnabled() || !isSnapshotInjectionEnabled()) return@intercept chain.proceed()
                 val snapshot = chain.args.firstOrNull()
                 val snapshotHasData = attempt("check sync tab snapshot", silent = true) {
                     if (snapshot == null) false
@@ -1259,6 +1304,7 @@ object CloudDiscoveryHook : HookHandler {
         ob1Class.declaredMethods.filter { it.name == "a" }.forEach { m ->
             module.hookTracked(m, idPrefix = "cloud-discovery-backup-tags").intercept { chain ->
                 val result = chain.proceed() as? List<*> ?: mutableListOf<String>()
+                if (!isCloudDiscoveryEnabled()) return@intercept result
                 val tags = result.filterIsInstance<String>().toMutableList()
                 for (app in getAllDiscoveredApps()) {
                     if (app.backupTag.isNotBlank() && !tags.contains(app.backupTag)) {
@@ -1294,6 +1340,7 @@ object CloudDiscoveryHook : HookHandler {
         val sf1Class = loadClassFlexible(classLoader, "sf1") ?: return
         sf1Class.declaredMethods.filter { it.name == "a" && it.parameterCount == 0 }.forEach { m ->
             module.hookTracked(m, idPrefix = "cloud-discovery-folder-loader").intercept { chain ->
+                if (!isCloudDiscoveryEnabled()) return@intercept chain.proceed()
                 ensureScan(context, classLoader, targets)
                 if (discoveredFolders.isEmpty()) return@intercept chain.proceed()
 
@@ -1328,6 +1375,7 @@ object CloudDiscoveryHook : HookHandler {
         km5Class.declaredMethods.filter { it.name == "onDataChange" }.forEach { m ->
             module.hookTracked(m, idPrefix = "cloud-discovery-folder-detail-listener").intercept { chain ->
                 val result = chain.proceed()
+                if (!isCloudDiscoveryEnabled() || !isSnapshotInjectionEnabled()) return@intercept result
                 val km5Instance = chain.thisObject ?: return@intercept result
                 val dm3Instance = attempt("get dm3 from km5", silent = true) { km5Instance.getFieldValue("b") } ?: return@intercept result
                 val folderItem = attempt("get FolderItem from dm3", silent = true) {
@@ -1373,7 +1421,7 @@ object CloudDiscoveryHook : HookHandler {
             deoptimize = true
         ).intercept { chain ->
             val original = chain.proceed()
-            if (discoveredWalls.isEmpty()) return@intercept original
+            if (!isCloudDiscoveryEnabled() || discoveredWalls.isEmpty()) return@intercept original
 
             val existingWalls = factory.extractExistingItems(original)
             val existingFileIds = existingWalls.mapNotNull { factory.extractFileId(it) }.toSet()
@@ -1411,6 +1459,7 @@ object CloudDiscoveryHook : HookHandler {
                 priority = XposedInterface.PRIORITY_HIGHEST,
                 deoptimize = true
             ).intercept { chain ->
+                if (!isCloudDiscoveryEnabled()) return@intercept chain.proceed()
                 val thisObj = chain.thisObject ?: return@intercept chain.proceed()
                 val aVal = attempt("read xr0.a", silent = true) {
                     xr0Class.getDeclaredField("a").apply { isAccessible = true }.getInt(thisObj)
@@ -1470,7 +1519,7 @@ object CloudDiscoveryHook : HookHandler {
                     priority = XposedInterface.PRIORITY_HIGHEST,
                     deoptimize = true
                 ).intercept { chain ->
-                    if (discoveredWifi.isNotEmpty()) {
+                    if (isCloudDiscoveryEnabled() && discoveredWifi.isNotEmpty()) {
                         val firstWifi = discoveredWifi.values.firstOrNull()
                         if (firstWifi != null) {
                             attempt("inject discovered wifi into us8.c", silent = true) {
@@ -1499,7 +1548,7 @@ object CloudDiscoveryHook : HookHandler {
             deoptimize = true
         ).intercept { chain ->
             val original = chain.proceed()
-            if (discoveredWifi.isEmpty()) return@intercept original
+            if (!isCloudDiscoveryEnabled() || discoveredWifi.isEmpty()) return@intercept original
 
             val existingWifi = factory.extractExistingItems(original)
             val existingFileIds = existingWifi.mapNotNull { factory.extractFileId(it) }.toSet()

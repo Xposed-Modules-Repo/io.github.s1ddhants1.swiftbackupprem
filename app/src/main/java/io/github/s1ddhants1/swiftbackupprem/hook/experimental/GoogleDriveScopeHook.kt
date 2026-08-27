@@ -27,6 +27,9 @@ object GoogleDriveScopeHook : HookHandler {
     private const val ENCODED_DRIVE_FILE_SCOPE = "https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fdrive.file"
     private const val ENCODED_FULL_DRIVE_SCOPE = "https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fdrive"
 
+    @Volatile
+    private var preferences: PreferencesManager? = null
+
     override fun apply(
         module: XposedModule,
         context: Context,
@@ -34,7 +37,8 @@ object GoogleDriveScopeHook : HookHandler {
         targets: ResolvedTargets,
         prefs: PreferencesManager
     ) {
-        if (!prefs.customFirebaseApp || (!prefs.enableGoogleDriveScope && !prefs.enableCloudDiscovery)) {
+        preferences = prefs
+        if (!prefs.customFirebaseApp || !prefs.enableGoogleDriveScope) {
             Log.d(Consts.TAG, "Google Drive scope upgrade is disabled (requires custom Firebase app and Google Drive OAuth expansion)")
             return
         }
@@ -48,6 +52,11 @@ object GoogleDriveScopeHook : HookHandler {
         hookGmsScope(module, classLoader)
     }
 
+    private fun isScopeExpansionEnabled(): Boolean {
+        val p = preferences ?: return false
+        return p.customFirebaseApp && p.enableGoogleDriveScope
+    }
+
     private fun hookOAuthHelper(module: XposedModule, clazz: Class<*>?) {
         if (clazz == null) return
         attempt("hook OAuthHelper constructors (${clazz.name})") {
@@ -56,6 +65,7 @@ object GoogleDriveScopeHook : HookHandler {
                     ctor,
                     idPrefix = "drive-scope-oauth-helper"
                 ).intercept { chain ->
+                    if (!isScopeExpansionEnabled()) return@intercept chain.proceed()
                     var modified = false
                     val newArgs = chain.args.map { arg ->
                         when {
@@ -91,6 +101,7 @@ object GoogleDriveScopeHook : HookHandler {
                         m,
                         idPrefix = "drive-scope-auth-builder-${m.name}"
                     ).intercept { chain ->
+                        if (!isScopeExpansionEnabled()) return@intercept chain.proceed()
                         val target = chain.thisObject
                         if (target != null) {
                             for (field in target.javaClass.declaredFields) {
@@ -119,6 +130,7 @@ object GoogleDriveScopeHook : HookHandler {
                 m,
                 idPrefix = "drive-scope-uri-builder"
             ).intercept { chain ->
+                if (!isScopeExpansionEnabled()) return@intercept chain.proceed()
                 val key = chain.getArg(0) as? String
                 val value = chain.getArg(1) as? String
                 when {
@@ -142,7 +154,9 @@ object GoogleDriveScopeHook : HookHandler {
                         m,
                         idPrefix = "drive-scope-nogms-activity-${m.name}"
                     ).intercept { chain ->
-                        (chain.getArg(0) as? Intent)?.let { upgradeIntentUri(it) }
+                        if (isScopeExpansionEnabled()) {
+                            (chain.getArg(0) as? Intent)?.let { upgradeIntentUri(it) }
+                        }
                         chain.proceed()
                     }
                 }
@@ -158,6 +172,7 @@ object GoogleDriveScopeHook : HookHandler {
                     m,
                     idPrefix = "drive-scope-intent-$methodName"
                 ).intercept { chain ->
+                    if (!isScopeExpansionEnabled()) return@intercept chain.proceed()
                     val uri = chain.getArg(0) as? Uri
                     if (uri != null && (uri.toString().contains("drive.file") || uri.toString().contains("accounts.google.com"))) {
                         chain.proceed(arrayOf(upgradeUri(uri)))
@@ -196,8 +211,11 @@ object GoogleDriveScopeHook : HookHandler {
                         ctor,
                         idPrefix = "drive-scope-gms-scope-ctor"
                     ).intercept { chain ->
-                        if (chain.getArg(0) == DRIVE_FILE_SCOPE) chain.proceed(arrayOf(FULL_DRIVE_SCOPE))
-                        else chain.proceed()
+                        if (isScopeExpansionEnabled() && chain.getArg(0) == DRIVE_FILE_SCOPE) {
+                            chain.proceed(arrayOf(FULL_DRIVE_SCOPE))
+                        } else {
+                            chain.proceed()
+                        }
                     }
                 }
             }
