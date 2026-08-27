@@ -739,22 +739,23 @@ private fun CloudDiscoveryTabContent(prefs: PreferencesManager) {
                             onClick = {
                                 if (isSyncingFirebase) return@Button
                                 isSyncingFirebase = true
-                                Toast.makeText(context, context.getString(R.string.msg_sync_firebase_started), Toast.LENGTH_SHORT).show()
+                                val appContext = context.applicationContext
+                                Toast.makeText(appContext, appContext.getString(R.string.msg_sync_firebase_started), Toast.LENGTH_SHORT).show()
 
                                 coroutineScope.launch(Dispatchers.IO) {
-                                    val result = FirebaseSyncEngine.syncAll(context, prefs)
+                                    val result = FirebaseSyncEngine.syncAll(appContext, prefs)
 
                                     withContext(Dispatchers.Main) {
                                         isSyncingFirebase = false
                                         val msg = if (result.totalSynced > 0) {
-                                            context.getString(R.string.msg_sync_firebase_success, result.totalSynced)
+                                            appContext.getString(R.string.msg_sync_firebase_success, result.totalSynced)
                                         } else if (result.errors.isNotEmpty()) {
                                             "Sync failed: " + result.errors.first()
                                         } else {
-                                            context.getString(R.string.msg_sync_firebase_no_new)
+                                            appContext.getString(R.string.msg_sync_firebase_no_new)
                                         }
                                         Toast.makeText(
-                                            context,
+                                            appContext,
                                             msg,
                                             Toast.LENGTH_LONG
                                         ).show()
@@ -802,12 +803,13 @@ private fun CloudDiscoveryTabContent(prefs: PreferencesManager) {
                 OutlinedButton(
                     onClick = {
                         try {
-                            val cacheDir = context.cacheDir
+                            val appContext = context.applicationContext
+                            val cacheDir = appContext.cacheDir
                             val cacheFile = File(cacheDir, "cloud_discovered_cache.json")
                             if (cacheFile.exists()) cacheFile.delete()
-                            val externalCache = File(context.getExternalFilesDir(null), "cloud_discovered_cache.json")
+                            val externalCache = File(appContext.getExternalFilesDir(null), "cloud_discovered_cache.json")
                             if (externalCache.exists()) externalCache.delete()
-                            Toast.makeText(context, context.getString(R.string.msg_cloud_cache_cleared), Toast.LENGTH_SHORT).show()
+                            Toast.makeText(appContext, appContext.getString(R.string.msg_cloud_cache_cleared), Toast.LENGTH_SHORT).show()
                         } catch (_: Throwable) {}
                     },
                     modifier = Modifier.fillMaxWidth(),
