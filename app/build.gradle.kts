@@ -13,8 +13,8 @@ android {
         applicationId = "io.github.s1ddhants1.swiftbackupprem"
         minSdk = 27
         targetSdk = 37
-        versionCode = 240
-        versionName = "2.4.0"
+        versionCode = 300
+        versionName = "3.0.0-testing"
     }
 
     buildTypes {
