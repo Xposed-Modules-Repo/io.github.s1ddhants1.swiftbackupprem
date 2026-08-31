@@ -293,6 +293,10 @@ private fun SettingsScreenContent(
                     prefs.customFirebaseApp = it
                     if (!it) {
                         prefs.enableCloudDiscovery = false
+                        prefs.enableGoogleDriveScope = false
+                        prefs.enableSnapshotInjection = false
+                        prefs.enableBackupRebuilder = false
+                        prefs.syncMetadataToFirebase = false
                     }
                 }
             )

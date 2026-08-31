@@ -15,8 +15,8 @@ class PreferencesManagerTest {
         assertTrue(prefs.disableTelemetry)
         assertFalse(prefs.enableGoogleDriveScope)
         assertFalse(prefs.enableCloudDiscovery)
-        assertTrue(prefs.enableSnapshotInjection)
-        assertTrue(prefs.enableBackupRebuilder)
+        assertFalse(prefs.enableSnapshotInjection)
+        assertFalse(prefs.enableBackupRebuilder)
         assertFalse(prefs.syncMetadataToFirebase)
         assertFalse(prefs.customFirebaseApp)
         assertEquals("", prefs.googleAppId)
@@ -68,6 +68,28 @@ class PreferencesManagerTest {
         assertEquals(false, backup.getBoolean("enable_premium", true))
         assertEquals("synced-project", primary.getString("project_id", ""))
         assertEquals("synced-project", backup.getString("project_id", ""))
+    }
+
+    @Test
+    fun applyConfigDisablesAllMigrationSettingsWhenCustomFirebaseIsFalse() {
+        val prefs = PreferencesManager(null)
+        val config = io.github.s1ddhants1.swiftbackupprem.model.SbpConfig(
+            customFirebaseApp = false,
+            enableCloudDiscovery = true,
+            enableGoogleDriveScope = true,
+            enableSnapshotInjection = true,
+            enableBackupRebuilder = true,
+            syncMetadataToFirebase = true
+        )
+
+        prefs.applyConfig(config)
+
+        assertFalse(prefs.customFirebaseApp)
+        assertFalse(prefs.enableCloudDiscovery)
+        assertFalse(prefs.enableGoogleDriveScope)
+        assertFalse(prefs.enableSnapshotInjection)
+        assertFalse(prefs.enableBackupRebuilder)
+        assertFalse(prefs.syncMetadataToFirebase)
     }
 
     private class FakeSharedPreferences : android.content.SharedPreferences {

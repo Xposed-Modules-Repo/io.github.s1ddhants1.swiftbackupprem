@@ -480,6 +480,10 @@ object FirebaseSyncEngine {
         var totalAlreadyExisting = 0
         var totalFailed = 0
 
+        if (!prefs.customFirebaseApp || !prefs.syncMetadataToFirebase) {
+            return SyncResult(0, 0, 0, listOf("Firebase metadata sync is disabled."))
+        }
+
         val dbUrl = prefs.firebaseDatabaseUrl.trim()
         if (dbUrl.isBlank()) {
             return SyncResult(0, 0, 0, listOf("Firebase Realtime Database URL is empty."))

@@ -69,8 +69,8 @@ class PreferencesManager(
     var disableTelemetry by booleanPreference("disable_telemetry", true)
     var enableCloudDiscovery by booleanPreference("enable_cloud_discovery", false)
     var enableGoogleDriveScope by booleanPreference("enable_google_drive_scope", false)
-    var enableSnapshotInjection by booleanPreference("enable_snapshot_injection", true)
-    var enableBackupRebuilder by booleanPreference("enable_backup_rebuilder", true)
+    var enableSnapshotInjection by booleanPreference("enable_snapshot_injection", false)
+    var enableBackupRebuilder by booleanPreference("enable_backup_rebuilder", false)
     var syncMetadataToFirebase by booleanPreference("sync_metadata_to_firebase", false)
     var customFirebaseApp by booleanPreference("custom_firebase_app")
 
@@ -98,8 +98,8 @@ class PreferencesManager(
         customFirebaseApp = config.customFirebaseApp
         enableCloudDiscovery = if (config.customFirebaseApp) config.enableCloudDiscovery else false
         enableGoogleDriveScope = if (config.customFirebaseApp) config.enableGoogleDriveScope else false
-        enableSnapshotInjection = config.enableSnapshotInjection
-        enableBackupRebuilder = config.enableBackupRebuilder
+        enableSnapshotInjection = if (config.customFirebaseApp && config.enableCloudDiscovery) config.enableSnapshotInjection else false
+        enableBackupRebuilder = if (config.customFirebaseApp) config.enableBackupRebuilder else false
         syncMetadataToFirebase = if (config.customFirebaseApp) config.syncMetadataToFirebase else false
         googleAppId = config.googleAppId
         googleApiKey = config.googleApiKey

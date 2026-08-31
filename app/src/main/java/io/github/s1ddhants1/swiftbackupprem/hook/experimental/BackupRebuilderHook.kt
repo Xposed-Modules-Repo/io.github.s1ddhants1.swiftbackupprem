@@ -69,91 +69,9 @@ object BackupRebuilderHook : HookHandler {
         targets: ResolvedTargets,
         prefs: PreferencesManager
     ) {
-        preferences = prefs
-        if (!prefs.customFirebaseApp || !prefs.enableBackupRebuilder) {
-            logD("Backup Rebuilder is disabled (requires custom Firebase app and Metadata Reconstruction)")
-            return
-        }
-
-        val appBackupClass = targets.appBackupClass ?: attempt("load hk class", silent = true) {
-            loadClassFlexible(classLoader, "defpackage.hk")
-        }
-        logD("Applying BackupRebuilderHook (appBackupClass: ${appBackupClass?.name})")
-
-        if (appBackupClass != null) {
-            hookAppBackupValidity(module, appBackupClass, classLoader, targets)
-            hookAppBackupMetadata(module, appBackupClass, classLoader, targets)
-        }
-
-        rebuildExecutor.schedule({
-            try {
-                if (isRebuilderEnabled()) {
-                    rebuildAllLocalBackups(context, classLoader, targets)
-                }
-            } catch (t: Throwable) {
-                logE("Startup backup scan error: ${t.message}")
-            }
-        }, 2, TimeUnit.SECONDS)
-    }
-
-    private fun isRebuilderEnabled(): Boolean {
-        val p = preferences ?: return false
-        return p.customFirebaseApp && p.enableBackupRebuilder
-    }
-
-    private fun hookAppBackupValidity(
-        module: XposedModule,
-        appBackupClass: Class<*>,
-        classLoader: ClassLoader,
-        targets: ResolvedTargets
-    ) {
-        val isValidMethod = attempt("find isValid method on AppBackup", silent = true) {
-            appBackupClass.declaredMethods.firstOrNull {
-                it.returnType == Boolean::class.javaPrimitiveType && it.parameterTypes.isEmpty() && (it.name == "E" || it.name == "isValid" || java.lang.reflect.Modifier.isPublic(it.modifiers))
-            }
-        } ?: return
-
-        module.hookTracked(
-            isValidMethod,
-            idPrefix = "backup-rebuilder-validity",
-            deoptimize = true
-        ).intercept { chain ->
-            if (isRebuilderEnabled()) {
-                chain.thisObject?.let { backupInstance ->
-                    attempt("auto-rebuild on isValid check", silent = true) {
-                        rebuildFromBackupInstance(backupInstance, classLoader, targets)
-                    }
-                }
-            }
-            chain.proceed()
-        }
-    }
-
-    private fun hookAppBackupMetadata(
-        module: XposedModule,
-        appBackupClass: Class<*>,
-        classLoader: ClassLoader,
-        targets: ResolvedTargets
-    ) {
-        val getMetadataMethod = attempt("find getMetadata method on AppBackup", silent = true) {
-            appBackupClass.declaredMethods.firstOrNull {
-                it.parameterTypes.isEmpty() && (it.returnType.name.contains("LocalMetadata") || it.name == "u" || it.name == "getMetadata")
-            }
-        } ?: return
-
-        module.hookTracked(
-            getMetadataMethod,
-            idPrefix = "backup-rebuilder-metadata"
-        ).intercept { chain ->
-            val initialResult = chain.proceed()
-            if (isRebuilderEnabled() && initialResult == null && chain.thisObject != null) {
-                val repaired = attempt("auto-rebuild on getMetadata", silent = true) {
-                    rebuildFromBackupInstance(chain.thisObject, classLoader, targets)
-                }
-                if (repaired == true) return@intercept chain.proceed()
-            }
-            initialResult
-        }
+        // No-op: Local backups do not perform background metadata reconstruction via Xposed hooks.
+        // Cloud backup metadata reconstruction is bound to Universal Cloud Discovery,
+        // and local migration reconstructs metadata by default within BackupMigratorEngine.
     }
 
     data class AppVersionInfo(

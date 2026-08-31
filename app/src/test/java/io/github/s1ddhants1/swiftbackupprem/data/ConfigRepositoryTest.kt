@@ -148,8 +148,8 @@ class ConfigRepositoryTest {
         // Verifies new keys smoothly adopt default values without error
         assertFalse(result.enableGoogleDriveScope)
         assertFalse(result.enableCloudDiscovery)
-        assertTrue(result.enableSnapshotInjection)
-        assertTrue(result.enableBackupRebuilder)
+        assertFalse(result.enableSnapshotInjection)
+        assertFalse(result.enableBackupRebuilder)
         assertFalse(result.syncMetadataToFirebase)
     }
 

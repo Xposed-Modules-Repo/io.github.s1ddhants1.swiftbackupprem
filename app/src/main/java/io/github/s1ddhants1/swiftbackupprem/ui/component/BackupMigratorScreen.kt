@@ -648,7 +648,8 @@ private fun CloudDiscoveryTabContent(
     val scrollState = rememberScrollState()
     val isCustomFirebase = prefs.customFirebaseApp
     val isDbConfigured = prefs.firebaseDatabaseUrl.isNotBlank()
-    val canSyncFirebase = isCustomFirebase && isDbConfigured
+    val canConfigureSync = isCustomFirebase && isDbConfigured
+    val isSyncEnabled = canConfigureSync && prefs.syncMetadataToFirebase
 
     LaunchedEffect(Unit) {
         viewModel.events.collect { event ->
@@ -703,7 +704,12 @@ private fun CloudDiscoveryTabContent(
                     },
                     pref = if (isCustomFirebase) prefs.enableCloudDiscovery else false,
                     enabled = isCustomFirebase,
-                    onPrefChange = { prefs.enableCloudDiscovery = it }
+                    onPrefChange = {
+                        prefs.enableCloudDiscovery = it
+                        if (!it) {
+                            prefs.enableSnapshotInjection = false
+                        }
+                    }
                 )
 
                 HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
@@ -734,7 +740,7 @@ private fun CloudDiscoveryTabContent(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Icon(Icons.Default.CloudUpload, contentDescription = null, tint = if (canSyncFirebase) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+                    Icon(Icons.Default.CloudUpload, contentDescription = null, tint = if (isSyncEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = "Firebase RTDB",
@@ -758,22 +764,22 @@ private fun CloudDiscoveryTabContent(
                         !isDbConfigured -> stringResource(R.string.pref_rtdb_requires_config)
                         else -> stringResource(R.string.pref_sync_metadata_firebase_desc)
                     },
-                    pref = if (canSyncFirebase) prefs.syncMetadataToFirebase else false,
-                    enabled = canSyncFirebase,
+                    pref = if (canConfigureSync) prefs.syncMetadataToFirebase else false,
+                    enabled = canConfigureSync,
                     onPrefChange = { prefs.syncMetadataToFirebase = it }
                 )
 
                 Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
                     Button(
                         onClick = {
-                            if (state.isSyncingFirebase || !canSyncFirebase) return@Button
+                            if (state.isSyncingFirebase || !isSyncEnabled) return@Button
                             val appContext = context.applicationContext
                             Toast.makeText(appContext, appContext.getString(R.string.msg_sync_firebase_started), Toast.LENGTH_SHORT).show()
                             viewModel.syncFirebaseAll(appContext, prefs)
                         },
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(10.dp),
-                        enabled = canSyncFirebase && !state.isSyncingFirebase
+                        enabled = isSyncEnabled && !state.isSyncingFirebase
                     ) {
                         if (state.isSyncingFirebase) {
                             CircularProgressIndicator(modifier = Modifier.size(18.dp), color = MaterialTheme.colorScheme.onPrimary, strokeWidth = 2.dp)

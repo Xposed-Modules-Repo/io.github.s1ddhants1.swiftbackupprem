@@ -101,7 +101,7 @@ class BackupMigratorViewModel(
     }
 
     fun syncFirebaseAll(context: Context, prefs: PreferencesManager) {
-        if (_uiState.value.isSyncingFirebase) return
+        if (_uiState.value.isSyncingFirebase || !prefs.customFirebaseApp || !prefs.syncMetadataToFirebase || prefs.firebaseDatabaseUrl.isBlank()) return
         _uiState.update { it.copy(isSyncingFirebase = true) }
 
         viewModelScope.launch(ioDispatcher) {
@@ -163,7 +163,7 @@ class BackupMigratorViewModel(
             )
         }
 
-        val shouldSync = (state.syncToFirebase || prefs?.syncMetadataToFirebase == true) && (prefs?.customFirebaseApp == true) && (prefs.firebaseDatabaseUrl.isNotBlank())
+        val shouldSync = (if (prefs != null) prefs.syncMetadataToFirebase else state.syncToFirebase) && (prefs?.customFirebaseApp == true) && (!prefs.firebaseDatabaseUrl.isNullOrBlank())
 
         viewModelScope.launch(ioDispatcher) {
             val config = BackupMigratorEngine.MigrationConfig(
