@@ -33,6 +33,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.s1ddhants1.swiftbackupprem.R
+import io.github.s1ddhants1.swiftbackupprem.ui.BackupMigratorUiEvent
 import io.github.s1ddhants1.swiftbackupprem.ui.BackupMigratorUiState
 import io.github.s1ddhants1.swiftbackupprem.ui.BackupMigratorViewModel
 import io.github.s1ddhants1.swiftbackupprem.ui.TargetModeSelection
@@ -41,9 +42,7 @@ import io.github.s1ddhants1.swiftbackupprem.util.BackupCrypto
 import io.github.s1ddhants1.swiftbackupprem.util.BackupMigratorEngine
 import io.github.s1ddhants1.swiftbackupprem.util.FirebaseSyncEngine
 import io.github.s1ddhants1.swiftbackupprem.util.PreferencesManager
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import org.json.JSONObject
 import java.io.File
 import java.nio.charset.StandardCharsets
@@ -86,7 +85,7 @@ fun BackupMigratorScreen(
         AnimatedContent(targetState = selectedTab, label = "TabTransition") { tab ->
             when (tab) {
                 ExperimentalHubTab.LOCAL_MIGRATION -> LocalMigrationTabContent(viewModel = viewModel, prefs = prefs)
-                ExperimentalHubTab.CLOUD_DISCOVERY -> CloudDiscoveryTabContent(prefs = prefs)
+                ExperimentalHubTab.CLOUD_DISCOVERY -> CloudDiscoveryTabContent(viewModel = viewModel, prefs = prefs)
             }
         }
     }
@@ -100,7 +99,7 @@ private fun LocalMigrationTabContent(
 ) {
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
-    val state by viewModel.uiState.collectAsState()
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
     val scrollState = rememberScrollState()
 
     LaunchedEffect(Unit) {
@@ -640,14 +639,33 @@ private fun LocalMigrationTabContent(
 }
 
 @Composable
-private fun CloudDiscoveryTabContent(prefs: PreferencesManager) {
+private fun CloudDiscoveryTabContent(
+    viewModel: BackupMigratorViewModel,
+    prefs: PreferencesManager
+) {
     val context = LocalContext.current
-    val coroutineScope = rememberCoroutineScope()
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
     val scrollState = rememberScrollState()
     val isCustomFirebase = prefs.customFirebaseApp
     val isDbConfigured = prefs.firebaseDatabaseUrl.isNotBlank()
     val canSyncFirebase = isCustomFirebase && isDbConfigured
-    var isSyncingFirebase by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        viewModel.events.collect { event ->
+            when (event) {
+                is BackupMigratorUiEvent.FirebaseSyncResult -> {
+                    val msg = if (event.totalSynced > 0) {
+                        context.getString(R.string.msg_sync_firebase_success, event.totalSynced)
+                    } else if (event.error != null) {
+                        "Sync failed: " + event.error
+                    } else {
+                        context.getString(R.string.msg_sync_firebase_no_new)
+                    }
+                    Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -747,36 +765,16 @@ private fun CloudDiscoveryTabContent(prefs: PreferencesManager) {
                 Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
                     Button(
                         onClick = {
-                            if (isSyncingFirebase || !canSyncFirebase) return@Button
-                            isSyncingFirebase = true
+                            if (state.isSyncingFirebase || !canSyncFirebase) return@Button
                             val appContext = context.applicationContext
                             Toast.makeText(appContext, appContext.getString(R.string.msg_sync_firebase_started), Toast.LENGTH_SHORT).show()
-
-                            coroutineScope.launch(Dispatchers.IO) {
-                                val result = FirebaseSyncEngine.syncAll(appContext, prefs)
-
-                                withContext(Dispatchers.Main) {
-                                    isSyncingFirebase = false
-                                    val msg = if (result.totalSynced > 0) {
-                                        appContext.getString(R.string.msg_sync_firebase_success, result.totalSynced)
-                                    } else if (result.errors.isNotEmpty()) {
-                                        "Sync failed: " + result.errors.first()
-                                    } else {
-                                        appContext.getString(R.string.msg_sync_firebase_no_new)
-                                    }
-                                    Toast.makeText(
-                                        appContext,
-                                        msg,
-                                        Toast.LENGTH_LONG
-                                    ).show()
-                                }
-                            }
+                            viewModel.syncFirebaseAll(appContext, prefs)
                         },
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(10.dp),
-                        enabled = canSyncFirebase && !isSyncingFirebase
+                        enabled = canSyncFirebase && !state.isSyncingFirebase
                     ) {
-                        if (isSyncingFirebase) {
+                        if (state.isSyncingFirebase) {
                             CircularProgressIndicator(modifier = Modifier.size(18.dp), color = MaterialTheme.colorScheme.onPrimary, strokeWidth = 2.dp)
                             Spacer(Modifier.width(8.dp))
                             Text("Syncing...")

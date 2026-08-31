@@ -1,16 +1,20 @@
 package io.github.s1ddhants1.swiftbackupprem.ui
 
 import android.content.Context
-import android.os.Environment
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import io.github.s1ddhants1.swiftbackupprem.util.BackupCrypto
+import io.github.s1ddhants1.swiftbackupprem.domain.usecase.DetectCandidateUidsUseCase
+import io.github.s1ddhants1.swiftbackupprem.domain.usecase.MigrateBackupsUseCase
+import io.github.s1ddhants1.swiftbackupprem.domain.usecase.SyncFirebaseUseCase
 import io.github.s1ddhants1.swiftbackupprem.util.BackupMigratorEngine
 import io.github.s1ddhants1.swiftbackupprem.util.PreferencesManager
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.io.File
@@ -42,10 +46,22 @@ data class BackupMigratorUiState(
     val errorMessage: String? = null
 )
 
-class BackupMigratorViewModel : ViewModel() {
+sealed interface BackupMigratorUiEvent {
+    data class FirebaseSyncResult(val totalSynced: Int, val error: String? = null) : BackupMigratorUiEvent
+}
+
+class BackupMigratorViewModel(
+    private val detectCandidateUidsUseCase: DetectCandidateUidsUseCase = DetectCandidateUidsUseCase(),
+    private val syncFirebaseUseCase: SyncFirebaseUseCase = SyncFirebaseUseCase(),
+    private val migrateBackupsUseCase: MigrateBackupsUseCase = MigrateBackupsUseCase(),
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
+) : ViewModel() {
 
     private val _uiState = MutableStateFlow(BackupMigratorUiState())
     val uiState: StateFlow<BackupMigratorUiState> = _uiState.asStateFlow()
+
+    private val _events = Channel<BackupMigratorUiEvent>(Channel.BUFFERED)
+    val events = _events.receiveAsFlow()
 
     fun setSourcePath(path: String) {
         _uiState.update { it.copy(sourcePath = path, errorMessage = null) }
@@ -76,12 +92,27 @@ class BackupMigratorViewModel : ViewModel() {
     }
 
     fun autoDetectSourceUids(context: Context) {
-        viewModelScope.launch(Dispatchers.IO) {
-            val candidateUids = BackupCrypto.resolveCandidateUids(context, javaClass.classLoader ?: ClassLoader.getSystemClassLoader())
-            val mergedUids = BackupCrypto.syncDetectedUids(context, candidateUids)
+        viewModelScope.launch(ioDispatcher) {
+            val uids = detectCandidateUidsUseCase(context, javaClass.classLoader)
             _uiState.update { state ->
-                state.copy(detectedUids = if (mergedUids.isNotEmpty()) mergedUids else candidateUids)
+                state.copy(detectedUids = uids)
             }
+        }
+    }
+
+    fun syncFirebaseAll(context: Context, prefs: PreferencesManager) {
+        if (_uiState.value.isSyncingFirebase) return
+        _uiState.update { it.copy(isSyncingFirebase = true) }
+
+        viewModelScope.launch(ioDispatcher) {
+            val result = syncFirebaseUseCase(context, prefs)
+            _uiState.update { it.copy(isSyncingFirebase = false) }
+            _events.send(
+                BackupMigratorUiEvent.FirebaseSyncResult(
+                    totalSynced = result.totalSynced,
+                    error = result.errors.firstOrNull()
+                )
+            )
         }
     }
 
@@ -134,7 +165,7 @@ class BackupMigratorViewModel : ViewModel() {
 
         val shouldSync = (state.syncToFirebase || prefs?.syncMetadataToFirebase == true) && (prefs?.customFirebaseApp == true) && (prefs.firebaseDatabaseUrl.isNotBlank())
 
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(ioDispatcher) {
             val config = BackupMigratorEngine.MigrationConfig(
                 sourceDir = srcDir,
                 sourceUid = state.sourceUid.trim(),
@@ -157,7 +188,7 @@ class BackupMigratorViewModel : ViewModel() {
                 }
             )
 
-            val result = BackupMigratorEngine.migrate(config, context)
+            val result = migrateBackupsUseCase(config, context)
             _uiState.update {
                 it.copy(
                     isMigrating = false,
