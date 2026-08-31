@@ -108,13 +108,8 @@
     <string name="cd_maintainer_avatar">Maintainer Avatar</string>
     <string name="cd_github_icon">GitHub Icon</string>
     <string name="cd_telegram_icon">Telegram Icon</string>
-    <string name="btn_close">Close</string>
 
     <!-- Backup Migrator & Decryptor Tool -->
-    <string name="screen_migrator">Backup Migrator</string>
-    <string name="menu_migrator">Backup Migrator</string>
-    <string name="migrator_title">Backup Migrator</string>
-    <string name="migrator_summary">Decrypt and migrate backup folders between Firebase accounts or export to open formats</string>
     <string name="migrator_step1_title">1. Source Folder</string>
     <string name="migrator_source_path_label">Source Path</string>
     <string name="migrator_step2_title">2. Decryption Key (Source UID)</string>
@@ -141,12 +136,10 @@
 
     <!-- Backup Migration Hub -->
     <string name="screen_experimental_hub">Backup Migration</string>
-    <string name="menu_experimental_hub">Backup Migration</string>
     <string name="btn_open_migrator">Open Migrator</string>
     <string name="tab_local_migrator">Local Migration</string>
     <string name="tab_cloud_discovery">Cloud Discovery &amp; Injection</string>
 
-    <string name="cloud_tab_header_title">Universal Cloud Discovery</string>
     <string name="cloud_tab_header_desc">Manage Backup Migration Locally or Across Cloud Providers</string>
 
     <string name="pref_drive_oauth_scope_title">Google Drive Full OAuth Scope</string>
@@ -157,18 +150,12 @@
 
     <string name="pref_snapshot_injection_title">Realtime DB Snapshot Injection</string>
     <string name="pref_snapshot_injection_desc">Injects discovered cloud backups into restore lists</string>
-    <string name="pref_snapshot_injection_requires_discovery">Requires Universal Cloud Discovery to be enabled</string>
-
-    <string name="pref_backup_rebuilder_title">Local Metadata Reconstruction</string>
-    <string name="pref_backup_rebuilder_desc">Rebuilds missing metadata from raw slices on storage</string>
+    <string name="pref_snapshot_injection_requires_discovery">Requires Custom Firebase App &amp; Universal Cloud Discovery to be enabled</string>
 
     <string name="pref_sync_metadata_firebase_title">Sync Metadata to Custom Firebase</string>
     <string name="pref_sync_metadata_firebase_desc">Syncs reconstructed metadata to your Firebase instance</string>
     <string name="pref_rtdb_not_configured">Firebase Database URL not configured</string>
     <string name="pref_rtdb_requires_config">Requires Firebase Database URL in setup</string>
-
-    <string name="migrator_option_sync_firebase_title">Sync Metadata to Custom Firebase</string>
-    <string name="migrator_option_sync_firebase_desc">Pushes reconstructed metadata to your Firebase instance</string>
 
     <string name="btn_sync_all_firebase">Sync Now</string>
     <string name="msg_sync_firebase_started">Syncing metadata to Custom Firebase...</string>
