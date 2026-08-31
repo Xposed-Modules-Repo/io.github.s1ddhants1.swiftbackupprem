@@ -231,4 +231,35 @@ class BackupMigratorEngineTest {
         assertFalse(json.getBoolean("isDataEncrypted"))
         assertFalse(json.has("dataEncryptionMethod"))
     }
+
+    @Test
+    fun testSyncDetectedUidsCreationAndAppend() {
+        val testDir = tempFolder.newFolder("sync_target")
+        val targetDirs = listOf(testDir)
+        val uidFile = File(testDir, ".sbp_detected_uids")
+
+        // 1. Initial creation when file does not exist
+        val initialUids = listOf("uid_alpha_12345678901234567890", "uid_beta_12345678901234567890")
+        val result1 = BackupCrypto.syncDetectedUids(null, initialUids, targetDirs)
+        assertTrue(uidFile.exists())
+        assertEquals(listOf("uid_alpha_12345678901234567890", "uid_beta_12345678901234567890"), result1)
+        assertEquals("uid_alpha_12345678901234567890\nuid_beta_12345678901234567890", uidFile.readText(StandardCharsets.UTF_8).trim())
+
+        // 2. Append new UID without duplicate
+        val newUids = listOf("uid_beta_12345678901234567890", "uid_gamma_12345678901234567890")
+        val result2 = BackupCrypto.syncDetectedUids(null, newUids, targetDirs)
+        assertEquals(listOf("uid_alpha_12345678901234567890", "uid_beta_12345678901234567890", "uid_gamma_12345678901234567890"), result2)
+        assertEquals(
+            "uid_alpha_12345678901234567890\nuid_beta_12345678901234567890\nuid_gamma_12345678901234567890",
+            uidFile.readText(StandardCharsets.UTF_8).trim()
+        )
+
+        // 3. Recreate if deleted
+        uidFile.delete()
+        assertFalse(uidFile.exists())
+        val result3 = BackupCrypto.syncDetectedUids(null, listOf("uid_delta_12345678901234567890"), targetDirs)
+        assertTrue(uidFile.exists())
+        assertEquals(listOf("uid_delta_12345678901234567890"), result3)
+        assertEquals("uid_delta_12345678901234567890", uidFile.readText(StandardCharsets.UTF_8).trim())
+    }
 }

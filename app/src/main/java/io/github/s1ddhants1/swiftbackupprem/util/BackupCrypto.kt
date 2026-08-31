@@ -282,4 +282,54 @@ object BackupCrypto {
 
         return uids.toList()
     }
+
+    fun syncDetectedUids(
+        context: Context?,
+        uids: List<String>,
+        targetDirs: List<File>? = null
+    ): List<String> {
+        if (uids.isEmpty()) return emptyList()
+        val allMergedUids = LinkedHashSet<String>()
+        attempt("sync detected UIDs to storage", silent = true) {
+            val exportDirs = targetDirs ?: listOfNotNull(
+                File("/storage/emulated/0/SwiftBackup"),
+                File("/storage/emulated/0/Android/data/org.swiftapps.swiftbackup/files"),
+                context?.getExternalFilesDir(null)
+            )
+            for (dir in exportDirs) {
+                try {
+                    if (!dir.exists()) dir.mkdirs()
+                    if (dir.exists() && dir.isDirectory) {
+                        val file = File(dir, ".sbp_detected_uids")
+                        val existingLines = LinkedHashSet<String>()
+                        val fileExisted = file.exists()
+                        if (fileExisted && file.canRead()) {
+                            file.readLines(StandardCharsets.UTF_8).forEach { line ->
+                                val trimmed = line.trim()
+                                if (trimmed.isNotEmpty()) {
+                                    existingLines.add(trimmed)
+                                    allMergedUids.add(trimmed)
+                                }
+                            }
+                        }
+                        var hasNew = false
+                        for (uid in uids) {
+                            val trimmed = uid.trim()
+                            if (trimmed.isNotEmpty()) {
+                                allMergedUids.add(trimmed)
+                                if (existingLines.add(trimmed)) {
+                                    hasNew = true
+                                }
+                            }
+                        }
+                        if (!fileExisted || hasNew) {
+                            file.writeText(existingLines.joinToString("\n") + "\n", StandardCharsets.UTF_8)
+                        }
+                    }
+                } catch (_: Throwable) {}
+            }
+        }
+        return if (allMergedUids.isNotEmpty()) allMergedUids.toList() else uids
+    }
 }
+

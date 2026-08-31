@@ -77,9 +77,10 @@ class BackupMigratorViewModel : ViewModel() {
 
     fun autoDetectSourceUids(context: Context) {
         viewModelScope.launch(Dispatchers.IO) {
-            val uids = BackupCrypto.resolveCandidateUids(context, javaClass.classLoader ?: ClassLoader.getSystemClassLoader())
+            val candidateUids = BackupCrypto.resolveCandidateUids(context, javaClass.classLoader ?: ClassLoader.getSystemClassLoader())
+            val mergedUids = BackupCrypto.syncDetectedUids(context, candidateUids)
             _uiState.update { state ->
-                state.copy(detectedUids = uids)
+                state.copy(detectedUids = if (mergedUids.isNotEmpty()) mergedUids else candidateUids)
             }
         }
     }
