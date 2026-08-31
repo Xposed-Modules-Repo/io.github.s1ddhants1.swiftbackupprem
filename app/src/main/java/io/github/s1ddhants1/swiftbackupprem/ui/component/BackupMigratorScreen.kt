@@ -654,12 +654,13 @@ private fun CloudDiscoveryTabContent(
         viewModel.events.collect { event ->
             when (event) {
                 is BackupMigratorUiEvent.FirebaseSyncResult -> {
+                    val appContext = context.applicationContext
                     val msg = if (event.totalSynced > 0) {
-                        context.getString(R.string.msg_sync_firebase_success, event.totalSynced)
+                        appContext.getString(R.string.msg_sync_firebase_success, event.totalSynced)
                     } else if (event.error != null) {
                         "Sync failed: " + event.error
                     } else {
-                        context.getString(R.string.msg_sync_firebase_no_new)
+                        appContext.getString(R.string.msg_sync_firebase_no_new)
                     }
                     Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
                 }
