@@ -1,4 +1,4 @@
-package io.github.s1ddhants1.swiftbackupprem.hook.advanced
+package io.github.s1ddhants1.swiftbackupprem.hook.experimental
 
 import org.json.JSONObject
 import org.junit.Assert.*
@@ -68,7 +68,6 @@ class BackupRebuilderHookTest {
         assertTrue(xmlFile.exists())
         assertTrue(xmlFile.length() > 0)
 
-        // Verify XML structure (v1:::<encUid>:::<encMeta>)
         val content = xmlFile.readText(StandardCharsets.UTF_8)
         val parts = content.split(":::").filter { it.isNotBlank() }
         assertEquals(3, parts.size)

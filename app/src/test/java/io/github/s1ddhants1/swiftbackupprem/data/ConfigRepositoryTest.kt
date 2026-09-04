@@ -16,7 +16,7 @@ class ConfigRepositoryTest {
             {
               "enablePremium": true,
               "disableTelemetry": false,
-              "enableDriveDiscovery": true,
+              "enableCloudDiscovery": true,
               "customFirebaseApp": true,
               "googleAppId": "1:888:android:999",
               "googleApiKey": "repo-api-key",
@@ -32,7 +32,7 @@ class ConfigRepositoryTest {
 
         assertTrue(result.enablePremium)
         assertFalse(result.disableTelemetry)
-        assertTrue(result.enableDriveDiscovery)
+        assertTrue(result.enableCloudDiscovery)
         assertTrue(result.customFirebaseApp)
         assertEquals("1:888:android:999", result.googleAppId)
         assertEquals("repo-api-key", result.googleApiKey)
@@ -42,8 +42,7 @@ class ConfigRepositoryTest {
         assertEquals("repo-project", result.projectId)
         assertEquals("repo-client-id", result.clientId)
 
-        // Verify preferences mutated
-        assertTrue(prefs.enableDriveDiscovery)
+        assertTrue(prefs.enableCloudDiscovery)
         assertEquals("repo-project", prefs.projectId)
         assertEquals("repo-client-id", prefs.clientId)
     }
@@ -85,6 +84,73 @@ class ConfigRepositoryTest {
         assertEquals("gs.appspot.com", result.googleStorageBucket)
         assertEquals("gs-project", result.projectId)
         assertEquals("gs-oauth-client", result.clientId)
+    }
+
+    @Test
+    fun parseConfigParsesNewCloudDiscoveryAndSnapshotSettings() {
+        val prefs = PreferencesManager(null)
+        val json = """
+            {
+              "enablePremium": true,
+              "disableTelemetry": true,
+              "customFirebaseApp": true,
+              "enableGoogleDriveScope": true,
+              "enableCloudDiscovery": true,
+              "enableSnapshotInjection": false,
+              "enableBackupRebuilder": true,
+              "syncMetadataToFirebase": true,
+              "googleAppId": "1:123:android:456",
+              "googleApiKey": "api-key",
+              "firebaseDatabaseUrl": "https://test.firebaseio.com",
+              "gcmDefaultSenderId": "123",
+              "googleStorageBucket": "test.appspot.com",
+              "projectId": "test-project",
+              "clientId": "test-client-id"
+            }
+        """.trimIndent()
+
+        val result = repository.parseConfig(json, prefs)
+
+        assertTrue(result.enableGoogleDriveScope)
+        assertTrue(result.enableCloudDiscovery)
+        assertFalse(result.enableSnapshotInjection)
+        assertTrue(result.enableBackupRebuilder)
+        assertTrue(result.syncMetadataToFirebase)
+
+        assertTrue(prefs.enableGoogleDriveScope)
+        assertTrue(prefs.enableCloudDiscovery)
+        assertFalse(prefs.enableSnapshotInjection)
+        assertTrue(prefs.enableBackupRebuilder)
+        assertTrue(prefs.syncMetadataToFirebase)
+    }
+
+    @Test
+    fun parseConfigParsesLegacyMinimalConfigWithoutNewKeys() {
+        val prefs = PreferencesManager(null)
+        val legacyJson = """
+            {
+              "enablePremium": true,
+              "suppressTelemetry": true,
+              "customFirebaseApp": true,
+              "googleAppId": "1:999:android:old",
+              "projectId": "old-project"
+            }
+        """.trimIndent()
+
+        val result = repository.parseConfig(legacyJson, prefs)
+
+        assertTrue(result.enablePremium)
+        assertTrue(result.disableTelemetry)
+        assertTrue(result.customFirebaseApp)
+        assertEquals("1:999:android:old", result.googleAppId)
+        assertEquals("old-project", result.projectId)
+
+        // Verifies new keys smoothly adopt default values without error
+        assertFalse(result.enableGoogleDriveScope)
+        assertFalse(result.enableCloudDiscovery)
+        assertFalse(result.enableSnapshotInjection)
+        assertFalse(result.enableBackupRebuilder)
+        assertFalse(result.syncMetadataToFirebase)
     }
 
     @Test(expected = IllegalArgumentException::class)

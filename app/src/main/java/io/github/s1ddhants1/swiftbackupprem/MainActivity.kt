@@ -17,6 +17,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.filled.DriveFileMove
 import androidx.compose.material.icons.automirrored.filled.Launch
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -32,22 +34,23 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import io.github.s1ddhants1.swiftbackupprem.ui.BackupMigratorViewModel
 import io.github.s1ddhants1.swiftbackupprem.ui.MainUiEvent
 import io.github.s1ddhants1.swiftbackupprem.ui.MainViewModel
 import io.github.s1ddhants1.swiftbackupprem.ui.component.AboutScreen
-import io.github.s1ddhants1.swiftbackupprem.ui.component.AdvancedSettingsCard
+import io.github.s1ddhants1.swiftbackupprem.ui.component.BackupMigratorScreen
 import io.github.s1ddhants1.swiftbackupprem.ui.component.GuidedSetupWizard
 import io.github.s1ddhants1.swiftbackupprem.ui.component.SettingsSwitch
 import io.github.s1ddhants1.swiftbackupprem.ui.theme.Theme
 import io.github.s1ddhants1.swiftbackupprem.util.AppUtils
 import io.github.s1ddhants1.swiftbackupprem.util.PreferencesManager
-import io.github.s1ddhants1.swiftbackupprem.util.attempt
 import kotlinx.coroutines.launch
 
-enum class AppScreen { Settings, About }
+enum class AppScreen { Settings, About, BackupMigrator }
 
 class MainActivity : ComponentActivity() {
     private val viewModel: MainViewModel by viewModels()
+    private val migratorViewModel: BackupMigratorViewModel by viewModels()
 
     @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -72,6 +75,8 @@ class MainActivity : ComponentActivity() {
             LaunchedEffect(Unit) {
                 if (App.isModuleActive()) {
                     viewModel.onFrameworkConnected("Xposed", "Legacy (API 82)")
+                } else {
+                    viewModel.onFrameworkDisconnected()
                 }
             }
 
@@ -117,7 +122,13 @@ class MainActivity : ComponentActivity() {
                                         Icon(painter = painterResource(id = R.drawable.ic_app_bolt), contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
                                     }
                                     Text(
-                                        text = stringResource(if (currentScreen == AppScreen.Settings) R.string.screen_settings else R.string.screen_about),
+                                        text = stringResource(
+                                            when (currentScreen) {
+                                                AppScreen.Settings -> R.string.screen_settings
+                                                AppScreen.About -> R.string.screen_about
+                                                AppScreen.BackupMigrator -> R.string.screen_experimental_hub
+                                            }
+                                        ),
                                         fontWeight = FontWeight.Bold
                                     )
                                 }
@@ -161,9 +172,9 @@ class MainActivity : ComponentActivity() {
                             enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
                             exit = slideOutVertically(targetOffsetY = { it }) + fadeOut()
                         ) {
-                            Surface(tonalElevation = 3.dp, shadowElevation = 4.dp, modifier = Modifier.fillMaxWidth()) {
+                            Surface(tonalElevation = 3.dp, shadowElevation = 8.dp, modifier = Modifier.fillMaxWidth()) {
                                 Row(
-                                    modifier = Modifier.fillMaxWidth().navigationBarsPadding().padding(16.dp),
+                                    modifier = Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 16.dp, vertical = 10.dp),
                                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                                 ) {
                                     ActionButton(
@@ -202,9 +213,14 @@ class MainActivity : ComponentActivity() {
                         AnimatedContent(targetState = currentScreen, label = "ScreenTransition") { screen ->
                             when (screen) {
                                 AppScreen.About -> AboutScreen()
+                                AppScreen.BackupMigrator -> BackupMigratorScreen(viewModel = migratorViewModel, prefs = prefs)
                                 AppScreen.Settings -> SettingsScreenContent(
                                     prefs = prefs,
-                                    onImportGoogleServices = { uri -> viewModel.importGoogleServices(contentResolver, uri, prefs) }
+                                    isFrameworkConnected = state.isFrameworkConnected,
+                                    frameworkName = state.frameworkName,
+                                    frameworkVersion = state.frameworkVersion,
+                                    onImportGoogleServices = { uri -> viewModel.importGoogleServices(contentResolver, uri, prefs) },
+                                    onOpenMigrator = { currentScreen = AppScreen.BackupMigrator }
                                 )
                             }
                         }
@@ -250,7 +266,11 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun SettingsScreenContent(
     prefs: PreferencesManager,
-    onImportGoogleServices: (android.net.Uri) -> Unit
+    isFrameworkConnected: Boolean,
+    frameworkName: String,
+    frameworkVersion: String,
+    onImportGoogleServices: (android.net.Uri) -> Unit,
+    onOpenMigrator: () -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -258,6 +278,12 @@ private fun SettingsScreenContent(
             .verticalScroll(rememberScrollState())
             .padding(vertical = 8.dp)
     ) {
+        FrameworkStatusBanner(
+            isConnected = isFrameworkConnected,
+            frameworkName = frameworkName,
+            frameworkVersion = frameworkVersion
+        )
+
         OutlinedCard(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
             shape = RoundedCornerShape(16.dp),
@@ -288,7 +314,11 @@ private fun SettingsScreenContent(
                 onPrefChange = {
                     prefs.customFirebaseApp = it
                     if (!it) {
-                        prefs.enableDriveDiscovery = false
+                        prefs.enableCloudDiscovery = false
+                        prefs.enableGoogleDriveScope = false
+                        prefs.enableSnapshotInjection = false
+                        prefs.enableBackupRebuilder = false
+                        prefs.syncMetadataToFirebase = false
                     }
                 }
             )
@@ -305,10 +335,102 @@ private fun SettingsScreenContent(
             }
         }
 
-        AdvancedSettingsCard(prefs = prefs)
+        // Backup Migration Card
+        OutlinedCard(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.surface)
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.DriveFileMove,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(28.dp)
+                    )
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(R.string.screen_experimental_hub),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = stringResource(R.string.cloud_tab_header_desc),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
 
-        // Extra spacing so fields near the bottom can comfortably scroll above the keyboard
+                Button(
+                    onClick = onOpenMigrator,
+                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Text(stringResource(R.string.btn_open_migrator), fontWeight = FontWeight.SemiBold)
+                    Spacer(Modifier.width(8.dp))
+                    Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, modifier = Modifier.size(18.dp))
+                }
+            }
+        }
+
         Spacer(modifier = Modifier.height(64.dp))
+    }
+}
+
+@Composable
+private fun FrameworkStatusBanner(
+    isConnected: Boolean,
+    frameworkName: String,
+    frameworkVersion: String
+) {
+    val statusBg = if (isConnected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.tertiaryContainer
+    val statusOnBg = if (isConnected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onTertiaryContainer
+    val badgeColor = if (isConnected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.tertiary
+    val iconTint = if (isConnected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onTertiary
+
+    ElevatedCard(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.elevatedCardColors(containerColor = statusBg)
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Surface(shape = CircleShape, color = badgeColor, modifier = Modifier.size(38.dp)) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = if (isConnected) Icons.Default.CheckCircle else Icons.Default.Warning,
+                        contentDescription = null,
+                        tint = iconTint,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = stringResource(if (isConnected) R.string.framework_active_title else R.string.framework_inactive_title),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = statusOnBg
+                )
+                Text(
+                    text = if (isConnected) stringResource(R.string.framework_active_desc, frameworkName, frameworkVersion)
+                    else stringResource(R.string.framework_inactive_desc),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = statusOnBg.copy(alpha = 0.85f)
+                )
+            }
+        }
     }
 }
 

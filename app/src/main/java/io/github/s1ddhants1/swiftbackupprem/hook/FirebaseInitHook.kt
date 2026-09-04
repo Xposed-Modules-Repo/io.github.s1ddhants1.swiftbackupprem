@@ -51,6 +51,21 @@ object FirebaseInitHook : HookHandler {
         }
     }
 
+    fun applyStaticClientId(targets: ResolvedTargets, prefs: PreferencesManager) {
+        if (prefs.customFirebaseApp && prefs.clientId.isNotBlank()) {
+            targets.clientIdClass?.let { cIdClass ->
+                attempt("set static clientId on $cIdClass") {
+                    for (f in cIdClass.declaredFields) {
+                        if (f.type == String::class.java && Modifier.isStatic(f.modifiers)) {
+                            f.isAccessible = true
+                            f.set(null, prefs.clientId)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     @SuppressLint("DiscouragedApi")
     private fun getResourceString(ctx: Context, name: String, fallback: String): String {
         val resId = ctx.resources.getIdentifier(name, "string", ctx.packageName)

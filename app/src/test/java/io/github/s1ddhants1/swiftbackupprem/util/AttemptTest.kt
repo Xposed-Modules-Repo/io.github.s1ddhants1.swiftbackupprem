@@ -48,7 +48,6 @@ class AttemptTest {
     @Test
     fun loadClassFlexibleHandlesDefpackagePrefix() {
         val cl = this.javaClass.classLoader!!
-        // "defpackage.java.lang.String" stripped -> "java.lang.String"
         val loaded = loadClassFlexible(cl, "defpackage.java.lang.String")
         assertNotNull(loaded)
         assertEquals(String::class.java, loaded)

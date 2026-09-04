@@ -14,8 +14,9 @@ import kotlin.reflect.KProperty
 
 @Stable
 class PreferencesManager(
-    private val prefs: SharedPreferences,
-    private val isDynamic: Boolean = false
+    private val prefs: SharedPreferences? = null,
+    private val isDynamic: Boolean = false,
+    private val backupPrefs: SharedPreferences? = null
 ) {
     private class Preference<T>(
         private val isDynamic: Boolean,
@@ -27,13 +28,8 @@ class PreferencesManager(
         var value by mutableStateOf(getter(key, defaultValue))
             private set
 
-        operator fun getValue(thisRef: Any?, property: KProperty<*>): T {
-            return if (isDynamic) {
-                getter(key, defaultValue)
-            } else {
-                value
-            }
-        }
+        operator fun getValue(thisRef: Any?, property: KProperty<*>): T =
+            if (isDynamic) getter(key, defaultValue) else value
 
         operator fun setValue(thisRef: Any?, property: KProperty<*>, newValue: T) {
             value = newValue
@@ -41,16 +37,22 @@ class PreferencesManager(
         }
     }
 
-    private fun getString(key: String, defaultValue: String) = prefs.getString(key, defaultValue) ?: defaultValue
-    private fun getBoolean(key: String, defaultValue: Boolean) = prefs.getBoolean(key, defaultValue)
+    private fun getString(key: String, defaultValue: String) = prefs?.getString(key, defaultValue) ?: defaultValue
+    private fun getBoolean(key: String, defaultValue: Boolean) = prefs?.getBoolean(key, defaultValue) ?: defaultValue
 
     private fun putString(key: String, value: String?) {
-        prefs.edit(commit = true) { putString(key, value) }
+        attempt("save preference string $key", silent = true) {
+            prefs?.edit(commit = true) { putString(key, value) }
+            backupPrefs?.edit(commit = true) { putString(key, value) }
+        }
         makeWorldReadable()
     }
 
     private fun putBoolean(key: String, value: Boolean) {
-        prefs.edit(commit = true) { putBoolean(key, value) }
+        attempt("save preference boolean $key", silent = true) {
+            prefs?.edit(commit = true) { putBoolean(key, value) }
+            backupPrefs?.edit(commit = true) { putBoolean(key, value) }
+        }
         makeWorldReadable()
     }
 
@@ -74,26 +76,11 @@ class PreferencesManager(
         } catch (_: Throwable) {}
     }
 
-    private fun stringPreference(
-        key: String
-    ) = Preference(
-        isDynamic = isDynamic,
-        key = key,
-        defaultValue = "",
-        getter = ::getString,
-        setter = ::putString
-    )
+    private fun stringPreference(key: String) =
+        Preference(isDynamic, key, "", ::getString, ::putString)
 
-    private fun booleanPreference(
-        key: String,
-        defaultValue: Boolean = false
-    ) = Preference(
-        isDynamic = isDynamic,
-        key = key,
-        defaultValue = defaultValue,
-        getter = ::getBoolean,
-        setter = ::putBoolean
-    )
+    private fun booleanPreference(key: String, defaultValue: Boolean = false) =
+        Preference(isDynamic, key, defaultValue, ::getBoolean, ::putBoolean)
 
     var googleAppId by stringPreference(Consts.googleAppId)
     var googleApiKey by stringPreference(Consts.googleApiKey)
@@ -105,13 +92,21 @@ class PreferencesManager(
 
     var enablePremium by booleanPreference("enable_premium", true)
     var disableTelemetry by booleanPreference("disable_telemetry", true)
-    var enableDriveDiscovery by booleanPreference("enable_drive_discovery", false)
+    var enableCloudDiscovery by booleanPreference("enable_cloud_discovery", false)
+    var enableGoogleDriveScope by booleanPreference("enable_google_drive_scope", false)
+    var enableSnapshotInjection by booleanPreference("enable_snapshot_injection", false)
+    var enableBackupRebuilder by booleanPreference("enable_backup_rebuilder", false)
+    var syncMetadataToFirebase by booleanPreference("sync_metadata_to_firebase", false)
     var customFirebaseApp by booleanPreference("custom_firebase_app")
 
     fun toConfig(): SbpConfig = SbpConfig(
         enablePremium = enablePremium,
         disableTelemetry = disableTelemetry,
-        enableDriveDiscovery = enableDriveDiscovery,
+        enableCloudDiscovery = enableCloudDiscovery,
+        enableGoogleDriveScope = enableGoogleDriveScope,
+        enableSnapshotInjection = enableSnapshotInjection,
+        enableBackupRebuilder = enableBackupRebuilder,
+        syncMetadataToFirebase = syncMetadataToFirebase,
         customFirebaseApp = customFirebaseApp,
         googleAppId = googleAppId,
         googleApiKey = googleApiKey,
@@ -126,7 +121,11 @@ class PreferencesManager(
         enablePremium = config.enablePremium
         disableTelemetry = config.disableTelemetry
         customFirebaseApp = config.customFirebaseApp
-        enableDriveDiscovery = if (config.customFirebaseApp) config.enableDriveDiscovery else false
+        enableCloudDiscovery = if (config.customFirebaseApp) config.enableCloudDiscovery else false
+        enableGoogleDriveScope = if (config.customFirebaseApp) config.enableGoogleDriveScope else false
+        enableSnapshotInjection = if (config.customFirebaseApp && config.enableCloudDiscovery) config.enableSnapshotInjection else false
+        enableBackupRebuilder = if (config.customFirebaseApp) config.enableBackupRebuilder else false
+        syncMetadataToFirebase = if (config.customFirebaseApp) config.syncMetadataToFirebase else false
         googleAppId = config.googleAppId
         googleApiKey = config.googleApiKey
         firebaseDatabaseUrl = config.firebaseDatabaseUrl

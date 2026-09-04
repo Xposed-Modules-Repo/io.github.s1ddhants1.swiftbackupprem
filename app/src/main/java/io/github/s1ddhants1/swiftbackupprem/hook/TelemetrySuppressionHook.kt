@@ -57,7 +57,6 @@ object TelemetrySuppressionHook : HookHandler {
             hookMethodsNull(module, classLoader, name) { it.startsWith("logEvent") || it.startsWith("setUserProperty") }
         }
 
-        // FirebaseCrashlytics hooks
         val crashlyticsNullMethods = nullTargets["com.google.firebase.crashlytics.FirebaseCrashlytics"] ?: emptySet()
         attempt("hook FirebaseCrashlytics (combined)", silent = true) {
             val clazz = classLoader.loadClass("com.google.firebase.crashlytics.FirebaseCrashlytics")
@@ -74,7 +73,6 @@ object TelemetrySuppressionHook : HookHandler {
             }
         }
 
-        // FirebaseAnalytics hooks
         val analyticsNullMethods = nullTargets["com.google.firebase.analytics.FirebaseAnalytics"] ?: emptySet()
         attempt("hook FirebaseAnalytics (combined)", silent = true) {
             val clazz = classLoader.loadClass("com.google.firebase.analytics.FirebaseAnalytics")

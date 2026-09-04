@@ -1,4 +1,4 @@
-package io.github.s1ddhants1.swiftbackupprem.hook.advanced
+package io.github.s1ddhants1.swiftbackupprem.hook.experimental
 
 import android.annotation.SuppressLint
 import android.content.Context
@@ -14,13 +14,11 @@ import io.github.s1ddhants1.swiftbackupprem.util.BackupCrypto
 import io.github.s1ddhants1.swiftbackupprem.util.PreferencesManager
 import io.github.s1ddhants1.swiftbackupprem.util.attempt
 import io.github.s1ddhants1.swiftbackupprem.util.AppUtils
-import io.github.s1ddhants1.swiftbackupprem.util.loadClassFlexible
 import org.json.JSONObject
 import java.io.File
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
-import java.util.concurrent.TimeUnit
 
 /**
  * Hook and engine that automatically detects, decrypts, and reconstructs missing
@@ -58,6 +56,9 @@ object BackupRebuilderHook : HookHandler {
         val encryptionMethodKey: String? = null
     )
 
+    @Volatile
+    private var preferences: PreferencesManager? = null
+
     override fun apply(
         module: HookContext,
         context: Context,
@@ -65,83 +66,15 @@ object BackupRebuilderHook : HookHandler {
         targets: ResolvedTargets,
         prefs: PreferencesManager
     ) {
-        if (!prefs.customFirebaseApp || !prefs.enableDriveDiscovery) {
-            logD("Backup Rebuilder is disabled (requires custom Firebase app and Drive discovery)")
-            return
-        }
-
-        val appBackupClass = targets.appBackupClass ?: attempt("load hk class", silent = true) {
-            loadClassFlexible(classLoader, "defpackage.hk")
-        }
-        logD("Applying BackupRebuilderHook (appBackupClass: ${appBackupClass?.name})")
-
-        if (appBackupClass != null) {
-            hookAppBackupValidity(module, appBackupClass, classLoader, targets)
-            hookAppBackupMetadata(module, appBackupClass, classLoader, targets)
-        }
-
-        rebuildExecutor.schedule({
-            try {
-                rebuildAllLocalBackups(context, classLoader, targets)
-            } catch (t: Throwable) {
-                logE("Startup backup scan error: ${t.message}")
-            }
-        }, 2, TimeUnit.SECONDS)
+        // No-op: Local backups do not perform background metadata reconstruction via Xposed hooks.
+        // Cloud backup metadata reconstruction is bound to Universal Cloud Discovery,
+        // and local migration reconstructs metadata by default within BackupMigratorEngine.
     }
 
-    private fun hookAppBackupValidity(
-        module: HookContext,
-        appBackupClass: Class<*>,
-        classLoader: ClassLoader,
-        targets: ResolvedTargets
-    ) {
-        val isValidMethod = attempt("find hk.E", silent = true) {
-            appBackupClass.declaredMethods.firstOrNull {
-                it.returnType == Boolean::class.javaPrimitiveType && it.parameterTypes.isEmpty() && it.name == "E"
-            }
-        } ?: return
-
-        module.hookTracked(
-            isValidMethod,
-            idPrefix = "backup-rebuilder-validity",
-            deoptimize = true
-        ).intercept { chain ->
-            chain.thisObject?.let { backupInstance ->
-                attempt("auto-rebuild on isValid check", silent = true) {
-                    rebuildFromBackupInstance(backupInstance, classLoader, targets)
-                }
-            }
-            chain.proceed()
-        }
-    }
-
-    private fun hookAppBackupMetadata(
-        module: HookContext,
-        appBackupClass: Class<*>,
-        classLoader: ClassLoader,
-        targets: ResolvedTargets
-    ) {
-        val getMetadataMethod = attempt("find hk.u", silent = true) {
-            appBackupClass.declaredMethods.firstOrNull {
-                it.parameterTypes.isEmpty() && (it.returnType.name.contains("LocalMetadata") || it.name == "u")
-            }
-        } ?: return
-
-        module.hookTracked(
-            getMetadataMethod,
-            idPrefix = "backup-rebuilder-metadata"
-        ).intercept { chain ->
-            val initialResult = chain.proceed()
-            val target = chain.thisObject
-            if (initialResult == null && target != null) {
-                val repaired = attempt("auto-rebuild on getMetadata", silent = true) {
-                    rebuildFromBackupInstance(target, classLoader, targets)
-                }
-                if (repaired == true) return@intercept chain.proceed()
-            }
-            initialResult
-        }
-    }
+    data class AppVersionInfo(
+        val versionCode: Long = 1L,
+        val versionName: String = "1.0"
+    )
 
     fun resolveAppLabel(context: Context?, pkgName: String, backupDir: File? = null): String {
         if (context != null) {
@@ -172,14 +105,53 @@ object BackupRebuilderHook : HookHandler {
         return pkgName
     }
 
+    fun resolveAppVersion(context: Context?, pkgName: String, backupDir: File? = null): AppVersionInfo {
+        if (context != null) {
+            attempt("resolve version for installed $pkgName", silent = true) {
+                val pm = context.packageManager
+                val pInfo = pm.getPackageInfo(pkgName, 0)
+                val code = PackageInfoCompat.getLongVersionCode(pInfo)
+                val name = pInfo.versionName ?: "1.0"
+                if (code > 0L || name.isNotBlank()) {
+                    return AppVersionInfo(if (code > 0L) code else 1L, name.ifBlank { "1.0" })
+                }
+            }
+            if (backupDir != null && backupDir.exists()) {
+                val apkFile = File(backupDir, "$pkgName.app").takeIf { it.exists() }
+                    ?: File(backupDir, "$pkgName.apk").takeIf { it.exists() }
+                if (apkFile != null) {
+                    attempt("resolve version from apk $pkgName", silent = true) {
+                        val pm = context.packageManager
+                        val info = pm.getPackageArchiveInfo(apkFile.absolutePath, 0)
+                        if (info != null) {
+                            val code = PackageInfoCompat.getLongVersionCode(info)
+                            val name = info.versionName ?: "1.0"
+                            return AppVersionInfo(if (code > 0L) code else 1L, name.ifBlank { "1.0" })
+                        }
+                    }
+                }
+            }
+        }
+        return AppVersionInfo(1L, "1.0")
+    }
+
     fun rebuildFromBackupInstance(
         backupInstance: Any,
         classLoader: ClassLoader,
         targets: ResolvedTargets,
         context: Context? = null
     ): Boolean = attempt("rebuildFromBackupInstance", silent = true) {
-        val backupId = backupInstance.javaClass.getDeclaredField("a").apply { isAccessible = true }.get(backupInstance) as? String ?: return false
-        val pkgName = backupInstance.javaClass.getDeclaredField("b").apply { isAccessible = true }.get(backupInstance) as? String ?: return false
+        val stringFields = backupInstance.javaClass.declaredFields
+            .filter { it.type == String::class.java }
+            .onEach { it.isAccessible = true }
+
+        val backupId = (attempt("get backupId by name a", silent = true) {
+            backupInstance.javaClass.getDeclaredField("a").apply { isAccessible = true }.get(backupInstance) as? String
+        } ?: stringFields.getOrNull(0)?.get(backupInstance) as? String) ?: return false
+
+        val pkgName = (attempt("get pkgName by name b", silent = true) {
+            backupInstance.javaClass.getDeclaredField("b").apply { isAccessible = true }.get(backupInstance) as? String
+        } ?: stringFields.getOrNull(1)?.get(backupInstance) as? String) ?: return false
 
         val accountsDir = File(Environment.getExternalStorageDirectory(), "SwiftBackup/accounts")
         if (!accountsDir.exists()) return false
@@ -397,7 +369,6 @@ object BackupRebuilderHook : HookHandler {
         return true
     }
 
-    // Delegating functions to BackupCrypto for backward compatibility & direct test access
     fun deriveConcealKey(uid: String): ByteArray = BackupCrypto.deriveConcealKey(uid)
     fun concealDecrypt(base64Payload: String, key: ByteArray): ByteArray = BackupCrypto.concealDecrypt(base64Payload, key)
     fun concealEncrypt(plaintext: String, key: ByteArray): String = BackupCrypto.concealEncrypt(plaintext, key)

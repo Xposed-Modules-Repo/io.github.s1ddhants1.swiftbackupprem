@@ -121,7 +121,6 @@ class ConfigImportExportTest {
         try {
             viewModel.parseAndApplyConfig(json, prefs)
         } finally {
-            // Verify preferences were not mutated
             assertEquals("original-project", prefs.projectId)
         }
     }

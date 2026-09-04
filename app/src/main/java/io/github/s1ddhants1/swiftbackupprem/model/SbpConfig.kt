@@ -6,7 +6,11 @@ import kotlinx.serialization.Serializable
 data class SbpConfig(
     val enablePremium: Boolean = true,
     val disableTelemetry: Boolean = true,
-    val enableDriveDiscovery: Boolean = false,
+    val enableGoogleDriveScope: Boolean = false,
+    val enableCloudDiscovery: Boolean = false,
+    val enableSnapshotInjection: Boolean = false,
+    val enableBackupRebuilder: Boolean = false,
+    val syncMetadataToFirebase: Boolean = false,
     val customFirebaseApp: Boolean = false,
     val googleAppId: String = "",
     val googleApiKey: String = "",

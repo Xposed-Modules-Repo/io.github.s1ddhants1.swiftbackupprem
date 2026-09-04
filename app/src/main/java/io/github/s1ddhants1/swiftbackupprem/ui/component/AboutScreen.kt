@@ -142,6 +142,18 @@ fun AboutScreen() {
         }
 
         Button(
+            onClick = { uriHandler.openUri("https://t.me/SwiftBackupPrem") },
+            modifier = Modifier.fillMaxWidth().height(50.dp),
+            shape = RoundedCornerShape(12.dp)
+        ) {
+            Icon(painter = painterResource(id = R.drawable.ic_telegram), contentDescription = stringResource(R.string.cd_telegram_icon), modifier = Modifier.size(20.dp))
+            Spacer(Modifier.width(10.dp))
+            Text(stringResource(R.string.btn_telegram_support), fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.width(6.dp))
+            Icon(Icons.AutoMirrored.Filled.Launch, contentDescription = null, modifier = Modifier.size(16.dp))
+        }
+
+        Button(
             onClick = { uriHandler.openUri("https://github.com/s1ddhants1/SwiftBackupPrem") },
             modifier = Modifier.fillMaxWidth().height(50.dp),
             shape = RoundedCornerShape(12.dp)

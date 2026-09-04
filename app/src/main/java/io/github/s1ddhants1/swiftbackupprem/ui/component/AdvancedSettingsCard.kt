@@ -81,9 +81,9 @@ fun AdvancedSettingsCard(
                         } else {
                             stringResource(R.string.pref_enable_drive_discovery_requires_custom_firebase)
                         },
-                        pref = if (isCustomFirebaseEnabled) prefs.enableDriveDiscovery else false,
+                        pref = if (isCustomFirebaseEnabled) prefs.enableCloudDiscovery else false,
                         enabled = isCustomFirebaseEnabled,
-                        onPrefChange = { prefs.enableDriveDiscovery = it }
+                        onPrefChange = { prefs.enableCloudDiscovery = it }
                     )
                 }
             }

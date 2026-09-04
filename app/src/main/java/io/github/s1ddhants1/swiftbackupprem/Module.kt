@@ -9,24 +9,26 @@ import de.robv.android.xposed.XSharedPreferences
 import de.robv.android.xposed.XposedBridge
 import de.robv.android.xposed.callbacks.XC_LoadPackage
 import io.github.s1ddhants1.swiftbackupprem.hook.*
-import io.github.s1ddhants1.swiftbackupprem.hook.advanced.BackupRebuilderHook
-import io.github.s1ddhants1.swiftbackupprem.hook.advanced.CloudDiscoveryHook
-import io.github.s1ddhants1.swiftbackupprem.hook.advanced.GoogleDriveScopeHook
+import io.github.s1ddhants1.swiftbackupprem.hook.experimental.BackupRebuilderHook
+import io.github.s1ddhants1.swiftbackupprem.hook.experimental.CloudDiscoveryHook
+import io.github.s1ddhants1.swiftbackupprem.hook.experimental.GoogleDriveScopeHook
+import io.github.s1ddhants1.swiftbackupprem.util.BackupCrypto
 import io.github.s1ddhants1.swiftbackupprem.util.PreferencesManager
 import io.github.s1ddhants1.swiftbackupprem.util.attempt
 import java.lang.reflect.Constructor
 import java.lang.reflect.Executable
 import java.lang.reflect.Member
+import java.lang.reflect.Method
 
 @Keep
 class Module : IXposedHookLoadPackage, HookContext {
 
     override fun handleLoadPackage(lpparam: XC_LoadPackage.LoadPackageParam) {
         if (lpparam.packageName == BuildConfig.APPLICATION_ID) {
-            attempt("hook App.isModuleActive in own app") {
+            attempt("hook isModuleActive") {
                 val appClass = lpparam.classLoader.loadClass("io.github.s1ddhants1.swiftbackupprem.App")
                 val isModuleActiveMethod = appClass.getDeclaredMethod("isModuleActive")
-                XposedBridge.hookMethod(isModuleActiveMethod, object : XC_MethodHook(PRIORITY_HIGHEST) {
+                XposedBridge.hookMethod(isModuleActiveMethod, object : XC_MethodHook() {
                     override fun beforeHookedMethod(param: MethodHookParam) {
                         param.result = true
                     }
@@ -37,7 +39,9 @@ class Module : IXposedHookLoadPackage, HookContext {
 
         if (lpparam.packageName != Consts.packageName) return
 
-        attempt("load nativelib native library") { System.loadLibrary("nativelib") }
+        attempt("load native library") {
+            System.loadLibrary("nativelib")
+        }
 
         val xPrefs = XSharedPreferences(BuildConfig.APPLICATION_ID)
         try {
@@ -59,7 +63,19 @@ class Module : IXposedHookLoadPackage, HookContext {
                 xPrefs.reload()
                 Log.d(Consts.TAG, "SwiftApp.onCreate beforeHookedMethod: xPrefs keys=${xPrefs.all?.keys}, custom_firebase_app=${xPrefs.getBoolean("custom_firebase_app", false)}")
                 val ctx = param.thisObject as? Context ?: return
-                applyHooks(ctx, cl, lpparam.appInfo?.sourceDir ?: "", xPrefs, param.thisObject)
+                val hookData = applyHooks(ctx, cl, lpparam.appInfo?.sourceDir ?: "", xPrefs, param.thisObject)
+                FirebaseInitHook.applyStaticClientId(hookData.first, hookData.second)
+            }
+
+            override fun afterHookedMethod(param: MethodHookParam) {
+                xPrefs.reload()
+                val ctx = param.thisObject as? Context ?: return
+                val prefs = PreferencesManager(xPrefs, isDynamic = true)
+                var targets = ResolvedTargets()
+                attempt("find obfuscated classes with DexKit for post-create clientId injection") {
+                    targets = TargetClassResolver.resolve(ctx, cl, lpparam.appInfo?.sourceDir ?: "")
+                }
+                FirebaseInitHook.applyStaticClientId(targets, prefs)
             }
         })
     }
@@ -80,6 +96,7 @@ class Module : IXposedHookLoadPackage, HookContext {
 
         ExitProtectionHook.apply(this, ctx, cl, targets, prefs)
         FirebaseInitHook.apply(this, ctx, cl, targets, prefs)
+        FirebaseInitHook.applyStaticClientId(targets, prefs)
         PremiumFeatureHook.apply(this, ctx, cl, targets, prefs)
         if (swiftAppInstance != null) {
             PremiumFeatureHook.hookSwiftAppPremium(this, swiftAppInstance, prefs.enablePremium)
@@ -92,6 +109,27 @@ class Module : IXposedHookLoadPackage, HookContext {
 
         if (swiftAppInstance != null) {
             PremiumFeatureHook.hookSwiftAppPremium(this, swiftAppInstance, prefs.enablePremium)
+        }
+
+        // Export detected UIDs and auth state to shared storage for Manager app / Migrator UI
+        attempt("export detected UIDs and auth state to storage", silent = true) {
+            val uids = BackupCrypto.resolveCandidateUids(ctx, cl, targets)
+            BackupCrypto.syncDetectedUids(ctx, uids)
+
+            val exportDirs = listOf(
+                java.io.File("/storage/emulated/0/SwiftBackup"),
+                ctx.getExternalFilesDir(null),
+                java.io.File("/storage/emulated/0/Android/data/${Consts.packageName}/files")
+            )
+            val sbPrefs = ctx.getSharedPreferences("org.swiftapps.swiftbackup_preferences", Context.MODE_PRIVATE)
+            val authState = sbPrefs.getString("nogms_auth_state", null)
+            if (!authState.isNullOrBlank()) {
+                for (dir in exportDirs) {
+                    if (dir != null && dir.exists() && dir.isDirectory) {
+                        java.io.File(dir, ".sbp_auth_state").writeText(authState)
+                    }
+                }
+            }
         }
 
         return Pair(targets, prefs)

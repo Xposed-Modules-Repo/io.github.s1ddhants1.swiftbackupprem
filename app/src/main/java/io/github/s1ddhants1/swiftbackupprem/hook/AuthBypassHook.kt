@@ -19,36 +19,45 @@ object AuthBypassHook : HookHandler {
     ) {
         Log.d(Consts.TAG, "Applying core AuthBypassHook")
         targets.clientIdClass?.let { cIdClass ->
-            for (m in cIdClass.declaredMethods) {
-                if (m.name == "e" && m.parameterCount == 2) {
-                    attempt("hook legacy FirebaseAuth bypass method ${m.name}") {
-                        module.hookTracked(
-                            m,
-                            idPrefix = "auth-bypass-clientid-${m.name}"
-                        ).intercept { chain ->
-                            val task = chain.getArg(1)
-                            val isSuccessful = attempt("check task isSuccessful", silent = true) {
-                                if (task != null) task.javaClass.getMethod("isSuccessful").invoke(task) as? Boolean ?: true else true
-                            } ?: true
+            val candidateMethods = cIdClass.declaredMethods.filter { m ->
+                m.parameterCount == 2 && (m.name == "e" || m.returnType == Void.TYPE || m.returnType == java.lang.Void.TYPE)
+            }
+            for (m in candidateMethods) {
+                attempt("hook legacy FirebaseAuth bypass method ${m.name}") {
+                    module.hookTracked(
+                        m,
+                        idPrefix = "auth-bypass-clientid-${m.name}"
+                    ).intercept { chain ->
+                        val task = chain.getArg(1)
+                        val isSuccessful = attempt("check task isSuccessful", silent = true) {
+                            if (task != null) task.javaClass.getMethod("isSuccessful").invoke(task) as? Boolean ?: true else true
+                        } ?: true
 
-                            if (!isSuccessful && task != null) {
-                                val callback = chain.getArg(0)
-                                if (callback != null) {
-                                    attempt("set auth success callback") {
-                                        for (nested in cIdClass.declaredClasses) {
-                                            for (inner in nested.declaredClasses) {
+                        if (!isSuccessful && task != null) {
+                            val callback = chain.getArg(0)
+                            if (callback != null) {
+                                attempt("set auth success callback") {
+                                    for (nested in cIdClass.declaredClasses) {
+                                        for (inner in nested.declaredClasses) {
+                                            val successInstance = attempt("get static success instance", silent = true) {
                                                 if (inner.simpleName == "b") {
-                                                    val successInstance = inner.getField("a").get(null)
-                                                    callback.javaClass.getMethod("invoke", Any::class.java).invoke(callback, successInstance)
-                                                    return@intercept null
+                                                    inner.getField("a").get(null)
+                                                } else {
+                                                    inner.declaredFields.firstOrNull { java.lang.reflect.Modifier.isStatic(it.modifiers) && it.type == inner }?.get(null)
+                                                        ?: inner.declaredFields.firstOrNull { it.name == "a" && java.lang.reflect.Modifier.isStatic(it.modifiers) }?.get(null)
                                                 }
+                                            }
+                                            if (successInstance != null) {
+                                                val invokeMethod = callback.javaClass.methods.firstOrNull { it.name == "invoke" && it.parameterCount == 1 }
+                                                invokeMethod?.invoke(callback, successInstance)
+                                                return@intercept null
                                             }
                                         }
                                     }
                                 }
                             }
-                            chain.proceed()
                         }
+                        chain.proceed()
                     }
                 }
             }

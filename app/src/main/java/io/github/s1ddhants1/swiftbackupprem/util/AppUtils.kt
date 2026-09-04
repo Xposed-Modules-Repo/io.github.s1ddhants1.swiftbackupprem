@@ -14,12 +14,6 @@ import kotlinx.coroutines.withTimeoutOrNull
 object AppUtils {
     private val chars = ('A'..'F') + ('0'..'9')
 
-    /**
-     * Validates that [name] looks like a real Android package name.
-     * Must have at least two dot-separated segments, each segment starting with a letter
-     * or underscore and containing only [a-zA-Z0-9_]. Rejects bare names like "folder-base"
-     * that are directory artifacts rather than actual apps.
-     */
     private val PACKAGE_NAME_REGEX = Regex(
         "^[a-zA-Z_][a-zA-Z0-9_]*(\\.[a-zA-Z_][a-zA-Z0-9_]*)+$"
     )
@@ -64,5 +58,19 @@ object AppUtils {
             context.startActivity(intent)
         }
         return false
+    }
+
+    fun sanitizeUrl(urlStr: String): String {
+        return try {
+            val uri = java.net.URI(urlStr)
+            var sanitized = urlStr
+            val userInfo = uri.userInfo
+            if (!userInfo.isNullOrBlank()) {
+                sanitized = sanitized.replace(userInfo, "***:***")
+            }
+            sanitized.replace(Regex("(?i)(auth|token|access_token|key|secret|password|signature)=([^&\\s]+)"), "$1=***")
+        } catch (_: Throwable) {
+            urlStr.replace(Regex("(?i)(auth|token|access_token|key|secret|password|signature)=([^&\\s]+)"), "$1=***")
+        }
     }
 }

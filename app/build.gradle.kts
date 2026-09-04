@@ -13,8 +13,8 @@ android {
         applicationId = "io.github.s1ddhants1.swiftbackupprem"
         minSdk = 27
         targetSdk = 37
-        versionCode = 240
-        versionName = "2.4.0-legacy"
+        versionCode = 301
+        versionName = "3.0.1-legacy"
     }
 
     buildTypes {
@@ -50,13 +50,11 @@ dependencies {
     implementation(libs.dexkit)
     implementation(libs.kotlinx.serialization.json)
 
-    // AndroidX
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.lifecycle.runtime.compose)
 
-    // Compose
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.bundles.compose)
     debugImplementation(libs.androidx.compose.ui.tooling)

@@ -63,7 +63,7 @@ object TargetClassResolver {
             appMetadataXml = loadClassFlexible(cl, "defpackage.cu") ?: loadClassFlexible(cl, "cu")
         }
 
-        if (clientId != null && v != null && homeVm != null && authUser != null && oauthHelper != null && authRequestBuilder != null) {
+        if (clientId != null && v != null && homeVm != null && authUser != null && oauthHelper != null && authRequestBuilder != null && appBackup != null && appMetadataXml != null) {
             Log.d(Consts.TAG, "Resolved Swift Backup hook classes without DexKit scan")
             return ResolvedTargets(clientId, v, cloudGms, homeVm, authUser, anonUser, oauthHelper, authRequestBuilder, appBackup, appMetadataXml)
         }
@@ -150,6 +150,18 @@ object TargetClassResolver {
                     authRequestBuilder = bridge.findSingle(cl, "authRequestBuilderClass", filterInner = false) {
                         matcher { usingStrings("client ID cannot be null or empty") }
                     }
+                }
+
+                if (appBackup == null) {
+                    appBackup = bridge.findSingle(cl, "appBackupClass", filterInner = false) {
+                        matcher { usingStrings("apkBackupDate", "dataBackupDate") }
+                    } ?: loadClassFlexible(cl, "defpackage.hk") ?: loadClassFlexible(cl, "hk")
+                }
+
+                if (appMetadataXml == null) {
+                    appMetadataXml = bridge.findSingle(cl, "appMetadataXmlClass", filterInner = false) {
+                        matcher { usingStrings("dateBackupUpdated", "minSBVersionCodeRequired") }
+                    } ?: loadClassFlexible(cl, "defpackage.cu") ?: loadClassFlexible(cl, "cu")
                 }
             }
         } catch (t: Throwable) {
