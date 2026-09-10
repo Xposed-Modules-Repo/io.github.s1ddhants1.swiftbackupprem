@@ -38,6 +38,7 @@ import io.github.s1ddhants1.swiftbackupprem.ui.BackupMigratorViewModel
 import io.github.s1ddhants1.swiftbackupprem.ui.MainUiEvent
 import io.github.s1ddhants1.swiftbackupprem.ui.MainViewModel
 import io.github.s1ddhants1.swiftbackupprem.ui.component.AboutScreen
+import io.github.s1ddhants1.swiftbackupprem.ui.component.AdvancedSettingsCard
 import io.github.s1ddhants1.swiftbackupprem.ui.component.BackupMigratorScreen
 import io.github.s1ddhants1.swiftbackupprem.ui.component.GuidedSetupWizard
 import io.github.s1ddhants1.swiftbackupprem.ui.component.SettingsSwitch
@@ -334,6 +335,8 @@ private fun SettingsScreenContent(
                 }
             }
         }
+
+        AdvancedSettingsCard(prefs = prefs)
 
         // Backup Migration Card
         OutlinedCard(

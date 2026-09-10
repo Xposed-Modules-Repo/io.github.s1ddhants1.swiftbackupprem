@@ -106,6 +106,7 @@ class Module : IXposedHookLoadPackage, HookContext {
         TelemetrySuppressionHook.apply(this, ctx, cl, targets, prefs)
         BackupRebuilderHook.apply(this, ctx, cl, targets, prefs)
         CloudDiscoveryHook.apply(this, ctx, cl, targets, prefs)
+        LocalCloudUnlockHook.apply(this, ctx, cl, targets, prefs)
 
         if (swiftAppInstance != null) {
             PremiumFeatureHook.hookSwiftAppPremium(this, swiftAppInstance, prefs.enablePremium)
@@ -183,10 +184,11 @@ class Module : IXposedHookLoadPackage, HookContext {
 
                         try {
                             val res = hooker(beforeChain)
-                            if (modifiedArgs != null) {
-                                for (i in modifiedArgs!!.indices) {
+                            val currentModifiedArgs = modifiedArgs
+                            if (currentModifiedArgs != null) {
+                                for (i in currentModifiedArgs.indices) {
                                     if (i < param.args.size) {
-                                        param.args[i] = modifiedArgs!![i]
+                                        param.args[i] = currentModifiedArgs[i]
                                     }
                                 }
                             }

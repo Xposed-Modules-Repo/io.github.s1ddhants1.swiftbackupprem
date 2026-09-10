@@ -669,12 +669,15 @@ private fun CloudDiscoveryTabContent(
         }
     }
 
+    val isCloudCapable = isCustomFirebase || prefs.unlockLocalCloudFeatures
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(scrollState)
             .padding(vertical = 8.dp)
     ) {
+
         OutlinedCard(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
             colors = CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -697,13 +700,13 @@ private fun CloudDiscoveryTabContent(
 
                 SettingsSwitch(
                     label = stringResource(R.string.pref_cloud_discovery_title),
-                    secondaryLabel = if (isCustomFirebase) {
+                    secondaryLabel = if (isCloudCapable) {
                         stringResource(R.string.pref_cloud_discovery_desc)
                     } else {
                         stringResource(R.string.pref_enable_drive_discovery_requires_custom_firebase)
                     },
-                    pref = if (isCustomFirebase) prefs.enableCloudDiscovery else false,
-                    enabled = isCustomFirebase,
+                    pref = if (isCloudCapable) prefs.enableCloudDiscovery else false,
+                    enabled = isCloudCapable,
                     onPrefChange = {
                         prefs.enableCloudDiscovery = it
                         if (!it) {
@@ -714,11 +717,11 @@ private fun CloudDiscoveryTabContent(
 
                 HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
-                val isCloudDiscoveryEnabled = isCustomFirebase && prefs.enableCloudDiscovery
+                val isCloudDiscoveryEnabled = isCloudCapable && prefs.enableCloudDiscovery
                 SettingsSwitch(
                     label = stringResource(R.string.pref_snapshot_injection_title),
                     secondaryLabel = when {
-                        !isCustomFirebase -> stringResource(R.string.pref_enable_drive_discovery_requires_custom_firebase)
+                        !isCloudCapable -> stringResource(R.string.pref_enable_drive_discovery_requires_custom_firebase)
                         !prefs.enableCloudDiscovery -> stringResource(R.string.pref_snapshot_injection_requires_discovery)
                         else -> stringResource(R.string.pref_snapshot_injection_desc)
                     },
