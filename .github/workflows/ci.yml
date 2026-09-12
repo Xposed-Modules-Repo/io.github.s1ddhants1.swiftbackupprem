@@ -6,6 +6,8 @@ on:
       - main
       - master
       - testing
+      - legacy
+      - lspatch
     paths-ignore:
       - '**.md'
       - 'docs/**'
@@ -22,6 +24,8 @@ on:
       - main
       - master
       - testing
+      - legacy
+      - lspatch
     paths-ignore:
       - '**.md'
       - 'docs/**'
