@@ -123,21 +123,46 @@ class PreferencesManagerTest {
     }
 
     @Test
-    fun applyConfigSetsCustomUidAndTiesDiscoveryToLocalCloudFeatures() {
+    fun applyConfigSetsCustomUidAndDecouplesDiscoveryFromLocalCloudFeatures() {
         val prefs = PreferencesManager(null)
         val config = io.github.s1ddhants1.swiftbackupprem.model.SbpConfig(
             customFirebaseApp = false,
             unlockLocalCloudFeatures = true,
+            enableCloudDiscovery = false,
             localAccountCustomUid = "custom_local_user_123"
         )
 
         prefs.applyConfig(config)
 
         assertTrue(prefs.unlockLocalCloudFeatures)
-        assertTrue(prefs.enableCloudDiscovery)
+        assertFalse(prefs.enableCloudDiscovery)
         assertTrue(prefs.enableSnapshotInjection)
         assertEquals("custom_local_user_123", prefs.localAccountCustomUid)
         assertEquals("custom_local_user_123", prefs.toConfig().localAccountCustomUid)
+
+        // When explicitly requested in config:
+        val configWithDiscovery = config.copy(enableCloudDiscovery = true, enableSnapshotInjection = true)
+        prefs.applyConfig(configWithDiscovery)
+        assertTrue(prefs.enableCloudDiscovery)
+        assertTrue(prefs.enableSnapshotInjection)
+    }
+
+    @Test
+    fun snapshotInjectionIsLockedToTrueWhenUnlockLocalCloudFeaturesIsEnabled() {
+        val prefs = PreferencesManager(null)
+        assertFalse(prefs.unlockLocalCloudFeatures)
+        assertFalse(prefs.enableSnapshotInjection)
+
+        prefs.unlockLocalCloudFeatures = true
+        assertTrue(prefs.enableSnapshotInjection)
+
+        // Attempting to set to false while unlockLocalCloudFeatures is enabled still returns true
+        prefs.enableSnapshotInjection = false
+        assertTrue(prefs.enableSnapshotInjection)
+
+        // Toggling unlockLocalCloudFeatures off restores raw preference
+        prefs.unlockLocalCloudFeatures = false
+        assertFalse(prefs.enableSnapshotInjection)
     }
 
     private class FakeSharedPreferences : android.content.SharedPreferences {

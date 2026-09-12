@@ -33,6 +33,7 @@ import io.github.s1ddhants1.swiftbackupprem.ui.BackupMigratorUiEvent
 import io.github.s1ddhants1.swiftbackupprem.ui.BackupMigratorViewModel
 import io.github.s1ddhants1.swiftbackupprem.ui.TargetModeSelection
 import io.github.s1ddhants1.swiftbackupprem.util.AppUtils
+import io.github.s1ddhants1.swiftbackupprem.util.BackupMigratorEngine
 import io.github.s1ddhants1.swiftbackupprem.util.PreferencesManager
 import java.io.File
 
@@ -187,12 +188,30 @@ private fun LocalMigrationTabContent(
             )
         }
 
-        MigratorSectionCard(title = stringResource(R.string.migrator_step2_title)) {
+        MigratorSectionCard(
+            title = stringResource(R.string.migrator_step2_title),
+            action = {
+                IconButton(
+                    onClick = { viewModel.autoDetectSourceUids(context) },
+                    modifier = Modifier.size(24.dp)
+                ) {
+                    Icon(
+                        Icons.Default.Refresh,
+                        contentDescription = stringResource(R.string.cd_detect_uids),
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
+        ) {
             CustomUidInputSection(
                 uid = state.sourceUid,
                 onUidChange = { viewModel.setSourceUid(it) },
                 detectedUids = state.detectedUids,
-                onRefreshUids = { viewModel.autoDetectSourceUids(context) }
+                onRefreshUids = { viewModel.autoDetectSourceUids(context) },
+                anonymousUidValue = BackupMigratorEngine.SWIFT_BACKUP_ANONYMOUS_UID,
+                anonymousChipLabel = stringResource(R.string.migrator_chip_anon_key),
+                customChipLabel = stringResource(R.string.pref_key_mode_custom)
             )
         }
 
@@ -488,16 +507,18 @@ private fun CloudDiscoveryTabContent(
                 HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
                 val isCloudDiscoveryEnabled = isCloudCapable && prefs.enableCloudDiscovery
+                val isSnapshotLocked = prefs.unlockLocalCloudFeatures
                 SettingsSwitch(
                     label = stringResource(R.string.pref_snapshot_injection_title),
                     secondaryLabel = when {
+                        isSnapshotLocked -> stringResource(R.string.pref_snapshot_injection_locked_local_cloud)
                         !isCloudCapable -> stringResource(R.string.pref_enable_drive_discovery_requires_custom_firebase)
                         !prefs.enableCloudDiscovery -> stringResource(R.string.pref_snapshot_injection_requires_discovery)
                         else -> stringResource(R.string.pref_snapshot_injection_desc)
                     },
-                    pref = if (isCloudDiscoveryEnabled) prefs.enableSnapshotInjection else false,
-                    enabled = isCloudDiscoveryEnabled,
-                    onPrefChange = { prefs.enableSnapshotInjection = it }
+                    pref = if (isSnapshotLocked) true else if (isCloudDiscoveryEnabled) prefs.enableSnapshotInjection else false,
+                    enabled = !isSnapshotLocked && isCloudDiscoveryEnabled,
+                    onPrefChange = { if (!isSnapshotLocked) prefs.enableSnapshotInjection = it }
                 )
             }
         }
@@ -652,16 +673,24 @@ private fun MigratorCard(
 private fun MigratorSectionCard(
     title: String,
     modifier: Modifier = Modifier,
+    action: (@Composable () -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit
 ) {
     MigratorCard(modifier = modifier) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.primary
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                action?.invoke()
+            }
             content()
         }
     }

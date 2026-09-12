@@ -6,6 +6,8 @@ on:
       - main
       - master
       - testing
+      - legacy
+      - lspatch
     paths-ignore:
       - '**.md'
       - 'docs/**'
@@ -22,6 +24,8 @@ on:
       - main
       - master
       - testing
+      - legacy
+      - lspatch
     paths-ignore:
       - '**.md'
       - 'docs/**'
@@ -89,7 +93,7 @@ jobs:
         uses: actions/upload-artifact@v4
         if: success()
         with:
-          name: SwiftBackupPrem-release
+          name: SwiftBackupPrem-testing-release
           path: |
             app/build/outputs/apk/release/*.apk
             app/build/outputs/mapping/release/mapping.txt
@@ -99,7 +103,7 @@ jobs:
         uses: actions/upload-artifact@v4
         if: success()
         with:
-          name: SwiftBackupPrem-debug
+          name: SwiftBackupPrem-testing-debug
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
 

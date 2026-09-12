@@ -20,7 +20,6 @@ import io.github.s1ddhants1.swiftbackupprem.util.AppUtils
 import io.github.s1ddhants1.swiftbackupprem.util.ApkRangeManifestParser
 import io.github.s1ddhants1.swiftbackupprem.util.attempt
 import io.github.s1ddhants1.swiftbackupprem.util.loadClassFlexible
-import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.nio.charset.StandardCharsets
@@ -340,14 +339,6 @@ object CloudDiscoveryHook : HookHandler {
         }
     }
 
-    /**
-     * Synthesizes a Firebase DataSnapshot from a DiscoveredCloudApp's metadata.
-     *
-     * The snapshot structure mirrors what Swift Backup's official RTDB would
-     * store: a root node keyed by backupId, containing all CloudMetadata fields.
-     * When passed to the native onDataChange pipeline, Swift Backup's own
-     * AppCloudBackups.fromSnapshot() decodes it identically to a real RTDB entry.
-     */
     object FirebaseSnapshotSynthesizer {
 
         private const val SYNTH_TAG = "$TAG-Synth"
@@ -365,7 +356,6 @@ object CloudDiscoveryHook : HookHandler {
         private fun resolveFirebaseClasses(classLoader: ClassLoader): FirebaseClasses? {
             cachedClasses?.let { return it }
 
-            // 1. DataSnapshot: public SDK class or resolved via AppCloudBackups.Companion.fromSnapshot parameter type
             val dataSnapshot = listOfNotNull(
                 loadClassFlexible(classLoader, "com.google.firebase.database.DataSnapshot"),
                 attempt("resolve DataSnapshot via AppCloudBackups.fromSnapshot", silent = true) {
@@ -379,7 +369,6 @@ object CloudDiscoveryHook : HookHandler {
                 return null
             }
 
-            // 2. IndexedNode: 2nd parameter of DataSnapshot constructor (DataSnapshot(DatabaseReference, IndexedNode))
             val dsCtor = dataSnapshot.constructors.firstOrNull { it.parameterCount == 2 }
             val indexedNode = listOfNotNull(
                 loadClassFlexible(classLoader, "com.google.firebase.database.snapshot.IndexedNode"),
@@ -389,7 +378,6 @@ object CloudDiscoveryHook : HookHandler {
                 return null
             }
 
-            // 3. Node: single parameter of IndexedNode.from(Node) or return type of getNode()
             val node = listOfNotNull(
                 loadClassFlexible(classLoader, "com.google.firebase.database.snapshot.Node"),
                 indexedNode.declaredMethods.firstOrNull { it.parameterCount == 1 && it.returnType == indexedNode }?.parameterTypes?.firstOrNull(),
@@ -400,7 +388,6 @@ object CloudDiscoveryHook : HookHandler {
                 return null
             }
 
-            // 4. NodeUtilities: public SDK class, dynamic reflection, or DEX scanner
             val nodeUtils = listOfNotNull(
                 loadClassFlexible(classLoader, "com.google.firebase.database.snapshot.NodeUtilities"),
                 loadClassFlexible(classLoader, "com.google.firebase.database.snapshot.NodeUtility"),
@@ -599,9 +586,6 @@ object CloudDiscoveryHook : HookHandler {
         internal fun buildMetadataMap(apps: List<DiscoveredCloudApp>): Map<String, Any> =
             apps.associate { it.backupId to buildSingleBackupMap(it) }
 
-        /**
-         * Creates a synthetic DataSnapshot from an arbitrary data structure (Map, Boolean, Int, etc.).
-         */
         internal fun createSnapshotFromMap(
             classLoader: ClassLoader,
             queryRef: Any,
@@ -674,86 +658,8 @@ object CloudDiscoveryHook : HookHandler {
             targets: ResolvedTargets,
             prefs: PreferencesManager
         ): Any? {
-            val data = CloudDatabaseManager.getSnapshotDataForPath(path, context, classLoader, targets, prefs)
+            val data = CloudDatabaseManager.getSnapshotDataForPath(path, context, classLoader, targets, prefs) ?: return null
             return createSnapshotFromMap(classLoader, queryRef, data)
-        }
-
-        /**
-         * Creates a synthetic DataSnapshot that the native onDataChange pipeline
-         * will process identically to a real Firebase RTDB snapshot.
-         */
-        fun createSyntheticSnapshot(
-            classLoader: ClassLoader,
-            queryRef: Any,
-            apps: List<DiscoveredCloudApp>
-        ): Any? = attempt("synthesize DataSnapshot for multi-backup", silent = true) {
-            if (apps.isEmpty()) return@attempt null
-            val metadataMap = buildMetadataMap(apps)
-            createSnapshotFromMap(classLoader, queryRef, metadataMap)
-        }
-
-        fun createSyntheticSnapshot(
-            classLoader: ClassLoader,
-            queryRef: Any,
-            app: DiscoveredCloudApp
-        ): Any? = createSyntheticSnapshot(classLoader, queryRef, listOf(app))
-
-        /**
-         * Merges existing Firebase RTDB DataSnapshot entries with discovered cloud backups.
-         * RTDB data is retained for matching backupIds, while missing backupIds are added.
-         * Returns null if all discovered backups already exist in the snapshot.
-         */
-        fun mergeSnapshotData(
-            classLoader: ClassLoader,
-            queryRef: Any,
-            existingSnapshot: Any,
-            discoveredApps: List<DiscoveredCloudApp>
-        ): Any? = attempt("mergeSnapshotData", silent = true) {
-            if (discoveredApps.isEmpty()) return@attempt null
-
-            val mergedMap = mutableMapOf<String, Any>()
-
-            val childrenIter = attempt("get snapshot children", silent = true) {
-                existingSnapshot.javaClass.getMethod("getChildren").invoke(existingSnapshot) as? Iterable<*>
-            }
-
-            if (childrenIter != null) {
-                for (child in childrenIter) {
-                    if (child == null) continue
-                    val key = child.javaClass.getMethod("getKey").invoke(child) as? String ?: continue
-                    val value = child.javaClass.getMethod("getValue").invoke(child) ?: continue
-                    mergedMap[key] = value
-                }
-            }
-
-            if (mergedMap.isEmpty()) {
-                val existingVal = attempt("get snapshot value map", silent = true) {
-                    existingSnapshot.javaClass.getMethod("getValue").invoke(existingSnapshot)
-                }
-                if (existingVal is Map<*, *>) {
-                    for ((k, v) in existingVal) {
-                        if (k != null && v != null) {
-                            mergedMap[k.toString()] = v
-                        }
-                    }
-                }
-            }
-
-            var addedCount = 0
-            for (app in discoveredApps) {
-                if (!mergedMap.containsKey(app.backupId)) {
-                    mergedMap[app.backupId] = buildSingleBackupMap(app)
-                    addedCount++
-                }
-            }
-
-            if (addedCount == 0) {
-                // All discovered backups already exist in the RTDB snapshot
-                return@attempt null
-            }
-
-            Log.i(SYNTH_TAG, "Merged $addedCount discovered backup(s) into existing RTDB snapshot (${mergedMap.size} total)")
-            createSnapshotFromMap(classLoader, queryRef, mergedMap)
         }
     }
 
@@ -762,6 +668,10 @@ object CloudDiscoveryHook : HookHandler {
 
     @Volatile
     private var preferences: PreferencesManager? = null
+
+    fun setPreferencesForTesting(prefs: PreferencesManager?) {
+        preferences = prefs
+    }
 
     override fun apply(
         module: XposedModule,
@@ -772,28 +682,40 @@ object CloudDiscoveryHook : HookHandler {
     ) {
         appContext = context.applicationContext ?: context
         preferences = prefs
-        val canDiscover = prefs.unlockLocalCloudFeatures || (prefs.customFirebaseApp && prefs.enableCloudDiscovery)
-        if (!canDiscover) {
-            Log.d(TAG, "Cloud Discovery is disabled (requires custom Firebase app or local cloud unlock, and Cloud Discovery enabled)")
+
+        val canUseCloud = prefs.customFirebaseApp || prefs.unlockLocalCloudFeatures
+        val canDiscover = canUseCloud && prefs.enableCloudDiscovery
+        val shouldInjectSnapshots = isSnapshotInjectionEnabled()
+
+        if (!canUseCloud && !canDiscover && !shouldInjectSnapshots) {
+            Log.d(TAG, "Cloud Discovery and Snapshot Injection are disabled")
             return
         }
 
-        Log.d(TAG, "Applying CloudDiscoveryHook (Universal Cloud discovery & full-app cloud metadata indexing)")
         loadDiskCache(context)
-        hookAppCloudBackups(module, context, classLoader, targets)
-        startCloudScanWithRetry(context, classLoader, targets)
+
+        if (canDiscover || shouldInjectSnapshots) {
+            hookAppCloudBackups(module, context, classLoader, targets)
+        }
+
+        if (canDiscover) {
+            Log.d(TAG, "Applying CloudDiscoveryHook (Universal Cloud discovery & full-app cloud metadata indexing)")
+            startCloudScanWithRetry(context, classLoader, targets)
+        }
     }
 
-    private fun isCloudDiscoveryEnabled(): Boolean {
+    fun isCloudDiscoveryEnabled(): Boolean {
         val p = preferences ?: return false
-        if (p.unlockLocalCloudFeatures) return true
-        return p.customFirebaseApp && p.enableCloudDiscovery
+        val canUseCloud = p.customFirebaseApp || p.unlockLocalCloudFeatures
+        return canUseCloud && p.enableCloudDiscovery
     }
 
-    private fun isSnapshotInjectionEnabled(): Boolean {
+    fun isSnapshotInjectionEnabled(): Boolean {
         val p = preferences ?: return false
+        val canUseCloud = p.customFirebaseApp || p.unlockLocalCloudFeatures
+        if (!canUseCloud) return false
         if (p.unlockLocalCloudFeatures) return true
-        return p.customFirebaseApp && p.enableCloudDiscovery && p.enableSnapshotInjection
+        return p.enableCloudDiscovery && p.enableSnapshotInjection
     }
 
     @Volatile
@@ -837,16 +759,24 @@ object CloudDiscoveryHook : HookHandler {
     }
 
     fun ensureScan(context: Context, classLoader: ClassLoader, targets: ResolvedTargets, force: Boolean = false) {
+        if (!isCloudDiscoveryEnabled()) return
         if (appContext == null) {
             appContext = context.applicationContext ?: context
         }
         val isStale = System.currentTimeMillis() - lastScanTime > SCAN_CACHE_TTL_MS
-        if (discoveredBackups.isEmpty() || isStale || force) {
+        val cacheMissing = discoveredBackups.isEmpty() || !getCanonicalCacheFile().exists()
+        if (cacheMissing || isStale || force) {
             startCloudScanWithRetry(context, classLoader, targets)
         }
     }
 
     fun findMatchingBackups(key: String): List<DiscoveredCloudApp> {
+        if (discoveredBackups.isEmpty()) {
+            val ctx = appContext
+            if (ctx != null) {
+                loadDiskCache(ctx)
+            }
+        }
         discoveredBackups[key]?.let { if (it.isNotEmpty()) return it }
         val matchingPackage = discoveredBackups.keys.firstOrNull {
             it == key || it.replace(".", "") == key
@@ -867,15 +797,6 @@ object CloudDiscoveryHook : HookHandler {
 
     private fun createBackupsObject(cloudBackup: Any, classLoader: ClassLoader): Any? =
         createBackupsObject(listOf(cloudBackup), classLoader)
-
-    fun buildAppCloudBackupsObject(apps: List<DiscoveredCloudApp>, classLoader: ClassLoader): Any? =
-        attempt("build AppCloudBackups object", silent = true) {
-            val appCloudBackupsClass = loadClassFlexible(classLoader, "org.swiftapps.swiftbackup.model.app.AppCloudBackups") ?: return null
-            val appBackupsCtor = appCloudBackupsClass.getConstructor(List::class.java)
-            val cloudBackups = apps.mapNotNull { buildAppCloudBackup(it, classLoader) }
-            if (cloudBackups.isEmpty()) return null
-            appBackupsCtor.newInstance(cloudBackups)
-        }
 
     private fun getCanonicalCacheFile(): File {
         val dir = File(Environment.getExternalStorageDirectory(), "SwiftBackup")
@@ -956,30 +877,6 @@ object CloudDiscoveryHook : HookHandler {
                                 discoveredFolders[fid] = DiscoveredCloudFolder.fromJson(fid, fObj)
                             }
                         }
-
-                        val smsCount = tagObj.optInt("smsBackupsCount", -1)
-                        if (smsCount > 0) {
-                            for (s in 0 until smsCount) {
-                                val sId = "sms_backup_$s"
-                                discoveredSms[sId] = DiscoveredCloudSms(sId, "SMS Backup $s", 0L, smsCount, tag, System.currentTimeMillis())
-                            }
-                        }
-                        val callCount = tagObj.optInt("callLogBackupsCount", -1)
-                        if (callCount > 0) {
-                            for (c in 0 until callCount) {
-                                val cId = "call_backup_$c"
-                                discoveredCalls[cId] = DiscoveredCloudCall(cId, "Call Log $c", 0L, callCount, tag, System.currentTimeMillis())
-                            }
-                        }
-                    }
-
-                    val wallsObj = cloudDirObj.optJSONObject("walls")
-                    val wallsCount = wallsObj?.optInt("wallsBackupCount", 0) ?: 0
-                    if (wallsCount > 0) {
-                        for (w in 0 until wallsCount) {
-                            val wId = "wall_backup_$w"
-                            discoveredWalls[wId] = DiscoveredCloudWall(wId, "Wallpaper $w", 0L, System.currentTimeMillis())
-                        }
                     }
                 }
             }
@@ -1021,7 +918,7 @@ object CloudDiscoveryHook : HookHandler {
     }
 
     @SuppressLint("SdCardPath")
-    private fun loadDiskCache(context: Context) {
+    fun loadDiskCache(context: Context) {
         try {
             val candidateFiles = listOfNotNull(
                 getCanonicalCacheFile(),
@@ -1094,11 +991,12 @@ object CloudDiscoveryHook : HookHandler {
                         if (!isSnapshotInjectionEnabled()) return@intercept initialResult
                         if (initialResult != null && !isResultEmpty(initialResult)) return@intercept initialResult
 
-                        ensureScan(context, classLoader, targets)
                         val key = extractSnapshotKey(chain.args.firstOrNull())
-
                         if (key != null) {
                             val matchingList = findMatchingBackups(key)
+                            if (matchingList.isEmpty() && isCloudDiscoveryEnabled()) {
+                                ensureScan(context, classLoader, targets)
+                            }
                             val cloudBackups = matchingList.mapNotNull { buildAppCloudBackup(it, classLoader) }
                             if (cloudBackups.isNotEmpty()) {
                                 Log.i(TAG, "[CloudDiscovery] fromSnapshot injected ${cloudBackups.size} cloud backups for key=$key")
@@ -1114,8 +1012,10 @@ object CloudDiscoveryHook : HookHandler {
                         if (!isSnapshotInjectionEnabled()) return@intercept initialResult
                         val pkgName = chain.args.firstOrNull() as? String
                         if (pkgName != null && (initialResult == null || isResultEmpty(initialResult))) {
-                            ensureScan(context, classLoader, targets)
                             val matchingList = findMatchingBackups(pkgName)
+                            if (matchingList.isEmpty() && isCloudDiscoveryEnabled()) {
+                                ensureScan(context, classLoader, targets)
+                            }
                             val cloudBackups = matchingList.mapNotNull { buildAppCloudBackup(it, classLoader) }
                             if (cloudBackups.isNotEmpty()) {
                                 val backupsObj = createBackupsObject(cloudBackups, classLoader)
@@ -1302,7 +1202,6 @@ object CloudDiscoveryHook : HookHandler {
             return 0
         }
 
-        // Fast Path: Check if cloud_discovered_cache.json is on cloud drive
         for (prov in providerResults) {
             val dbItem = prov.items.firstOrNull { it.name.equals(CACHE_FILE_NAME, ignoreCase = true) }
             if (dbItem != null) {
@@ -1440,13 +1339,11 @@ object CloudDiscoveryHook : HookHandler {
                     ?: partsMap["apk"]?.first
                     ?: partsMap["ext"]?.first
                     ?: partsMap["dat"]?.first
-                    ?: partsMap.values.firstOrNull { it.first.isNotBlank() && it.first != "DEFAULT" }?.first
                     ?: partsMap.values.firstOrNull()?.first
                     ?: deviceTag
 
                 val parts = partsMap.mapValues { it.value.second }
 
-                // Direct Index Record Loading: if an uploaded index record exists, load it directly without reconstruction
                 val metaItem = parts["meta"] ?: parts["json"]
                 if (metaItem != null) {
                     val metaText = scanner.downloadFileText(context, sp, metaItem)
@@ -1462,7 +1359,7 @@ object CloudDiscoveryHook : HookHandler {
                             val obbItem = parts["obb"] ?: parts["splits"]
                             val medItem = parts["med"] ?: parts["media"]
 
-                            val finalTag = parsed.backupTag.takeIf { it.isNotBlank() && it != "DEFAULT" } ?: resolvedTag
+                            val finalTag = parsed.backupTag.takeIf { it.isNotBlank() } ?: resolvedTag
                             val finalApkLink = parsed.apkLink?.takeIf { it.isNotBlank() } ?: apkItem?.id
                             val finalApkSize = if (parsed.apkSize > 0) parsed.apkSize else (apkItem?.size ?: 0L)
                             val finalExtLink = parsed.extraLink?.takeIf { it.isNotBlank() } ?: extItem?.id
@@ -1671,7 +1568,7 @@ object CloudDiscoveryHook : HookHandler {
     }
 
     fun parseBackupIdDate(backupId: String): Long? = attempt("parse backupId timestamp", silent = true) {
-        val prefix = backupId.take(15) // "20260826-001043"
+        val prefix = backupId.take(15)
         if (prefix.length == 15 && prefix[8] == '-') {
             val sdf = java.text.SimpleDateFormat("yyyyMMdd-HHmmss", java.util.Locale.US)
             sdf.timeZone = java.util.TimeZone.getDefault()

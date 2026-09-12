@@ -69,7 +69,12 @@ class PreferencesManager(
     var disableTelemetry by booleanPreference("disable_telemetry", true)
     var enableCloudDiscovery by booleanPreference("enable_cloud_discovery", false)
     var enableGoogleDriveScope by booleanPreference("enable_google_drive_scope", false)
-    var enableSnapshotInjection by booleanPreference("enable_snapshot_injection", false)
+    private var rawEnableSnapshotInjection by booleanPreference("enable_snapshot_injection", false)
+    var enableSnapshotInjection: Boolean
+        get() = if (unlockLocalCloudFeatures) true else rawEnableSnapshotInjection
+        set(value) {
+            rawEnableSnapshotInjection = value
+        }
     var enableBackupRebuilder by booleanPreference("enable_backup_rebuilder", false)
     var syncMetadataToFirebase by booleanPreference("sync_metadata_to_firebase", false)
     var unlockLocalCloudFeatures by booleanPreference("unlock_local_cloud_features", false)
@@ -104,9 +109,9 @@ class PreferencesManager(
         customFirebaseApp = config.customFirebaseApp
         localAccountCustomUid = config.localAccountCustomUid
         val canUseCloud = config.customFirebaseApp || config.unlockLocalCloudFeatures
-        enableCloudDiscovery = if (canUseCloud) (config.unlockLocalCloudFeatures || config.enableCloudDiscovery) else false
+        enableCloudDiscovery = if (canUseCloud) config.enableCloudDiscovery else false
         enableGoogleDriveScope = if (config.customFirebaseApp) config.enableGoogleDriveScope else false
-        enableSnapshotInjection = if (canUseCloud) (config.unlockLocalCloudFeatures || (config.enableCloudDiscovery && config.enableSnapshotInjection)) else false
+        enableSnapshotInjection = if (config.unlockLocalCloudFeatures) true else if (canUseCloud) (config.enableCloudDiscovery && config.enableSnapshotInjection) else false
         enableBackupRebuilder = if (canUseCloud) config.enableBackupRebuilder else false
         syncMetadataToFirebase = if (canUseCloud) config.syncMetadataToFirebase else false
         googleAppId = config.googleAppId

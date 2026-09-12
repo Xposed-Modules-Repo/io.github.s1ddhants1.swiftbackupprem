@@ -17,8 +17,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.ArrowForward
-import androidx.compose.material.icons.automirrored.filled.DriveFileMove
 import androidx.compose.material.icons.automirrored.filled.Launch
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -40,7 +38,7 @@ import io.github.s1ddhants1.swiftbackupprem.ui.MainViewModel
 import io.github.s1ddhants1.swiftbackupprem.ui.component.AboutScreen
 import io.github.s1ddhants1.swiftbackupprem.ui.component.AdvancedSettingsCard
 import io.github.s1ddhants1.swiftbackupprem.ui.component.BackupMigratorScreen
-import io.github.s1ddhants1.swiftbackupprem.ui.component.GuidedSetupWizard
+import io.github.s1ddhants1.swiftbackupprem.ui.component.FirebaseSetupScreen
 import io.github.s1ddhants1.swiftbackupprem.ui.component.SettingsSwitch
 import io.github.s1ddhants1.swiftbackupprem.ui.theme.Theme
 import io.github.s1ddhants1.swiftbackupprem.util.AppUtils
@@ -50,7 +48,7 @@ import io.github.s1ddhants1.swiftbackupprem.util.rememberIsTvDevice
 import io.github.s1ddhants1.swiftbackupprem.util.tvFocusable
 import kotlinx.coroutines.launch
 
-enum class AppScreen { Settings, About, BackupMigrator }
+enum class AppScreen { Settings, About, BackupMigrator, FirebaseSetup }
 
 class MainActivity : ComponentActivity() {
     private val viewModel: MainViewModel by viewModels()
@@ -143,6 +141,7 @@ class MainActivity : ComponentActivity() {
                                                 AppScreen.Settings -> R.string.screen_settings
                                                 AppScreen.About -> R.string.screen_about
                                                 AppScreen.BackupMigrator -> R.string.screen_experimental_hub
+                                                AppScreen.FirebaseSetup -> R.string.screen_firebase_setup
                                             }
                                         ),
                                         fontWeight = FontWeight.Bold
@@ -230,12 +229,16 @@ class MainActivity : ComponentActivity() {
                             when (screen) {
                                 AppScreen.About -> AboutScreen()
                                 AppScreen.BackupMigrator -> BackupMigratorScreen(viewModel = migratorViewModel, prefs = prefs)
+                                AppScreen.FirebaseSetup -> FirebaseSetupScreen(
+                                    prefs = prefs,
+                                    onImportGoogleServices = { uri -> viewModel.importGoogleServices(contentResolver, uri, prefs) }
+                                )
                                 AppScreen.Settings -> SettingsScreenContent(
                                     prefs = prefs,
                                     isFrameworkConnected = state.isFrameworkConnected,
                                     frameworkName = state.frameworkName,
                                     frameworkVersion = state.frameworkVersion,
-                                    onImportGoogleServices = { uri -> viewModel.importGoogleServices(contentResolver, uri, prefs) },
+                                    onOpenFirebaseSetup = { currentScreen = AppScreen.FirebaseSetup },
                                     onOpenMigrator = { currentScreen = AppScreen.BackupMigrator }
                                 )
                             }
@@ -253,7 +256,7 @@ private fun SettingsScreenContent(
     isFrameworkConnected: Boolean,
     frameworkName: String,
     frameworkVersion: String,
-    onImportGoogleServices: (android.net.Uri) -> Unit,
+    onOpenFirebaseSetup: () -> Unit,
     onOpenMigrator: () -> Unit
 ) {
     Column(
@@ -291,9 +294,15 @@ private fun SettingsScreenContent(
 
             HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
+            val firebaseConfigured = prefs.toConfig().isCompleteFirebaseConfig
             SettingsSwitch(
                 label = stringResource(R.string.pref_custom_firebase_title),
-                secondaryLabel = stringResource(R.string.pref_custom_firebase_subtitle),
+                secondaryLabel = if (prefs.customFirebaseApp) {
+                    if (firebaseConfigured) stringResource(R.string.wizard_credentials_complete)
+                    else stringResource(R.string.wizard_credentials_incomplete_desc)
+                } else {
+                    stringResource(R.string.pref_custom_firebase_subtitle)
+                },
                 pref = prefs.customFirebaseApp,
                 onPrefChange = {
                     prefs.customFirebaseApp = it
@@ -304,68 +313,26 @@ private fun SettingsScreenContent(
                         prefs.enableBackupRebuilder = false
                         prefs.syncMetadataToFirebase = false
                     }
-                }
-            )
-
-            AnimatedVisibility(
-                visible = prefs.customFirebaseApp,
-                enter = expandVertically() + fadeIn(),
-                exit = shrinkVertically() + fadeOut()
-            ) {
-                Column(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
-                    HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-                    GuidedSetupWizard(prefs = prefs, onImportGoogleServices = onImportGoogleServices)
-                }
-            }
-        }
-
-        AdvancedSettingsCard(prefs = prefs)
-
-        // Backup Migration Card
-        OutlinedCard(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.surface)
-        ) {
-            Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.DriveFileMove,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(28.dp)
-                    )
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = stringResource(R.string.screen_experimental_hub),
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            text = stringResource(R.string.cloud_tab_header_desc),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                },
+                onLabelClick = onOpenFirebaseSetup,
+                thumbContent = if (prefs.customFirebaseApp) {
+                    {
+                        Icon(
+                            imageVector = if (firebaseConfigured) Icons.Default.Check else Icons.Default.Close,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                            tint = if (firebaseConfigured) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.error
                         )
                     }
-                }
-
-                Button(
-                    onClick = onOpenMigrator,
-                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp).tvFocusable(),
-                    shape = RoundedCornerShape(10.dp)
-                ) {
-                    Text(stringResource(R.string.btn_open_migrator), fontWeight = FontWeight.SemiBold)
-                    Spacer(Modifier.width(8.dp))
-                    Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, modifier = Modifier.size(18.dp))
-                }
-            }
+                } else null
+            )
         }
+
+        AdvancedSettingsCard(
+            prefs = prefs,
+            onOpenMigrator = onOpenMigrator
+        )
 
         Spacer(modifier = Modifier.height(64.dp))
     }
@@ -377,15 +344,18 @@ private fun FrameworkStatusBanner(
     frameworkName: String,
     frameworkVersion: String
 ) {
-    val statusBg = if (isConnected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.tertiaryContainer
-    val statusOnBg = if (isConnected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onTertiaryContainer
-    val badgeColor = if (isConnected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.tertiary
-    val iconTint = if (isConnected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onTertiary
+    val statusBg = if (isConnected) {
+        MaterialTheme.colorScheme.surfaceVariant
+    } else {
+        MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.35f)
+    }
+    val badgeColor = if (isConnected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+    val iconTint = if (isConnected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onError
 
-    ElevatedCard(
+    OutlinedCard(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.elevatedCardColors(containerColor = statusBg)
+        colors = CardDefaults.outlinedCardColors(containerColor = statusBg)
     ) {
         Row(
             modifier = Modifier.padding(16.dp),
@@ -407,13 +377,13 @@ private fun FrameworkStatusBanner(
                     text = stringResource(if (isConnected) R.string.framework_active_title else R.string.framework_inactive_title),
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
-                    color = statusOnBg
+                    color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
                     text = if (isConnected) stringResource(R.string.framework_active_desc, frameworkName, frameworkVersion)
                     else stringResource(R.string.framework_inactive_desc),
                     style = MaterialTheme.typography.bodySmall,
-                    color = statusOnBg.copy(alpha = 0.85f)
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }

@@ -115,4 +115,146 @@ class LocalCloudUnlockHookTest {
         // In this test runner, the stack trace does not contain intro or the dummy watcher class
         assertFalse(LocalCloudUnlockHook.shouldSkipIsAnonymousSpoof("com.dummy.WatcherClass"))
     }
+
+    abstract class DummyResult(val success: Boolean)
+    class DummySuccess : DummyResult(true) {
+        override fun toString(): String = "Success"
+    }
+    class DummyError(val error: Throwable) : DummyResult(false) {
+        override fun toString(): String = "Error(failure)"
+    }
+
+    class DummyDatabaseError(val code: Int, val message: String)
+    class DummyObfuscatedError(val err: DummyDatabaseError) : DummyResult(false) {
+        override fun toString(): String = "Error(error=$err)"
+    }
+    class DummyObfuscatedSuccess : DummyResult(true) {
+        override fun toString(): String = "Success"
+    }
+
+    @Test
+    fun testSuccessClassAndInstanceValidation() {
+        assertTrue(LocalCloudUnlockHook.isSuccessClass(DummySuccess::class.java, DummyResult::class.java))
+        assertFalse(LocalCloudUnlockHook.isSuccessClass(DummyError::class.java, DummyResult::class.java))
+        assertFalse(LocalCloudUnlockHook.isSuccessClass(DummyObfuscatedError::class.java, DummyResult::class.java))
+        assertTrue(LocalCloudUnlockHook.isSuccessClass(DummyObfuscatedSuccess::class.java, DummyResult::class.java))
+
+        val successInst = DummySuccess()
+        val errorInst = DummyError(RuntimeException("test"))
+        val obfErrorInst = DummyObfuscatedError(DummyDatabaseError(-11, "Anonymous user not allowed"))
+        val obfSuccessInst = DummyObfuscatedSuccess()
+
+        assertTrue(LocalCloudUnlockHook.isSuccessInstance(successInst))
+        assertFalse(LocalCloudUnlockHook.isSuccessInstance(errorInst))
+        assertFalse(LocalCloudUnlockHook.isSuccessInstance(obfErrorInst))
+        assertTrue(LocalCloudUnlockHook.isSuccessInstance(obfSuccessInst))
+    }
+
+    @Test
+    fun testPurchaseVerificationLeafPathReturnsBoolean() {
+        val leafPath = "https://swift-backup-31751.firebaseio.com/purchase_verifications/d58b0944415a4889d7f11aa95fbeca50/AQK8OqW4gtD36Xte/DRxZA4zBTU1sr0y0N5jq+IeqAxKIILVpxc="
+        val segments = io.github.s1ddhants1.swiftbackupprem.hook.experimental.CloudDatabaseManager.extractPathSegments(leafPath)
+        val pvIndex = segments.indexOf("purchase_verifications")
+        assertTrue(pvIndex != -1)
+        assertTrue(segments.size >= pvIndex + 3)
+    }
+
+    @Test
+    fun testNaturalPurchaseVerificationJsonResolution() {
+        val root = org.json.JSONObject().apply {
+            put("purchase_verifications", org.json.JSONObject().apply {
+                put("test_uid", org.json.JSONObject().apply {
+                    put("validity", true)
+                    put("encrypted_key", true)
+                })
+            })
+        }
+        val segmentsLeaf = listOf("purchase_verifications", "test_uid", "validity")
+        val nodeLeaf = io.github.s1ddhants1.swiftbackupprem.hook.experimental.CloudDatabaseManager.resolvePathInJson(root, segmentsLeaf)
+        assertEquals(true, nodeLeaf)
+
+        val segmentsParent = listOf("purchase_verifications", "test_uid")
+        val nodeParent = io.github.s1ddhants1.swiftbackupprem.hook.experimental.CloudDatabaseManager.resolvePathInJson(root, segmentsParent)
+        assertTrue(nodeParent is org.json.JSONObject)
+        val convertedParent = io.github.s1ddhants1.swiftbackupprem.hook.experimental.CloudDatabaseManager.jsonToValue(nodeParent)
+        assertTrue(convertedParent is Map<*, *>)
+        assertEquals(true, (convertedParent as Map<*, *>)["validity"])
+    }
+
+    abstract class DummyParentResult {
+        class DummyParentSuccess(val ok: Boolean) : DummyParentResult() {
+            companion object {
+                @JvmField
+                val INSTANCE = DummyParentSuccess(true)
+            }
+            override fun toString(): String = "Success"
+        }
+        class DummyParentError(val t: Throwable) : DummyParentResult() {
+            companion object {
+                @JvmField
+                val ERROR_INSTANCE = DummyParentError(RuntimeException("Anonymous user not allowed"))
+            }
+            override fun toString(): String = "Error"
+        }
+    }
+
+    @Test
+    fun testAuthenticSuccessInstanceDoesNotReturnError() {
+        val inst = LocalCloudUnlockHook.getAuthenticSuccessInstance(DummyParentResult::class.java)
+        assertNotNull(inst)
+        assertTrue(inst is DummyParentResult.DummyParentSuccess)
+        assertFalse(inst is DummyParentResult.DummyParentError)
+    }
+
+    class DummyAnonUser(
+        val email: String = "anonymous@swiftbackup.app",
+        val providerId: String = "anonymous",
+        val isAnonymous: Boolean = true,
+        val uid: String = "d58b0944415a4889d7f11aa95fbeca50"
+    )
+
+    class DummyGoogleUser(
+        val email: String = "user@gmail.com",
+        val providerId: String = "google.com",
+        val isAnonymous: Boolean = false,
+        val uid: String = "real_google_uid_12345"
+    )
+
+    @Test
+    fun testIsAnonymousUserInstanceDetection() {
+        assertTrue(LocalCloudUnlockHook.isAnonymousUserInstance(DummyAnonUser()))
+        assertFalse(LocalCloudUnlockHook.isAnonymousUserInstance(DummyGoogleUser()))
+        assertFalse(LocalCloudUnlockHook.isAnonymousUserInstance(null))
+    }
+
+    @Test
+    fun testShouldEnforceLocalCloudWhenFeatureDisabled() {
+        val prefs = PreferencesManager(null)
+        prefs.unlockLocalCloudFeatures = false
+        prefs.customFirebaseApp = false
+        assertFalse(LocalCloudUnlockHook.shouldEnforceLocalCloud(prefs, null))
+
+        prefs.customFirebaseApp = true
+        assertFalse(LocalCloudUnlockHook.shouldEnforceLocalCloud(prefs, null))
+    }
+
+    @Test
+    fun testShouldEnforceLocalCloudWhenCustomFirebaseDisabled() {
+        val prefs = PreferencesManager(null)
+        prefs.unlockLocalCloudFeatures = true
+        prefs.customFirebaseApp = false
+        // When custom Firebase is not enabled, local cloud features always enforce
+        assertTrue(LocalCloudUnlockHook.shouldEnforceLocalCloud(prefs, null))
+    }
+
+    @Test
+    fun testShouldEnforceLocalCloudWhenCustomFirebaseEnabledWithoutSignIn() {
+        val prefs = PreferencesManager(null)
+        prefs.unlockLocalCloudFeatures = true
+        prefs.customFirebaseApp = true
+        LocalCloudUnlockHook.clearAuthCache()
+        // In test environment without FirebaseAuth or Google user signed in, local cloud enforces
+        assertTrue(LocalCloudUnlockHook.shouldEnforceLocalCloud(prefs, null))
+    }
 }
+

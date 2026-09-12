@@ -176,12 +176,14 @@ object TargetClassResolver {
                 }
 
                 if (fireSynchronizerSuccess == null && fireSynchronizer != null) {
-                    val readMethod = fireSynchronizer?.declaredMethods?.firstOrNull {
+                    val readMethod = fireSynchronizer.declaredMethods.firstOrNull {
                         it.parameterCount == 2 && it.parameterTypes[1] == Boolean::class.javaPrimitiveType
                     }
                     val resultBaseClass = readMethod?.returnType
                     if (resultBaseClass != null) {
-                        fireSynchronizerSuccess = bridge.findSingle(cl, "fireSynchronizerSuccessClass", filterInner = false) {
+                        fireSynchronizerSuccess = bridge.findSingle(cl, "fireSynchronizerSuccessClass", filterInner = false, extraFilter = { cd ->
+                            !cd.name.contains("we3") && !cd.name.lowercase(java.util.Locale.ROOT).contains("error")
+                        }) {
                             matcher {
                                 superClass(resultBaseClass.name)
                             }

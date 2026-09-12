@@ -339,6 +339,56 @@ class CloudDiscoveryHookTest {
             assertEquals("xh8", resolvedClass)
         }
     }
+
+    @Test
+    fun testSnapshotInjectionEnabledWithLocalCloudWithoutFullCloudCrawl() {
+        val prefs = io.github.s1ddhants1.swiftbackupprem.util.PreferencesManager(null)
+        prefs.unlockLocalCloudFeatures = true
+        prefs.enableCloudDiscovery = false
+        CloudDiscoveryHook.setPreferencesForTesting(prefs)
+
+        // isSnapshotInjectionEnabled recognizes unlockLocalCloudFeatures without requiring a full cloud network crawl
+        assertTrue(CloudDiscoveryHook.isSnapshotInjectionEnabled())
+        assertFalse(CloudDiscoveryHook.isCloudDiscoveryEnabled())
+    }
+
+    @Test
+    fun testUniversalCloudDiscoveryEnabledWithLocalCloudFeatures() {
+        val prefs = io.github.s1ddhants1.swiftbackupprem.util.PreferencesManager(null)
+        prefs.unlockLocalCloudFeatures = true
+        prefs.enableCloudDiscovery = true
+        CloudDiscoveryHook.setPreferencesForTesting(prefs)
+
+        // When universal cloud discovery is enabled, web crawling can be triggered for cache recovery
+        assertTrue(CloudDiscoveryHook.isSnapshotInjectionEnabled())
+        assertTrue(CloudDiscoveryHook.isCloudDiscoveryEnabled())
+    }
+
+    @Test
+    fun testUniversalCloudDiscoveryWithCustomFirebase() {
+        val prefs = io.github.s1ddhants1.swiftbackupprem.util.PreferencesManager(null)
+        prefs.unlockLocalCloudFeatures = false
+        prefs.customFirebaseApp = true
+        prefs.enableCloudDiscovery = true
+        prefs.enableSnapshotInjection = true
+        CloudDiscoveryHook.setPreferencesForTesting(prefs)
+
+        assertTrue(CloudDiscoveryHook.isSnapshotInjectionEnabled())
+        assertTrue(CloudDiscoveryHook.isCloudDiscoveryEnabled())
+    }
+
+    @Test
+    fun testHooksDisabledWhenNoCloudFeaturesEnabled() {
+        val prefs = io.github.s1ddhants1.swiftbackupprem.util.PreferencesManager(null)
+        prefs.unlockLocalCloudFeatures = false
+        prefs.customFirebaseApp = false
+        prefs.enableCloudDiscovery = true
+        prefs.enableSnapshotInjection = true
+        CloudDiscoveryHook.setPreferencesForTesting(prefs)
+
+        assertFalse(CloudDiscoveryHook.isSnapshotInjectionEnabled())
+        assertFalse(CloudDiscoveryHook.isCloudDiscoveryEnabled())
+    }
 }
 
 

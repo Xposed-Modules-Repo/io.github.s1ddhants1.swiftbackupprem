@@ -5,6 +5,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.filled.DriveFileMove
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Science
@@ -23,7 +25,8 @@ import io.github.s1ddhants1.swiftbackupprem.util.tvFocusable
 fun AdvancedSettingsCard(
     prefs: PreferencesManager,
     modifier: Modifier = Modifier,
-    isFrameworkConnected: Boolean = true
+    isFrameworkConnected: Boolean = true,
+    onOpenMigrator: () -> Unit = {}
 ) {
     var showAdvancedFeatures by remember { mutableStateOf(false) }
 
@@ -82,7 +85,6 @@ fun AdvancedSettingsCard(
                         onPrefChange = {
                             prefs.unlockLocalCloudFeatures = it
                             if (it) {
-                                prefs.enableCloudDiscovery = true
                                 prefs.enableSnapshotInjection = true
                             }
                         }
@@ -96,15 +98,64 @@ fun AdvancedSettingsCard(
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 6.dp)
+                                .padding(horizontal = 16.dp, vertical = 4.dp)
                         ) {
                             CustomUidInputSection(
                                 uid = prefs.localAccountCustomUid,
                                 onUidChange = { prefs.localAccountCustomUid = it.trim() },
                                 label = stringResource(R.string.pref_local_account_custom_uid_title),
-                                helperText = stringResource(R.string.pref_local_account_custom_uid_desc),
+                                keyModeTitle = stringResource(R.string.pref_encryption_key_mode_title),
+                                anonymousUidValue = "",
+                                anonymousChipLabel = stringResource(R.string.pref_key_mode_anonymous),
+                                customChipLabel = stringResource(R.string.pref_key_mode_custom),
                                 prefs = prefs
                             )
+                        }
+                    }
+
+                    HorizontalDivider(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                    )
+
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.DriveFileMove,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = stringResource(R.string.screen_experimental_hub),
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = stringResource(R.string.cloud_tab_header_desc),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+
+                        Button(
+                            onClick = onOpenMigrator,
+                            modifier = Modifier.fillMaxWidth().tvFocusable(),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Text(stringResource(R.string.btn_open_migrator), fontWeight = FontWeight.SemiBold)
+                            Spacer(Modifier.width(8.dp))
+                            Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, modifier = Modifier.size(18.dp))
                         }
                     }
                 }

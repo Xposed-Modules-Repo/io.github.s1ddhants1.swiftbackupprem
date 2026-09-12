@@ -1,14 +1,15 @@
 package io.github.s1ddhants1.swiftbackupprem.ui.component
 
+import androidx.compose.animation.*
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.ContentPaste
-import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -41,8 +42,11 @@ fun CustomUidInputSection(
     helperText: String? = null,
     detectedUids: List<String>? = null,
     onRefreshUids: (() -> Unit)? = null,
-    showAnonymousChip: Boolean = true,
     prefs: PreferencesManager? = null,
+    keyModeTitle: String? = null,
+    anonymousUidValue: String = BackupMigratorEngine.SWIFT_BACKUP_ANONYMOUS_UID,
+    anonymousChipLabel: String = stringResource(R.string.migrator_chip_anon_key),
+    customChipLabel: String = stringResource(R.string.pref_key_mode_custom),
     detectCandidateUidsUseCase: DetectCandidateUidsUseCase = remember { DetectCandidateUidsUseCase() }
 ) {
     val context = LocalContext.current
@@ -74,154 +78,233 @@ fun CustomUidInputSection(
     val effectiveDetectedUids = detectedUids ?: internalDetectedUids
     val effectiveOnRefresh: () -> Unit = onRefreshUids ?: { refreshInternal() }
 
+    val nonAnonymousDetectedUids = remember(effectiveDetectedUids, anonymousUidValue) {
+        effectiveDetectedUids.filter {
+            it.isNotBlank() && it != BackupMigratorEngine.SWIFT_BACKUP_ANONYMOUS_UID && it != anonymousUidValue
+        }
+    }
+
+    // Synchronize initial anonymous value if UID is empty and non-empty anonymous value is required
+    LaunchedEffect(Unit) {
+        if (uid.isBlank() && anonymousUidValue.isNotBlank()) {
+            onUidChange(anonymousUidValue)
+        }
+    }
+
+    var isManualCustomMode by remember {
+        mutableStateOf(
+            uid.isNotBlank() &&
+            uid != anonymousUidValue &&
+            uid !in nonAnonymousDetectedUids
+        )
+    }
+
+    val isAnonSelected = !isManualCustomMode && (
+        uid == anonymousUidValue || (uid.isBlank() && anonymousUidValue.isBlank())
+    )
+
+    val isCustomKeySelected = isManualCustomMode || (
+        uid.isNotBlank() &&
+        uid != anonymousUidValue &&
+        uid !in nonAnonymousDetectedUids
+    )
+
     Column(
         modifier = modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+        verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        OutlinedTextField(
-            value = uid,
-            onValueChange = onUidChange,
-            label = { Text(label) },
-            placeholder = { Text(placeholder) },
-            trailingIcon = {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(end = 4.dp)
-                ) {
-                    if (uid.isNotBlank()) {
-                        IconButton(
-                            onClick = { onUidChange("") },
-                            modifier = Modifier.size(36.dp)
-                        ) {
-                            Icon(
-                                Icons.Default.Clear,
-                                contentDescription = stringResource(R.string.cd_clear_input),
-                                modifier = Modifier.size(18.dp)
-                            )
+        if (!keyModeTitle.isNullOrBlank()) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = keyModeTitle,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                IconButton(
+                    onClick = {
+                        if (!isDetectingInternal) {
+                            effectiveOnRefresh()
                         }
-                    }
-                    IconButton(
-                        onClick = {
-                            clipboardManager.getText()?.text?.let { onUidChange(it.trim()) }
-                        },
-                        modifier = Modifier.size(36.dp)
-                    ) {
+                    },
+                    modifier = Modifier.size(24.dp)
+                ) {
+                    if (isDetectingInternal) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(14.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    } else {
                         Icon(
-                            Icons.Default.ContentPaste,
-                            contentDescription = stringResource(R.string.cd_paste_uid),
-                            modifier = Modifier.size(18.dp)
+                            Icons.Default.Refresh,
+                            contentDescription = stringResource(R.string.cd_detect_uids),
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(16.dp)
                         )
                     }
                 }
-            },
-            keyboardOptions = KeyboardOptions(
-                capitalization = KeyboardCapitalization.None,
-                autoCorrectEnabled = false,
-                keyboardType = KeyboardType.Ascii,
-                imeAction = ImeAction.Done
-            ),
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(12.dp),
-            singleLine = true
-        )
-
-        if (!helperText.isNullOrBlank()) {
-            Text(
-                text = helperText,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(start = 4.dp, top = 2.dp, bottom = 2.dp)
-            )
-        }
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text(
-                text = stringResource(R.string.migrator_detected_uids),
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            IconButton(
-                onClick = {
-                    if (!isDetectingInternal) {
-                        effectiveOnRefresh()
-                    }
-                },
-                modifier = Modifier.size(24.dp)
-            ) {
-                if (isDetectingInternal) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(14.dp),
-                        strokeWidth = 2.dp,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                } else {
-                    Icon(
-                        Icons.Default.Refresh,
-                        contentDescription = stringResource(R.string.cd_detect_uids),
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(16.dp)
-                    )
-                }
             }
         }
-
-        val chipColors = FilterChipDefaults.filterChipColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
-            labelColor = MaterialTheme.colorScheme.onSurface,
-            iconColor = MaterialTheme.colorScheme.primary,
-            selectedContainerColor = MaterialTheme.colorScheme.primary,
-            selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
-            selectedLeadingIconColor = MaterialTheme.colorScheme.onPrimary
-        )
 
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                .horizontalScroll(rememberScrollState())
+                .padding(vertical = 2.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            if (showAnonymousChip) {
-                val isAnonSelected = uid == BackupMigratorEngine.SWIFT_BACKUP_ANONYMOUS_UID
-                FilterChip(
-                    selected = isAnonSelected,
-                    onClick = {
-                        onUidChange(if (isAnonSelected) "" else BackupMigratorEngine.SWIFT_BACKUP_ANONYMOUS_UID)
-                    },
-                    label = {
-                        Text(
-                            text = stringResource(R.string.migrator_chip_anon_key),
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = if (isAnonSelected) FontWeight.Bold else FontWeight.Normal
+            FilterChip(
+                selected = isAnonSelected,
+                onClick = {
+                    isManualCustomMode = false
+                    onUidChange(anonymousUidValue)
+                },
+                label = {
+                    Text(
+                        text = anonymousChipLabel,
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = if (isAnonSelected) FontWeight.SemiBold else FontWeight.Normal
+                    )
+                },
+                leadingIcon = if (isAnonSelected) {
+                    {
+                        Icon(
+                            Icons.Default.Check,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
                         )
-                    },
-                    leadingIcon = { Icon(Icons.Default.Key, contentDescription = null, modifier = Modifier.size(16.dp)) },
-                    shape = RoundedCornerShape(8.dp),
-                    colors = chipColors
-                )
-            }
+                    }
+                } else null,
+                shape = RoundedCornerShape(8.dp)
+            )
 
-            effectiveDetectedUids.filter { it != BackupMigratorEngine.SWIFT_BACKUP_ANONYMOUS_UID }.forEach { itemUid ->
-                val isUidSelected = uid == itemUid
+            nonAnonymousDetectedUids.forEach { itemUid ->
+                val isSelected = !isManualCustomMode && uid == itemUid
                 FilterChip(
-                    selected = isUidSelected,
+                    selected = isSelected,
                     onClick = {
-                        onUidChange(if (isUidSelected) "" else itemUid)
+                        isManualCustomMode = false
+                        onUidChange(itemUid)
                     },
                     label = {
                         Text(
                             text = if (itemUid.length > 14) itemUid.take(12) + "..." else itemUid,
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = if (isUidSelected) FontWeight.Bold else FontWeight.Normal
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal
                         )
                     },
-                    leadingIcon = { Icon(Icons.Default.Key, contentDescription = null, modifier = Modifier.size(16.dp)) },
-                    shape = RoundedCornerShape(8.dp),
-                    colors = chipColors
+                    leadingIcon = if (isSelected) {
+                        {
+                            Icon(
+                                Icons.Default.Check,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    } else null,
+                    shape = RoundedCornerShape(8.dp)
                 )
+            }
+
+            FilterChip(
+                selected = isCustomKeySelected,
+                onClick = {
+                    isManualCustomMode = true
+                    if (uid == anonymousUidValue || uid in nonAnonymousDetectedUids) {
+                        onUidChange("")
+                    }
+                },
+                label = {
+                    Text(
+                        text = customChipLabel,
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = if (isCustomKeySelected) FontWeight.SemiBold else FontWeight.Normal
+                    )
+                },
+                leadingIcon = if (isCustomKeySelected) {
+                    {
+                        Icon(
+                            Icons.Default.Check,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                } else null,
+                shape = RoundedCornerShape(8.dp)
+            )
+        }
+
+        AnimatedVisibility(
+            visible = isCustomKeySelected,
+            enter = expandVertically() + fadeIn(),
+            exit = shrinkVertically() + fadeOut()
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 6.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedTextField(
+                    value = if (uid == anonymousUidValue) "" else uid,
+                    onValueChange = onUidChange,
+                    label = { Text(label) },
+                    placeholder = { Text(placeholder) },
+                    trailingIcon = {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(end = 4.dp)
+                        ) {
+                            if (uid.isNotBlank() && uid != anonymousUidValue) {
+                                IconButton(
+                                    onClick = { onUidChange("") },
+                                    modifier = Modifier.size(36.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.Clear,
+                                        contentDescription = stringResource(R.string.cd_clear_input),
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
+                            IconButton(
+                                onClick = {
+                                    clipboardManager.getText()?.text?.let { onUidChange(it.trim()) }
+                                },
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.ContentPaste,
+                                    contentDescription = stringResource(R.string.cd_paste_uid),
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+                    },
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.None,
+                        autoCorrectEnabled = false,
+                        keyboardType = KeyboardType.Ascii,
+                        imeAction = ImeAction.Done
+                    ),
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    singleLine = true
+                )
+
+                if (!helperText.isNullOrBlank()) {
+                    Text(
+                        text = helperText,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(start = 4.dp, top = 2.dp, bottom = 2.dp)
+                    )
+                }
             }
         }
     }

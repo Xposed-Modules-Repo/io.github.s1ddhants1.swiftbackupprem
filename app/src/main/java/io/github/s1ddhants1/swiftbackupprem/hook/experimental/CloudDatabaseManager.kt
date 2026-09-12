@@ -9,10 +9,8 @@ import androidx.annotation.Keep
 import io.github.s1ddhants1.swiftbackupprem.Consts
 import io.github.s1ddhants1.swiftbackupprem.hook.ResolvedTargets
 import io.github.s1ddhants1.swiftbackupprem.hook.experimental.cloudproviders.CloudScannerRegistry
-import io.github.s1ddhants1.swiftbackupprem.util.AppUtils
 import io.github.s1ddhants1.swiftbackupprem.util.BackupCrypto
 import io.github.s1ddhants1.swiftbackupprem.util.BackupMigratorEngine
-import io.github.s1ddhants1.swiftbackupprem.util.FirebaseSyncEngine
 import io.github.s1ddhants1.swiftbackupprem.util.PreferencesManager
 import io.github.s1ddhants1.swiftbackupprem.util.attempt
 import org.json.JSONArray
@@ -23,11 +21,6 @@ import java.nio.charset.StandardCharsets
 import java.util.concurrent.Executors
 import java.util.regex.Pattern
 
-/**
- * Manages the spoofed Firebase Realtime Database JSON on the cloud drive and local cache.
- * Provides bidirectional synchronization between Swift Backup's RTDB operations
- * and the database JSON document stored in the cloud drive.
- */
 @Keep
 object CloudDatabaseManager {
 
@@ -144,12 +137,20 @@ object CloudDatabaseManager {
 
         val existing = currentDbJson ?: loadLocalDb(context) ?: syncDbFromCloud(context)
         if (existing != null) {
-            if (reconcileAppSettings(existing, sp)) {
+            var changed = reconcileAppSettings(existing, sp)
+            if (reconcileDatabaseNodes(existing, prefs)) {
+                changed = true
+            }
+            if (changed) {
                 saveLocalDb(existing)
                 syncDbToCloud(context)
             }
             currentDbJson = existing
             return existing
+        }
+
+        if (prefs.enableCloudDiscovery) {
+            CloudDiscoveryHook.ensureScan(context, classLoader, targets)
         }
 
         val constructed = buildDatabaseFromDiscovered(context, classLoader, targets, prefs)
@@ -159,10 +160,35 @@ object CloudDatabaseManager {
         return constructed
     }
 
+    fun reconcileDatabaseNodes(db: JSONObject, prefs: PreferencesManager): Boolean {
+        var changed = false
+        var pv = db.optJSONObject("purchase_verifications")
+        if (pv == null) {
+            pv = JSONObject()
+            db.put("purchase_verifications", pv)
+            changed = true
+        }
+        val effectiveUid = prefs.localAccountCustomUid.trim().takeIf { it.isNotBlank() }
+            ?: getPrimaryUid()
+            ?: BackupMigratorEngine.SWIFT_BACKUP_ANONYMOUS_UID
+        val userPv = pv.optJSONObject(effectiveUid)
+        if (userPv == null) {
+            pv.put(effectiveUid, JSONObject().apply {
+                put("validity", true)
+                put("AQK8OqW4gtD36Xte/DRxZA4zBTU1sr0y0N5jq+IeqAxKIILVpxc=", true)
+            })
+            changed = true
+        } else if (!userPv.optBoolean("validity", false)) {
+            userPv.put("validity", true)
+            userPv.put("AQK8OqW4gtD36Xte/DRxZA4zBTU1sr0y0N5jq+IeqAxKIILVpxc=", true)
+            changed = true
+        }
+        return changed
+    }
+
     fun buildAppSettings(sp: SharedPreferences, connectedCloud: String? = null): JSONObject {
         val appSettings = JSONObject()
 
-        // --- Backup strategy (MultipleBackupStrategy) ---
         val stratStr = sp.getString("apps_multiple_backups_strategy", null)
         if (!stratStr.isNullOrBlank()) {
             val parsedStrat = attempt("parse apps_multiple_backups_strategy", silent = true) {
@@ -177,13 +203,11 @@ object CloudDatabaseManager {
             appSettings.put("appsMultipleBackupStrategy", JSONObject().put("typeInt", 0))
         }
 
-        // --- Cloud connection ---
         val cloud = connectedCloud ?: sp.getString("connected_cloud_type", null)
         if (!cloud.isNullOrBlank()) {
             appSettings.put("cloudConnection", cloud)
         }
 
-        // --- UI preferences ---
         val themeMode = sp.getInt("app_theme_mode", 3)
         appSettings.put("themeModeId", themeMode)
 
@@ -211,7 +235,6 @@ object CloudDatabaseManager {
             appSettings.put("pinnedQuickActions", it)
         }
 
-        // --- Restore config ---
         if (sp.contains("restore_permissions_mode")) {
             val mode = sp.getInt("restore_permissions_mode", 0)
             if (mode > 0) appSettings.put("restorePermissionsMode", mode)
@@ -232,7 +255,6 @@ object CloudDatabaseManager {
             if (ipd) appSettings.put("isInPlaceApkDowngradeEnabled", true)
         }
 
-        // --- Backup config ---
         if (sp.contains("saved_password_mode")) {
             val pm = sp.getInt("saved_password_mode", 0)
             if (pm > 0) appSettings.put("passwordStrategy", pm)
@@ -270,7 +292,6 @@ object CloudDatabaseManager {
             if (!pns) appSettings.put("isPlayNotificationSounds", false)
         }
 
-        // --- Compression levels ---
         if (sp.contains("compression_level_apps")) {
             val lvl = sp.getInt("compression_level_apps", -1)
             if (lvl >= 0) appSettings.put("appsCompressionLevel", lvl)
@@ -288,7 +309,6 @@ object CloudDatabaseManager {
             if (lvl >= 0) appSettings.put("callsCompressionLevel", lvl)
         }
 
-        // --- SMS/Call backup limits ---
         if (sp.contains("max_sms_backups")) {
             val max = sp.getInt("max_sms_backups", -1)
             if (max > 0) appSettings.put("maxSmsBackups", max)
@@ -302,7 +322,6 @@ object CloudDatabaseManager {
             if (!mms) appSettings.put("backupMms", false)
         }
 
-        // --- Cloud transfer settings ---
         if (sp.contains("parallel_cloud_transfers")) {
             val pct = sp.getBoolean("parallel_cloud_transfers", false)
             if (pct) appSettings.put("isParallelCloudTransfers", true)
@@ -318,7 +337,6 @@ object CloudDatabaseManager {
             if (chunks > 0) appSettings.put("multiThreadChunksCount", chunks)
         }
 
-        // --- Provider-specific chunk sizes ---
         if (sp.contains("dropbox_chunk_size")) {
             val cs = sp.getInt("dropbox_chunk_size", 25)
             if (cs != 25) appSettings.put("dropboxChunkSize", cs)
@@ -340,7 +358,6 @@ object CloudDatabaseManager {
             if (cs != 5) appSettings.put("s3ChunkSize", cs)
         }
 
-        // --- Swipe actions ---
         sp.getString("app_list_right_swipe_actions", null)?.takeIf { it.isNotBlank() }?.let {
             appSettings.put("appListRightSwipeActions", it)
         }
@@ -451,11 +468,9 @@ object CloudDatabaseManager {
         val usersObj = JSONObject()
         val userObj = JSONObject()
 
-        // 1. appSettings
         val appSettings = buildAppSettings(sp, connectedCloud)
         userObj.put("appSettings", appSettings)
 
-        // 2. userInfo
         val appVersionCode = attempt("get app version", silent = true) {
             if (android.os.Build.VERSION.SDK_INT >= 28) {
                 context.packageManager.getPackageInfo(context.packageName, 0).longVersionCode
@@ -476,7 +491,6 @@ object CloudDatabaseManager {
         }
         userObj.put("userInfo", userInfo)
 
-        // 3. transactions
         val transactions = JSONObject().apply {
             val premium = JSONObject().apply {
                 put("purchaseToken", "SBP_LOCAL_PREMIUM")
@@ -487,7 +501,6 @@ object CloudDatabaseManager {
         }
         userObj.put("transactions", transactions)
 
-        // 4. cloud_v1
         val cloudV1 = JSONObject()
         val cloudDirObj = JSONObject()
         val tagsObj = JSONObject()
@@ -513,9 +526,6 @@ object CloudDatabaseManager {
         tagObj.put("callLogBackupsCount", CloudDiscoveryHook.discoveredCalls.size)
 
         tagsObj.put(deviceTag, tagObj)
-        if (deviceTag != "DEFAULT") {
-            tagsObj.put("DEFAULT", tagObj)
-        }
         cloudDirObj.put("tags", tagsObj)
 
         val wallsObj = JSONObject().apply {
@@ -541,6 +551,14 @@ object CloudDatabaseManager {
         usersObj.put(uid, userObj)
         root.put("users", usersObj)
 
+        val purchaseVerifications = JSONObject().apply {
+            put(uid, JSONObject().apply {
+                put("validity", true)
+                put("AQK8OqW4gtD36Xte/DRxZA4zBTU1sr0y0N5jq+IeqAxKIILVpxc=", true)
+            })
+        }
+        root.put("purchase_verifications", purchaseVerifications)
+
         Log.i(TAG, "[CloudDb] Constructed fresh database JSON for UID $uid with ${allApps.size} apps, tag=$deviceTag")
         return root
     }
@@ -560,12 +578,11 @@ object CloudDatabaseManager {
                     segment.trim()
                 }
             }
-            .filter { it.isNotEmpty() }
+            .filter { it.isNotBlank() }
     }
 
     fun resolvePathInJson(root: JSONObject, segments: List<String>): Any? {
         if (segments.isEmpty()) return root
-
         var current: Any? = root
         for (i in segments.indices) {
             val segment = segments[i]
@@ -580,12 +597,6 @@ object CloudDatabaseManager {
             val matchedKey = keys.firstOrNull { it.equals(segment, ignoreCase = true) }
                 ?: keys.firstOrNull { it.replace(".", "").equals(segment.replace(".", ""), ignoreCase = true) }
                 ?: keys.firstOrNull { it.replace(" ", "").equals(segment.replace(" ", ""), ignoreCase = true) }
-                ?: (if (i > 0 && segments[i - 1] == "users" && keys.isNotEmpty()) keys.first() else null)
-                ?: (if (i > 0 && segments[i - 1] == "cloud_v1" && keys.isNotEmpty()) {
-                    keys.firstOrNull { it.substringBefore(" ").equals(segment.substringBefore(" "), ignoreCase = true) }
-                        ?: keys.first()
-                } else null)
-                ?: (if (i > 0 && segments[i - 1] == "tags" && keys.isNotEmpty()) keys.first() else null)
 
             if (matchedKey != null) {
                 current = current.get(matchedKey)
@@ -627,24 +638,6 @@ object CloudDatabaseManager {
         targets: ResolvedTargets,
         prefs: PreferencesManager
     ): Any? {
-        // Firebase connection state — always report connected for local accounts
-        if (rawPath.contains(".info/connected") || rawPath.endsWith(".info/connected")) {
-            return true
-        }
-        // Backend health probe — always report healthy
-        if (rawPath.contains("health/enabled") || rawPath.contains("appData/health")) {
-            return true
-        }
-        // Purchase verification — return synthetic verified record
-        if (rawPath.contains("purchase_verifications")) {
-            Log.d(TAG, "[CloudDb] Returning synthetic purchase verification for path: $rawPath")
-            return mapOf(
-                "verified" to true,
-                "verificationTime" to System.currentTimeMillis(),
-                "sku" to "premium"
-            )
-        }
-
         val db = ensureDb(context, classLoader, targets, prefs)
         val segments = extractPathSegments(rawPath)
         val node = resolvePathInJson(db, segments)
@@ -655,7 +648,6 @@ object CloudDatabaseManager {
             return converted
         }
 
-        // Fallback for special subpaths if JSON path didn't resolve literally:
         val fullPathStr = segments.joinToString("/")
         if (fullPathStr.contains("smsBackupsCount")) {
             return CloudDiscoveryHook.discoveredSms.size
@@ -682,12 +674,18 @@ object CloudDatabaseManager {
         if (pkgMatch.find()) {
             val targetPkg = pkgMatch.group(1) ?: ""
             val matchingApps = CloudDiscoveryHook.findMatchingBackups(targetPkg)
+            if (matchingApps.isEmpty() && prefs.enableCloudDiscovery) {
+                CloudDiscoveryHook.ensureScan(context, classLoader, targets)
+            }
             if (matchingApps.isNotEmpty()) {
                 return CloudDiscoveryHook.FirebaseSnapshotSynthesizer.buildMetadataMap(matchingApps)
             }
         }
         if (fullPathStr.endsWith("apps") || fullPathStr.endsWith("apps/")) {
             val allApps = CloudDiscoveryHook.getAllDiscoveredApps()
+            if (allApps.isEmpty() && prefs.enableCloudDiscovery) {
+                CloudDiscoveryHook.ensureScan(context, classLoader, targets)
+            }
             return allApps.groupBy { it.sanitizedAppId }.mapValues { (_, appsForPkg) ->
                 CloudDiscoveryHook.FirebaseSnapshotSynthesizer.buildMetadataMap(appsForPkg)
             }
@@ -720,12 +718,6 @@ object CloudDatabaseManager {
                     keys.firstOrNull { it.equals(seg, ignoreCase = true) }
                         ?: keys.firstOrNull { it.replace(".", "").equals(seg.replace(".", ""), ignoreCase = true) }
                         ?: keys.firstOrNull { it.replace(" ", "").equals(seg.replace(" ", ""), ignoreCase = true) }
-                        ?: (if (i > 0 && segments[i - 1] == "users" && keys.isNotEmpty()) keys.first() else null)
-                        ?: (if (i > 0 && segments[i - 1] == "cloud_v1" && keys.isNotEmpty()) {
-                            keys.firstOrNull { it.substringBefore(" ").equals(seg.substringBefore(" "), ignoreCase = true) }
-                                ?: keys.first()
-                        } else null)
-                        ?: (if (i > 0 && segments[i - 1] == "tags" && keys.isNotEmpty()) keys.first() else null)
                 }
 
                 val targetKey = existingKey ?: seg
