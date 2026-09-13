@@ -4,6 +4,52 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
 }
 
+fun getGitCommitHash(): String = try {
+    val process = ProcessBuilder("git", "rev-parse", "--short", "HEAD")
+        .directory(rootDir)
+        .redirectErrorStream(true)
+        .start()
+    val hash = process.inputStream.bufferedReader().readText().trim()
+    process.waitFor()
+    if (process.exitValue() == 0 && hash.isNotEmpty()) hash else "unknown"
+} catch (_: Throwable) {
+    "unknown"
+}
+
+val appVersionCode = 310
+fun getVersionChannel(): String = try {
+    val process = ProcessBuilder("git", "rev-parse", "--abbrev-ref", "HEAD")
+        .directory(rootDir)
+        .redirectErrorStream(true)
+        .start()
+    val branch = process.inputStream.bufferedReader().readText().trim()
+    process.waitFor()
+    if (process.exitValue() != 0 || branch.isEmpty() || branch == "HEAD") {
+        ""
+    } else if (branch == "main" || branch == "master") {
+        ""
+    } else {
+        "-" + branch.replace(Regex("[^A-Za-z0-9._-]"), "-")
+    }
+} catch (_: Throwable) {
+    ""
+}
+fun getCommitCount(): String = try {
+    val process = ProcessBuilder("git", "rev-list", "--count", "HEAD")
+        .directory(rootDir)
+        .redirectErrorStream(true)
+        .start()
+    val count = process.inputStream.bufferedReader().readText().trim()
+    process.waitFor()
+    if (process.exitValue() == 0 && count.isNotEmpty()) count else "0"
+} catch (_: Throwable) {
+    "0"
+}
+
+val channel = getVersionChannel()
+val gitHash = getGitCommitHash()
+val appVersionName = if (channel == "-testing") "testing${getCommitCount()}-$gitHash" else "3.1.0$channel"
+
 android {
     namespace = "io.github.s1ddhants1.swiftbackupprem"
     compileSdk = 37
@@ -13,8 +59,8 @@ android {
         applicationId = "io.github.s1ddhants1.swiftbackupprem"
         minSdk = 27
         targetSdk = 37
-        versionCode = 301
-        versionName = "3.0.1"
+        versionCode = appVersionCode
+        versionName = appVersionName
     }
 
     buildTypes {
@@ -46,6 +92,13 @@ android {
     packaging {
         resources {
             merges += "META-INF/xposed/*"
+        }
+    }
+}
+androidComponents {
+    onVariants(selector().all()) { variant ->
+        variant.outputs.forEach { output ->
+            output.outputFileName.set("SwiftBackupPrem_${appVersionName}-${variant.name}.apk")
         }
     }
 }
