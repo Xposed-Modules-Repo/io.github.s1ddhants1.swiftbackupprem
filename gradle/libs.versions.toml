@@ -11,6 +11,7 @@ libxposed-service = "102.0.0"
 junit = "4.13.2"
 json = "20260814"
 kotlinx-serialization = "1.11.0"
+apksign = "1.4"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -39,3 +40,4 @@ unit-test = ["junit", "json"]
 android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
+lsplugin-apksign = { id = "org.lsposed.lsplugin.apksign", version.ref = "apksign" }

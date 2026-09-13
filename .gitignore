@@ -10,6 +10,10 @@ build
 local.properties
 release
 release.keystore
+*.keystore
+*.jks
+*.p12
+*.mobileprovision
 .kotlin
 
 # Documentation
