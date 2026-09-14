@@ -11,6 +11,7 @@ local.properties
 release
 release.keystore
 *.keystore
+keystore.properties
 *.jks
 *.p12
 *.mobileprovision
