@@ -24,8 +24,7 @@ bool ends_with(const char *a, const char *b) {
 static bool s_native_hooked = false;
 
 void on_library_loaded(const char *name, void *handle) {
-    if (name && hook_func && !s_native_hooked &&
-        (ends_with(name, "libnative-lib.so") || strstr(name, "libnative-lib.so") != NULL)) {
+    if (name && hook_func && !s_native_hooked && ends_with(name, "libnative-lib.so")) {
         void *target = dlsym(handle, "JNI_OnLoad");
         if (target) {
             hook_func(target, (void *) fakeLoad, (void **) &backup);

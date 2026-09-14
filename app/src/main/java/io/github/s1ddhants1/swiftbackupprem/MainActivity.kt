@@ -107,6 +107,12 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
+            DisposableEffect(Unit) {
+                onDispose {
+                    prefsState.value.clearOnPreferenceChanged()
+                }
+            }
+
             androidx.lifecycle.compose.LifecycleResumeEffect(Unit) {
                 val evaluation = io.github.s1ddhants1.swiftbackupprem.util.LSPatchHelper.evaluateFrameworkStatus(this@MainActivity, App.serviceState.value)
                 viewModel.updateFrameworkEvaluation(evaluation)

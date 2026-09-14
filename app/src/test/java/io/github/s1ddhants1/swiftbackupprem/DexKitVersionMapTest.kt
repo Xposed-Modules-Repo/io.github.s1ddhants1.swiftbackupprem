@@ -41,5 +41,8 @@ class DexKitVersionMapTest {
         assertEquals("defpackage.d45", v620.authUser)
         assertEquals("defpackage.b45", v620.anonUser)
         assertEquals("defpackage.gg3", v620.firebaseWatcher)
+        assertEquals("defpackage.pa7", v620.settingsFragment)
+        assertEquals("org.swiftapps.swiftbackup.settings.a", v620.settingsDetailFragment)
+        assertEquals("defpackage.fm0", v620.baseSettingsFragment)
     }
 }

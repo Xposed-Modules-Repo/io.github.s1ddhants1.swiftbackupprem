@@ -17,8 +17,12 @@ import io.github.s1ddhants1.swiftbackupprem.Consts
 import io.github.s1ddhants1.swiftbackupprem.util.GoogleServicesJson
 import io.github.s1ddhants1.swiftbackupprem.util.PreferencesManager
 import io.github.s1ddhants1.swiftbackupprem.util.attempt
+import io.github.s1ddhants1.swiftbackupprem.util.loadClassFlexible
 import org.json.JSONObject
+import java.lang.ref.WeakReference
 import java.lang.reflect.Field
+import java.lang.reflect.Method
+import java.lang.reflect.Modifier
 
 @Keep
 object InAppSettingsHook : HookHandler {
@@ -28,8 +32,59 @@ object InAppSettingsHook : HookHandler {
     const val PREF_KEY_IMPORT_JSON = "pref_import_google_services"
     const val REQUEST_CODE_PICK_JSON = 48701
 
+    @Volatile
     var activePrefs: PreferencesManager? = null
-    var activeImportPref: Any? = null
+
+    @Volatile
+    private var activeImportPrefRef: WeakReference<Any>? = null
+
+    var activeImportPref: Any?
+        get() = activeImportPrefRef?.get()
+        set(value) {
+            activeImportPrefRef = value?.let { WeakReference(it) }
+        }
+
+    private fun findCreatePreferencesMethod(fragmentClass: Class<*>): Method? {
+        var curr: Class<*>? = fragmentClass
+        while (curr != null && curr != Any::class.java) {
+            val abs = curr.declaredMethods.firstOrNull {
+                Modifier.isAbstract(it.modifiers) &&
+                    it.parameterCount == 0 &&
+                    it.returnType == java.lang.Void.TYPE
+            }
+            if (abs != null) {
+                return try {
+                    fragmentClass.getDeclaredMethod(abs.name)
+                } catch (_: Throwable) { null }
+            }
+            curr = curr.superclass
+        }
+        return fragmentClass.declaredMethods.firstOrNull {
+            it.parameterCount == 0 &&
+                it.returnType == java.lang.Void.TYPE &&
+                (it.name == "l" || it.name == "onCreatePreferences")
+        }
+    }
+
+    private fun findPreferenceClickMethod(fragmentClass: Class<*>, prefClass: Class<*>): Method? {
+        for (iface in fragmentClass.interfaces) {
+            val m = iface.declaredMethods.firstOrNull {
+                it.parameterCount == 1 &&
+                    it.parameterTypes[0].isAssignableFrom(prefClass) &&
+                    (it.returnType == java.lang.Boolean.TYPE || it.returnType == Boolean::class.javaObjectType)
+            }
+            if (m != null) {
+                return try {
+                    fragmentClass.getDeclaredMethod(m.name, m.parameterTypes[0])
+                } catch (_: Throwable) { null }
+            }
+        }
+        return fragmentClass.declaredMethods.firstOrNull {
+            it.parameterCount == 1 &&
+                it.parameterTypes[0].isAssignableFrom(prefClass) &&
+                (it.returnType == java.lang.Boolean.TYPE || it.returnType == Boolean::class.javaObjectType)
+        }
+    }
 
     override fun apply(
         module: XposedModule,
@@ -41,32 +96,37 @@ object InAppSettingsHook : HookHandler {
         activePrefs = prefs
 
         val prefClass = classLoader.loadClass("androidx.preference.Preference")
+        val helper = HostPreferenceHelper(classLoader, context, targets.baseSettingsFragmentClass)
 
-        attempt("hook Settings fragment pa7.l", silent = true) {
-            val pa7Class = try {
-                classLoader.loadClass("pa7")
-            } catch (_: ClassNotFoundException) {
-                classLoader.loadClass("defpackage.pa7")
-            }
-            val lMethod = pa7Class.getDeclaredMethod("l")
+        val settingsFragmentClass = targets.settingsFragmentClass
+        val settingsDetailFragmentClass = targets.settingsDetailFragmentClass
+            ?: loadClassFlexible(classLoader, "org.swiftapps.swiftbackup.settings.a")
+
+        val baseFragmentClass = targets.baseSettingsFragmentClass
+            ?: settingsFragmentClass?.superclass
+            ?: settingsDetailFragmentClass?.superclass
+
+        attempt("hook Settings fragment onCreatePreferences", silent = true) {
+            val sfc = settingsFragmentClass ?: return@attempt
+            val lMethod = findCreatePreferencesMethod(sfc) ?: return@attempt
 
             module.hookTracked(
                 lMethod,
-                idPrefix = "sbp-settings-pa7-l",
+                idPrefix = "sbp-settings-sfc-create",
                 priority = XposedInterface.PRIORITY_DEFAULT,
                 deoptimize = true
             ).intercept { chain ->
                 val result = chain.proceed()
                 val fragment = chain.thisObject
                 if (fragment != null) {
-                    attempt("inject SBP entry from pa7.l") {
+                    attempt("inject SBP entry from settings fragment") {
                         val screen = getPreferenceScreen(fragment)
                         val ctx = attempt("get requireContext", silent = true) {
                             fragment.javaClass.getMethod("requireContext").invoke(fragment) as? Context
                         }
                         if (screen != null && ctx != null) {
-                            val helper = HostPreferenceHelper(classLoader, ctx)
-                            helper.injectSettingsEntry(screen, ctx, fragment)
+                            val hostHelper = HostPreferenceHelper(classLoader, ctx, baseFragmentClass)
+                            hostHelper.injectSettingsEntry(screen, ctx, fragment)
                         }
                     }
                 }
@@ -74,28 +134,24 @@ object InAppSettingsHook : HookHandler {
             }
         }
 
-        attempt("hook pa7.d for click interception") {
-            val pa7Class = try {
-                classLoader.loadClass("pa7")
-            } catch (_: ClassNotFoundException) {
-                classLoader.loadClass("defpackage.pa7")
-            }
-            val dMethod = pa7Class.getDeclaredMethod("d", prefClass)
+        attempt("hook Settings fragment click interception") {
+            val sfc = settingsFragmentClass ?: return@attempt
+            val dMethod = findPreferenceClickMethod(sfc, prefClass) ?: return@attempt
 
             module.hookTracked(
                 dMethod,
-                idPrefix = "sbp-settings-pa7-d",
+                idPrefix = "sbp-settings-sfc-click",
                 priority = XposedInterface.PRIORITY_HIGHEST,
                 deoptimize = true
             ).intercept { chain ->
                 val pref = chain.args[0]
-                val key = findFieldInHierarchy(pref.javaClass, "t")?.get(pref) as? String
+                val key = helper.getKey(pref)
                 if (key == PREF_KEY_SBP) {
                     val fragment = chain.thisObject
                     val act = attempt("get act", silent = true) {
                         fragment.javaClass.getMethod("getActivity").invoke(fragment) as? Activity
                     } ?: (fragment.javaClass.getMethod("requireContext").invoke(fragment) as Context)
-                    Log.i(Consts.TAG, "SwiftBackupPrem preference clicked via pa7.d! Opening SettingsDetailActivity category=$SBP_CATEGORY_ID")
+                    Log.i(Consts.TAG, "SwiftBackupPrem preference clicked! Opening SettingsDetailActivity category=$SBP_CATEGORY_ID")
                     val detailCls = classLoader.loadClass("org.swiftapps.swiftbackup.settings.SettingsDetailActivity")
                     val intent = Intent(act, detailCls).apply {
                         putExtra("category", SBP_CATEGORY_ID)
@@ -108,37 +164,34 @@ object InAppSettingsHook : HookHandler {
             }
         }
 
-        attempt("hook SettingsDetail fragment a.l", silent = true) {
-            val aClass = classLoader.loadClass("org.swiftapps.swiftbackup.settings.a")
-            val lMethod = aClass.getDeclaredMethod("l")
+        attempt("hook SettingsDetail fragment onCreatePreferences", silent = true) {
+            val sdfc = settingsDetailFragmentClass ?: return@attempt
+            val lMethod = findCreatePreferencesMethod(sdfc) ?: return@attempt
 
             module.hookTracked(
                 lMethod,
-                idPrefix = "sbp-settings-a-l",
+                idPrefix = "sbp-settings-detail-create",
                 priority = XposedInterface.PRIORITY_DEFAULT,
                 deoptimize = true
             ).intercept { chain ->
                 val result = chain.proceed()
                 val fragment = chain.thisObject
                 if (fragment != null) {
-                    attempt("populate SBP native settings page from a.l") {
+                    attempt("populate SBP native settings page from detail fragment") {
                         val activity = fragment.javaClass.getMethod("getActivity").invoke(fragment) as? Activity
                         val category = activity?.intent?.getIntExtra("category", 0) ?: 0
-                        Log.i(Consts.TAG, "a.l intercepted! category=$category, activity=$activity")
                         if (activity != null && category == SBP_CATEGORY_ID) {
                             val screen = getPreferenceScreen(fragment)
-                            Log.i(Consts.TAG, "a.l PreferenceScreen: $screen")
                             if (screen != null) {
-                                val helper = HostPreferenceHelper(classLoader, activity)
-                                helper.clearScreen(screen)
-                                helper.populateSbpSettings(
+                                val hostHelper = HostPreferenceHelper(classLoader, activity, baseFragmentClass)
+                                hostHelper.clearScreen(screen)
+                                hostHelper.populateSbpSettings(
                                     screen,
                                     activity,
                                     fragment,
                                     activePrefs ?: PreferencesManager().also { it.loadFromFallbackStorage(activity) }
                                 )
-                                val cField = findFieldInHierarchy(fragment.javaClass, "c")
-                                val rv = cField?.get(fragment) as? RecyclerView
+                                val rv = findRecyclerView(fragment)
                                 rv?.itemAnimator = null
                                 refreshRecyclerAdapter(fragment)
                             }
@@ -149,13 +202,13 @@ object InAppSettingsHook : HookHandler {
             }
         }
 
-        attempt("hook SettingsDetail fragment a.d for SBP item clicks") {
-            val aClass = classLoader.loadClass("org.swiftapps.swiftbackup.settings.a")
-            val dMethod = aClass.getDeclaredMethod("d", prefClass)
+        attempt("hook SettingsDetail fragment click for SBP items") {
+            val sdfc = settingsDetailFragmentClass ?: return@attempt
+            val dMethod = findPreferenceClickMethod(sdfc, prefClass) ?: return@attempt
 
             module.hookTracked(
                 dMethod,
-                idPrefix = "sbp-settings-a-d",
+                idPrefix = "sbp-settings-detail-click",
                 priority = XposedInterface.PRIORITY_HIGHEST,
                 deoptimize = true
             ).intercept { chain ->
@@ -164,25 +217,21 @@ object InAppSettingsHook : HookHandler {
                 val category = activity?.intent?.getIntExtra("category", 0) ?: 0
                 if (activity != null && category == SBP_CATEGORY_ID) {
                     val pref = chain.args[0]
-                    val key = findFieldInHierarchy(pref.javaClass, "t")?.get(pref) as? String
-                    val handled = handleSbpClick(pref, key, activity)
+                    val key = helper.getKey(pref)
+                    val handled = handleSbpClick(pref, key, activity, helper)
                     if (handled) return@intercept true
                 }
                 chain.proceed()
             }
         }
 
-        attempt("hook fm0.onViewCreated to disable ItemAnimator", silent = true) {
-            val fm0Class = try {
-                classLoader.loadClass("fm0")
-            } catch (_: ClassNotFoundException) {
-                classLoader.loadClass("defpackage.fm0")
-            }
-            val onViewCreatedMethod = fm0Class.getMethod("onViewCreated", android.view.View::class.java, Bundle::class.java)
+        attempt("hook baseFragment onViewCreated to disable ItemAnimator", silent = true) {
+            val bfc = baseFragmentClass ?: return@attempt
+            val onViewCreatedMethod = bfc.getMethod("onViewCreated", android.view.View::class.java, Bundle::class.java)
 
             module.hookTracked(
                 onViewCreatedMethod,
-                idPrefix = "sbp-fm0-onViewCreated",
+                idPrefix = "sbp-baseFragment-onViewCreated",
                 priority = XposedInterface.PRIORITY_DEFAULT,
                 deoptimize = true
             ).intercept { chain ->
@@ -190,8 +239,7 @@ object InAppSettingsHook : HookHandler {
                 val fragment = chain.thisObject
                 if (fragment != null) {
                     attempt("disable item animator on fragment RecyclerView", silent = true) {
-                        val cField = findFieldInHierarchy(fragment.javaClass, "c")
-                        val rv = cField?.get(fragment) as? RecyclerView
+                        val rv = findRecyclerView(fragment)
                         rv?.itemAnimator = null
                         Log.i(Consts.TAG, "Disabled ItemAnimator on settings RecyclerView")
                     }
@@ -226,12 +274,9 @@ object InAppSettingsHook : HookHandler {
 
         attempt("hook RecyclerView.setAdapter to disable itemAnimator", silent = true) {
             val rvClass = classLoader.loadClass("androidx.recyclerview.widget.RecyclerView")
-            val hg6Class = try {
-                classLoader.loadClass("hg6")
-            } catch (_: ClassNotFoundException) {
-                classLoader.loadClass("defpackage.hg6")
-            }
-            val setAdapterMethod = rvClass.getDeclaredMethod("setAdapter", hg6Class)
+            val setAdapterMethod = rvClass.declaredMethods.firstOrNull {
+                it.name == "setAdapter" && it.parameterCount == 1
+            } ?: return@attempt
 
             module.hookTracked(
                 setAdapterMethod,
@@ -240,15 +285,8 @@ object InAppSettingsHook : HookHandler {
                 deoptimize = true
             ).intercept { chain ->
                 val rv = chain.thisObject as? RecyclerView
-                val adapter = chain.args[0]
                 val result = chain.proceed()
-                if (rv != null && adapter != null) {
-                    val adapterName = adapter.javaClass.name
-                    if (adapterName.contains("lt7") || adapterName.contains("f46")) {
-                        rv.itemAnimator = null
-                        Log.i(Consts.TAG, "Disabled itemAnimator in setAdapter for $adapterName")
-                    }
-                }
+                rv?.itemAnimator = null
                 result
             }
         }
@@ -309,13 +347,12 @@ object InAppSettingsHook : HookHandler {
         }
     }
 
-    private fun handleSbpClick(pref: Any, key: String?, activity: Activity): Boolean {
+    private fun handleSbpClick(pref: Any, key: String?, activity: Activity, helper: HostPreferenceHelper): Boolean {
         val p = activePrefs ?: PreferencesManager().also { it.loadFromFallbackStorage(activity) }
         activePrefs = p
 
-        val f0Field = findFieldInHierarchy(pref.javaClass, "f0")
-        if (f0Field != null && key != null) {
-            val newChecked = f0Field.get(pref) as? Boolean ?: false
+        if (helper.isTwoStatePreference(pref) && key != null) {
+            val newChecked = helper.isChecked(pref)
 
             when (key) {
                 "enable_premium" -> p.enablePremium = newChecked
@@ -415,10 +452,8 @@ object InAppSettingsHook : HookHandler {
 
             val newSummary = "Configured: ${prefs.projectId} (Tap to update)"
             if (targetPref != null) {
-                findFieldInHierarchy(targetPref.javaClass, "p")?.set(targetPref, newSummary)
-                try {
-                    targetPref.javaClass.getMethod("B", CharSequence::class.java).invoke(targetPref, newSummary)
-                } catch (_: Throwable) {}
+                val helper = HostPreferenceHelper(activity.classLoader, activity)
+                helper.setSummary(targetPref, newSummary)
             }
             Toast.makeText(
                 activity,
@@ -448,11 +483,38 @@ object InAppSettingsHook : HookHandler {
         return null
     }
 
+    private fun findRecyclerView(fragment: Any): RecyclerView? {
+        var curr: Class<*>? = fragment.javaClass
+        while (curr != null && curr != Any::class.java) {
+            for (f in curr.declaredFields) {
+                if (RecyclerView::class.java.isAssignableFrom(f.type)) {
+                    f.isAccessible = true
+                    val rv = f.get(fragment) as? RecyclerView
+                    if (rv != null) return rv
+                }
+            }
+            curr = curr.superclass
+        }
+        return findFieldInHierarchy(fragment.javaClass, "c")?.get(fragment) as? RecyclerView
+    }
+
     private fun getPreferenceScreen(fragment: Any): Any? {
         return try {
+            try {
+                val m = fragment.javaClass.getMethod("getPreferenceScreen")
+                val res = m.invoke(fragment)
+                if (res != null) return res
+            } catch (_: Throwable) {}
+
             val bField = findFieldInHierarchy(fragment.javaClass, "b")
             val bVal = bField?.get(fragment)
             if (bVal != null) {
+                try {
+                    val m = bVal.javaClass.getMethod("getPreferenceScreen")
+                    val res = m.invoke(bVal)
+                    if (res != null) return res
+                } catch (_: Throwable) {}
+
                 val gField = findFieldInHierarchy(bVal.javaClass, "g")
                 val gVal = gField?.get(bVal)
                 if (gVal != null) {
@@ -483,53 +545,33 @@ object InAppSettingsHook : HookHandler {
 
     private fun refreshRecyclerAdapter(fragment: Any) {
         attempt("refresh recycler adapter", silent = true) {
-            val cField = findFieldInHierarchy(fragment.javaClass, "c")
-            val rv = cField?.get(fragment) as? RecyclerView
-            if (rv != null) {
+            val rv = findRecyclerView(fragment)
+            val adapter = rv?.adapter
+            if (adapter != null) {
                 rv.itemAnimator = null
-                val adapter = rv.adapter
-                if (adapter != null) {
-                    try {
-                        val oMethod = adapter.javaClass.getMethod("o")
-                        oMethod.isAccessible = true
-                        oMethod.invoke(adapter)
-                        Log.i(Consts.TAG, "Invoked adapter.o() successfully")
-                        return@attempt
-                    } catch (e: Throwable) {
-                        Log.w(Consts.TAG, "adapter.o() invocation failed: ${e.message}")
-                    }
-                    adapter.notifyDataSetChanged()
-                    return@attempt
-                }
-            }
-
-            var current: Class<*>? = fragment.javaClass
-            while (current != null && current != Any::class.java) {
-                for (f in current.declaredFields) {
-                    f.isAccessible = true
-                    val v = f.get(fragment)
-                    if (v is RecyclerView) {
-                        v.itemAnimator = null
-                        val adapter = v.adapter
-                        if (adapter != null) {
-                            try {
-                                val oMethod = adapter.javaClass.getMethod("o")
-                                oMethod.isAccessible = true
-                                oMethod.invoke(adapter)
-                                Log.i(Consts.TAG, "Invoked adapter.o() successfully from search")
-                                return@attempt
-                            } catch (_: Throwable) {}
-                            adapter.notifyDataSetChanged()
-                        }
-                        return@attempt
+                adapter.notifyDataSetChanged()
+                for (m in adapter.javaClass.declaredMethods) {
+                    if (m.parameterCount == 0 && m.returnType == java.lang.Void.TYPE &&
+                        !Modifier.isStatic(m.modifiers) && m.name != "notifyDataSetChanged"
+                    ) {
+                        try {
+                            m.isAccessible = true
+                            m.invoke(adapter)
+                            Log.i(Consts.TAG, "Invoked adapter.${m.name}() successfully")
+                            return@attempt
+                        } catch (_: Throwable) {}
                     }
                 }
-                current = current.superclass
             }
         }
     }
 
-    class HostPreferenceHelper(val cl: ClassLoader, val ctx: Context) {
+    @Keep
+    class HostPreferenceHelper(
+        val cl: ClassLoader,
+        val ctx: Context,
+        val baseSettingsFragmentClass: Class<*>? = null
+    ) {
         val prefClass: Class<*> = cl.loadClass("androidx.preference.Preference")
         val catClass: Class<*> = cl.loadClass("androidx.preference.PreferenceCategory")
         val prefGroupClass: Class<*> = cl.loadClass("androidx.preference.PreferenceGroup")
@@ -540,14 +582,156 @@ object InAppSettingsHook : HookHandler {
             try { cl.loadClass("androidx.preference.SwitchPreferenceCompat") } catch (_: Throwable) { null }
         }
 
-        val fm0Class: Class<*>? = try {
-            cl.loadClass("fm0")
-        } catch (_: Throwable) {
-            try { cl.loadClass("defpackage.fm0") } catch (_: Throwable) { null }
+        val twoStateClass: Class<*>? = try {
+            cl.loadClass("androidx.preference.TwoStatePreference")
+        } catch (_: Throwable) { null }
+
+        fun isTwoStatePreference(pref: Any): Boolean {
+            return (twoStateClass != null && twoStateClass.isInstance(pref)) ||
+                (mSwitchClass != null && mSwitchClass.isInstance(pref)) ||
+                pref.javaClass.name.contains("Switch")
+        }
+
+        fun getKey(pref: Any): String? {
+            try {
+                val m = pref.javaClass.getMethod("getKey")
+                return m.invoke(pref) as? String
+            } catch (_: Throwable) {}
+            val tField = findFieldInHierarchy(pref.javaClass, "t")
+            if (tField != null) return tField.get(pref) as? String
+            for (f in pref.javaClass.declaredFields) {
+                if (f.type == String::class.java) {
+                    f.isAccessible = true
+                    val v = f.get(pref) as? String
+                    if (v != null) return v
+                }
+            }
+            return null
+        }
+
+        fun setKey(pref: Any, key: String) {
+            try {
+                pref.javaClass.getMethod("setKey", String::class.java).invoke(pref, key)
+                return
+            } catch (_: Throwable) {}
+            findFieldInHierarchy(pref.javaClass, "t")?.set(pref, key)
+        }
+
+        fun setTitle(pref: Any, title: CharSequence) {
+            try {
+                pref.javaClass.getMethod("setTitle", CharSequence::class.java).invoke(pref, title)
+                return
+            } catch (_: Throwable) {}
+            findFieldInHierarchy(pref.javaClass, "n")?.set(pref, title)
+        }
+
+        fun setSummary(pref: Any, summary: CharSequence) {
+            try {
+                pref.javaClass.getMethod("setSummary", CharSequence::class.java).invoke(pref, summary)
+                return
+            } catch (_: Throwable) {}
+            try {
+                pref.javaClass.getMethod("B", CharSequence::class.java).invoke(pref, summary)
+                return
+            } catch (_: Throwable) {}
+            findFieldInHierarchy(pref.javaClass, "p")?.set(pref, summary)
+        }
+
+        fun setOrder(pref: Any, order: Int) {
+            if (order == Integer.MAX_VALUE) return
+            try {
+                pref.javaClass.getMethod("setOrder", java.lang.Integer.TYPE).invoke(pref, order)
+                return
+            } catch (_: Throwable) {}
+            findFieldInHierarchy(pref.javaClass, "k")?.set(pref, order)
+        }
+
+        fun setPersistent(pref: Any, persistent: Boolean) {
+            try {
+                pref.javaClass.getMethod("setPersistent", java.lang.Boolean.TYPE).invoke(pref, persistent)
+                return
+            } catch (_: Throwable) {}
+            findFieldInHierarchy(pref.javaClass, "J")?.set(pref, persistent)
+        }
+
+        fun setIcon(pref: Any, iconId: Int) {
+            if (iconId == 0) return
+            try {
+                pref.javaClass.getMethod("setIcon", java.lang.Integer.TYPE).invoke(pref, iconId)
+                return
+            } catch (_: Throwable) {}
+            findFieldInHierarchy(pref.javaClass, "q")?.set(pref, iconId)
+            findFieldInHierarchy(pref.javaClass, "R")?.set(pref, true)
+        }
+
+        fun setLayoutResource(pref: Any, layoutRes: Int) {
+            if (layoutRes == 0) return
+            try {
+                pref.javaClass.getMethod("setLayoutResource", java.lang.Integer.TYPE).invoke(pref, layoutRes)
+                return
+            } catch (_: Throwable) {}
+            findFieldInHierarchy(pref.javaClass, "W")?.set(pref, layoutRes)
+        }
+
+        fun setIntent(pref: Any, intent: Intent) {
+            try {
+                pref.javaClass.getMethod("setIntent", Intent::class.java).invoke(pref, intent)
+                return
+            } catch (_: Throwable) {}
+            findFieldInHierarchy(pref.javaClass, "x")?.set(pref, intent)
+        }
+
+        fun setChecked(switchPref: Any, checked: Boolean) {
+            try {
+                switchPref.javaClass.getMethod("setChecked", java.lang.Boolean.TYPE).invoke(switchPref, checked)
+                return
+            } catch (_: Throwable) {}
+            try {
+                switchPref.javaClass.getMethod("G", java.lang.Boolean.TYPE).invoke(switchPref, checked)
+                return
+            } catch (_: Throwable) {}
+            findFieldInHierarchy(switchPref.javaClass, "f0")?.set(switchPref, checked)
+            findFieldInHierarchy(switchPref.javaClass, "i0")?.set(switchPref, true)
+        }
+
+        fun isChecked(switchPref: Any): Boolean {
+            try {
+                val m = switchPref.javaClass.getMethod("isChecked")
+                return m.invoke(switchPref) as Boolean
+            } catch (_: Throwable) {}
+            val f0Field = findFieldInHierarchy(switchPref.javaClass, "f0")
+            if (f0Field != null) {
+                return f0Field.get(switchPref) as? Boolean ?: false
+            }
+            return false
+        }
+
+        fun setClickListener(pref: Any, listener: Any) {
+            try {
+                val m = pref.javaClass.declaredMethods.firstOrNull {
+                    it.name == "setOnPreferenceClickListener" && it.parameterCount == 1
+                }
+                if (m != null) {
+                    m.invoke(pref, listener)
+                    return
+                }
+            } catch (_: Throwable) {}
+            findFieldInHierarchy(pref.javaClass, "f")?.set(pref, listener)
         }
 
         @Suppress("UNCHECKED_CAST")
         fun getGroupList(group: Any): ArrayList<Any>? {
+            var curr: Class<*>? = group.javaClass
+            while (curr != null && curr != Any::class.java) {
+                for (f in curr.declaredFields) {
+                    if (List::class.java.isAssignableFrom(f.type)) {
+                        f.isAccessible = true
+                        val list = f.get(group) as? ArrayList<Any>
+                        if (list != null) return list
+                    }
+                }
+                curr = curr.superclass
+            }
             val f = findFieldInHierarchy(group.javaClass, "g0")
             f?.isAccessible = true
             return f?.get(group) as? ArrayList<Any>
@@ -555,15 +739,25 @@ object InAppSettingsHook : HookHandler {
 
         fun findPreference(group: Any, key: String): Any? {
             try {
-                val gMethod = group.javaClass.getMethod("G", CharSequence::class.java)
-                val res = gMethod.invoke(group, key)
+                val m = group.javaClass.getMethod("findPreference", CharSequence::class.java)
+                val res = m.invoke(group, key)
                 if (res != null) return res
             } catch (_: Throwable) {}
 
+            for (m in group.javaClass.methods) {
+                if (m.parameterCount == 1 && m.parameterTypes[0] == CharSequence::class.java &&
+                    prefClass.isAssignableFrom(m.returnType)
+                ) {
+                    try {
+                        val res = m.invoke(group, key)
+                        if (res != null) return res
+                    } catch (_: Throwable) {}
+                }
+            }
+
             val list = getGroupList(group) ?: return null
             for (item in list) {
-                val itemKey = findFieldInHierarchy(item.javaClass, "t")?.get(item) as? String
-                if (itemKey == key) return item
+                if (getKey(item) == key) return item
                 if (prefGroupClass.isInstance(item)) {
                     val sub = findPreference(item, key)
                     if (sub != null) return sub
@@ -573,8 +767,32 @@ object InAppSettingsHook : HookHandler {
         }
 
         fun addPreference(group: Any, pref: Any) {
+            try {
+                val m = group.javaClass.getMethod("addPreference", prefClass)
+                m.invoke(group, pref)
+                return
+            } catch (_: Throwable) {}
+
+            for (m in group.javaClass.methods) {
+                if (m.parameterCount == 1 && m.parameterTypes[0] == prefClass &&
+                    (m.returnType == java.lang.Boolean.TYPE || m.returnType == java.lang.Void.TYPE)
+                ) {
+                    try {
+                        m.invoke(group, pref)
+                        return
+                    } catch (_: Throwable) {}
+                }
+            }
+
             val list = getGroupList(group)
             if (list != null && !list.contains(pref)) {
+                for (f in pref.javaClass.declaredFields) {
+                    if (prefGroupClass.isAssignableFrom(f.type)) {
+                        f.isAccessible = true
+                        f.set(pref, group)
+                        break
+                    }
+                }
                 findFieldInHierarchy(pref.javaClass, "a0")?.set(pref, group)
                 list.add(pref)
             }
@@ -586,22 +804,24 @@ object InAppSettingsHook : HookHandler {
                 if (prefGroupClass.isInstance(item)) {
                     bindClickListeners(item, listener)
                 } else {
-                    findFieldInHierarchy(item.javaClass, "f")?.set(item, listener)
+                    setClickListener(item, listener)
                 }
             }
         }
 
         fun clearScreen(screen: Any) {
+            try {
+                screen.javaClass.getMethod("removeAll").invoke(screen)
+                return
+            } catch (_: Throwable) {}
             getGroupList(screen)?.clear()
         }
 
         fun createCategory(title: String, order: Int = Integer.MAX_VALUE): Any {
             val cat = catClass.getConstructor(Context::class.java).newInstance(ctx)
-            findFieldInHierarchy(catClass, "n")?.set(cat, title)
-            findFieldInHierarchy(catClass, "J")?.set(cat, false)
-            if (order != Integer.MAX_VALUE) {
-                findFieldInHierarchy(catClass, "k")?.set(cat, order)
-            }
+            setTitle(cat, title)
+            setPersistent(cat, false)
+            setOrder(cat, order)
             return cat
         }
 
@@ -625,16 +845,12 @@ object InAppSettingsHook : HookHandler {
                 prefClass.getConstructor(Context::class.java).newInstance(ctx)
             }
 
-            findFieldInHierarchy(switchPref.javaClass, "t")?.set(switchPref, key)
-            findFieldInHierarchy(switchPref.javaClass, "n")?.set(switchPref, title)
-            findFieldInHierarchy(switchPref.javaClass, "p")?.set(switchPref, summary)
-            findFieldInHierarchy(switchPref.javaClass, "J")?.set(switchPref, false)
-            if (order != Integer.MAX_VALUE) {
-                findFieldInHierarchy(switchPref.javaClass, "k")?.set(switchPref, order)
-            }
-
-            findFieldInHierarchy(switchPref.javaClass, "f0")?.set(switchPref, initialValue)
-            findFieldInHierarchy(switchPref.javaClass, "i0")?.set(switchPref, true)
+            setKey(switchPref, key)
+            setTitle(switchPref, title)
+            setSummary(switchPref, summary)
+            setPersistent(switchPref, false)
+            setOrder(switchPref, order)
+            setChecked(switchPref, initialValue)
 
             return switchPref
         }
@@ -647,23 +863,28 @@ object InAppSettingsHook : HookHandler {
             order: Int = Integer.MAX_VALUE
         ): Any {
             val pref = prefClass.getConstructor(Context::class.java).newInstance(ctx)
-            findFieldInHierarchy(prefClass, "t")?.set(pref, key)
-            findFieldInHierarchy(prefClass, "n")?.set(pref, title)
-            findFieldInHierarchy(prefClass, "p")?.set(pref, summary)
-            findFieldInHierarchy(prefClass, "J")?.set(pref, false)
-            if (order != Integer.MAX_VALUE) {
-                findFieldInHierarchy(prefClass, "k")?.set(pref, order)
-            }
+            setKey(pref, key)
+            setTitle(pref, title)
+            setSummary(pref, summary)
+            setPersistent(pref, false)
+            setOrder(pref, order)
             if (iconId != 0) {
-                findFieldInHierarchy(prefClass, "q")?.set(pref, iconId)
-                findFieldInHierarchy(prefClass, "R")?.set(pref, true)
+                setIcon(pref, iconId)
             }
             return pref
         }
 
         fun applySegmentedStyling(screen: Any) {
-            attempt("apply fm0.m segmented styling", silent = true) {
-                fm0Class?.getDeclaredMethod("m", prefGroupClass)?.invoke(null, screen)
+            attempt("apply baseSettingsFragment segmented styling", silent = true) {
+                val styleMethod = baseSettingsFragmentClass?.declaredMethods?.firstOrNull {
+                    Modifier.isStatic(it.modifiers) &&
+                        it.parameterCount == 1 &&
+                        prefGroupClass.isAssignableFrom(it.parameterTypes[0])
+                }
+                if (styleMethod != null) {
+                    styleMethod.isAccessible = true
+                    styleMethod.invoke(null, screen)
+                }
             }
         }
 
@@ -687,7 +908,7 @@ object InAppSettingsHook : HookHandler {
             )
 
             if (segmentedLayout != 0) {
-                findFieldInHierarchy(sbpPref.javaClass, "W")?.set(sbpPref, segmentedLayout)
+                setLayoutResource(sbpPref, segmentedLayout)
             }
 
             try {
@@ -696,12 +917,12 @@ object InAppSettingsHook : HookHandler {
                     putExtra("category", SBP_CATEGORY_ID)
                     putExtra("category_title", "SwiftBackupPrem")
                 }
-                findFieldInHierarchy(sbpPref.javaClass, "x")?.set(sbpPref, intent)
+                setIntent(sbpPref, intent)
             } catch (t: Throwable) {
                 Log.w(Consts.TAG, "Failed to set intent on sbpPref: ${t.message}")
             }
 
-            findFieldInHierarchy(sbpPref.javaClass, "f")?.set(sbpPref, fragment)
+            setClickListener(sbpPref, fragment)
 
             var targetGroup: Any? = null
             val list = getGroupList(screen)
@@ -738,14 +959,46 @@ object InAppSettingsHook : HookHandler {
             val pkg = ctx.packageName
 
             var idCounter = 100000L
-            val prefManager = findFieldInHierarchy(screen.javaClass, "b")?.get(screen)
-                ?: findFieldInHierarchy(fragment.javaClass, "b")?.get(fragment)
+
+            fun findPreferenceManager(target: Any): Any? {
+                for (f in target.javaClass.declaredFields) {
+                    if (f.type.name.contains("PreferenceManager")) {
+                        f.isAccessible = true
+                        return f.get(target)
+                    }
+                }
+                return findFieldInHierarchy(target.javaClass, "b")?.get(target)
+            }
+
+            fun setPreferenceManager(pref: Any, pm: Any) {
+                for (f in pref.javaClass.declaredFields) {
+                    if (f.type.name.contains("PreferenceManager")) {
+                        f.isAccessible = true
+                        f.set(pref, pm)
+                        return
+                    }
+                }
+                findFieldInHierarchy(pref.javaClass, "b")?.set(pref, pm)
+            }
+
+            fun setPreferenceId(pref: Any, id: Long) {
+                for (f in pref.javaClass.declaredFields) {
+                    if (f.type == java.lang.Long.TYPE) {
+                        f.isAccessible = true
+                        f.set(pref, id)
+                        return
+                    }
+                }
+                findFieldInHierarchy(pref.javaClass, "c")?.set(pref, id)
+            }
+
+            val prefManager = findPreferenceManager(screen) ?: findPreferenceManager(fragment)
 
             fun initItem(item: Any) {
                 if (prefManager != null) {
-                    findFieldInHierarchy(item.javaClass, "b")?.set(item, prefManager)
+                    setPreferenceManager(item, prefManager)
                 }
-                findFieldInHierarchy(item.javaClass, "c")?.set(item, idCounter++)
+                setPreferenceId(item, idCounter++)
             }
 
             fun <T : Any> add(parent: Any, item: T): T {
@@ -834,7 +1087,7 @@ object InAppSettingsHook : HookHandler {
             val telegramIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/SwiftBackupPrem")).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
-            findFieldInHierarchy(telegramItem.javaClass, "x")?.set(telegramItem, telegramIntent)
+            setIntent(telegramItem, telegramIntent)
             add(catLinks, telegramItem)
 
             val githubItem = createItem(
@@ -847,7 +1100,7 @@ object InAppSettingsHook : HookHandler {
             val githubIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/s1ddhants1/SwiftBackupPrem")).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
-            findFieldInHierarchy(githubItem.javaClass, "x")?.set(githubItem, githubIntent)
+            setIntent(githubItem, githubIntent)
             add(catLinks, githubItem)
 
             bindClickListeners(screen, fragment)

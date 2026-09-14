@@ -65,6 +65,9 @@ class ResolvedTargetsTest {
         assertNull(targets.authRequestBuilderClass)
         assertNull(targets.appBackupClass)
         assertNull(targets.appMetadataXmlClass)
+        assertNull(targets.settingsFragmentClass)
+        assertNull(targets.settingsDetailFragmentClass)
+        assertNull(targets.baseSettingsFragmentClass)
         assertFalse(targets.isFullyResolved)
     }
 }

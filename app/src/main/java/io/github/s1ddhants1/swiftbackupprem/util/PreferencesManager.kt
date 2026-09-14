@@ -21,18 +21,19 @@ class PreferencesManager(
     private val isDynamic: Boolean = false,
     private val backupPrefs: SharedPreferences? = null
 ) {
-    private inner class Preference<T>(
+    private class Preference<T>(
         private val isDynamic: Boolean,
         private val key: String,
         private val defaultValue: T,
         private val getter: (key: String, defaultValue: T) -> T,
-        private val setter: (key: String, newValue: T) -> Unit
+        private val setter: (key: String, newValue: T) -> Unit,
+        private val hasRemoteKey: (key: String) -> Boolean = { false }
     ) {
         var value by mutableStateOf(getter(key, defaultValue))
             private set
 
         operator fun getValue(thisRef: Any?, property: KProperty<*>): T =
-            if (isDynamic && prefs != null && prefs.contains(key)) getter(key, defaultValue) else value
+            if (isDynamic && hasRemoteKey(key)) getter(key, defaultValue) else value
 
         operator fun setValue(thisRef: Any?, property: KProperty<*>, newValue: T) {
             value = newValue
@@ -44,6 +45,10 @@ class PreferencesManager(
     private fun getBoolean(key: String, defaultValue: Boolean) = prefs?.getBoolean(key, defaultValue) ?: defaultValue
 
     var onPreferenceChanged: (() -> Unit)? = null
+
+    fun clearOnPreferenceChanged() {
+        onPreferenceChanged = null
+    }
 
     private fun putString(key: String, value: String?) {
         attempt("save preference string $key", silent = true) {
@@ -61,10 +66,10 @@ class PreferencesManager(
     }
 
     private fun stringPreference(key: String) =
-        Preference(isDynamic, key, "", ::getString, ::putString)
+        Preference(isDynamic, key, "", ::getString, ::putString) { prefs?.contains(it) == true }
 
     private fun booleanPreference(key: String, defaultValue: Boolean = false) =
-        Preference(isDynamic, key, defaultValue, ::getBoolean, ::putBoolean)
+        Preference(isDynamic, key, defaultValue, ::getBoolean, ::putBoolean) { prefs?.contains(it) == true }
 
     var googleAppId by stringPreference(Consts.googleAppId)
     var googleApiKey by stringPreference(Consts.googleApiKey)
@@ -132,13 +137,23 @@ class PreferencesManager(
         clientId = config.clientId
     }
 
+    companion object {
+        private val fallbackLock = Any()
+        private val fallbackWriteExecutor = java.util.concurrent.Executors.newSingleThreadExecutor { runnable ->
+            Thread(runnable, "sbp-fallback-io").apply { isDaemon = true }
+        }
+    }
+
+    private fun getCandidateDirs(context: Context?): List<File> {
+        return listOfNotNull(
+            context?.getExternalFilesDir(null),
+            File("/storage/emulated/0/Android/data/${Consts.packageName}/files")
+        ).distinctBy { it.canonicalPath }
+    }
+
     fun loadFromFallbackStorage(context: Context?): Boolean {
         return attempt("load config from fallback storage", silent = true) {
-            val candidateDirs = listOfNotNull(
-                File("/storage/emulated/0/SwiftBackup"),
-                context?.getExternalFilesDir(null),
-                File("/storage/emulated/0/Android/data/${Consts.packageName}/files")
-            )
+            val candidateDirs = getCandidateDirs(context)
             for (dir in candidateDirs) {
                 val file = File(dir, "sbp_config.json")
                 if (file.exists() && file.canRead()) {
@@ -159,31 +174,29 @@ class PreferencesManager(
     }
 
     fun saveToFallbackStorage(context: Context?): Boolean {
-        return attempt("save config to fallback storage", silent = true) {
-            val candidateDirs = listOfNotNull(
-                File("/storage/emulated/0/SwiftBackup"),
-                context?.getExternalFilesDir(null),
-                File("/storage/emulated/0/Android/data/${Consts.packageName}/files")
-            )
-            val json = Json { ignoreUnknownKeys = true; prettyPrint = true; encodeDefaults = true }
-            val jsonStr = json.encodeToString(SbpConfig.serializer(), toConfig())
-            var saved = false
-            for (dir in candidateDirs) {
-                try {
-                    if (!dir.exists()) dir.mkdirs()
-                    if (dir.exists() && dir.isDirectory) {
-                        val file = File(dir, "sbp_config.json")
-                        file.writeText(jsonStr, StandardCharsets.UTF_8)
-                        saved = true
-                    }
-                } catch (_: Throwable) {}
-            }
-            saved
-        } ?: false
+        return synchronized(fallbackLock) {
+            attempt("save config to fallback storage", silent = true) {
+                val candidateDirs = getCandidateDirs(context)
+                val json = Json { ignoreUnknownKeys = true; prettyPrint = true; encodeDefaults = true }
+                val jsonStr = json.encodeToString(SbpConfig.serializer(), toConfig())
+                var saved = false
+                for (dir in candidateDirs) {
+                    try {
+                        if (!dir.exists()) dir.mkdirs()
+                        if (dir.exists() && dir.isDirectory) {
+                            val file = File(dir, "sbp_config.json")
+                            file.writeText(jsonStr, StandardCharsets.UTF_8)
+                            saved = true
+                        }
+                    } catch (_: Throwable) {}
+                }
+                saved
+            } ?: false
+        }
     }
 
     fun saveToFallbackStorageAsync(context: Context?) {
-        kotlin.concurrent.thread(name = "sbp-fallback-io", isDaemon = true) {
+        fallbackWriteExecutor.execute {
             saveToFallbackStorage(context)
         }
     }

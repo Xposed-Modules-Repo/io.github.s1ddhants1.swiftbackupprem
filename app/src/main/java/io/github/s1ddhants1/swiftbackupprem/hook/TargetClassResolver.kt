@@ -40,6 +40,9 @@ object TargetClassResolver {
         var fireSynchronizerCommitted: Class<*>? = null
         var firebaseWatcher: Class<*>? = null
         var customClassMapper: Class<*>? = null
+        var settingsFragment: Class<*>? = null
+        var settingsDetailFragment: Class<*>? = null
+        var baseSettingsFragment: Class<*>? = null
 
         val ver = Integer.valueOf(ctx.packageManager.getPackageInfo(Consts.packageName, 0).versionCode)
         versionMap[ver]?.let { c ->
@@ -55,6 +58,9 @@ object TargetClassResolver {
             fireSynchronizer = c.fireSynchronizer?.let { loadClassFlexible(cl, it) }
             fireSynchronizerSuccess = c.fireSynchronizerSuccess?.let { loadClassFlexible(cl, it) }
             customClassMapper = c.customClassMapper?.let { loadClassFlexible(cl, it) }
+            settingsFragment = c.settingsFragment?.let { loadClassFlexible(cl, it) }
+            settingsDetailFragment = c.settingsDetailFragment?.let { loadClassFlexible(cl, it) }
+            baseSettingsFragment = c.baseSettingsFragment?.let { loadClassFlexible(cl, it) }
         }
 
         attempt("load V class fallback", silent = true) {
@@ -76,8 +82,16 @@ object TargetClassResolver {
         }
 
         if (clientId != null && v != null && homeVm != null && authUser != null && oauthHelper != null && authRequestBuilder != null && fireSynchronizer != null && customClassMapper != null) {
+            if (baseSettingsFragment == null) {
+                baseSettingsFragment = settingsFragment?.superclass ?: settingsDetailFragment?.superclass
+            }
             Log.d(Consts.TAG, "Resolved Swift Backup hook classes without DexKit scan")
-            return ResolvedTargets(clientId, v, cloudGms, homeVm, authUser, anonUser, oauthHelper, authRequestBuilder, appBackup, appMetadataXml, fireSynchronizer, firebaseWatcher, fireSynchronizerSuccess, fireSynchronizerWriteSuccess, fireSynchronizerCommitted, customClassMapper)
+            return ResolvedTargets(
+                clientId, v, cloudGms, homeVm, authUser, anonUser, oauthHelper, authRequestBuilder,
+                appBackup, appMetadataXml, fireSynchronizer, firebaseWatcher, fireSynchronizerSuccess,
+                fireSynchronizerWriteSuccess, fireSynchronizerCommitted, customClassMapper,
+                settingsFragment, settingsDetailFragment, baseSettingsFragment
+            )
         }
 
         attempt("load dexkit native library") { System.loadLibrary("dexkit") }
@@ -251,6 +265,22 @@ object TargetClassResolver {
                         matcher { usingStrings("Maps with non-string keys are not supported") }
                     }
                 }
+
+                if (settingsFragment == null) {
+                    settingsFragment = bridge.findSingle(cl, "settingsFragmentClass", filterInner = false) {
+                        matcher { usingStrings("backup_storage_location", "app_backups") }
+                    }
+                }
+
+                if (settingsDetailFragment == null) {
+                    settingsDetailFragment = bridge.findSingle(cl, "settingsDetailFragmentClass", filterInner = false) {
+                        matcher { usingStrings("app_backup_limits", "blacklist_apps") }
+                    }
+                }
+
+                if (baseSettingsFragment == null) {
+                    baseSettingsFragment = settingsFragment?.superclass ?: settingsDetailFragment?.superclass
+                }
             }
         } catch (t: Throwable) {
             Log.e(Consts.TAG, "DexKit search encountered an error", t)
@@ -260,7 +290,16 @@ object TargetClassResolver {
             Log.w(Consts.TAG, "Couldn't fully hook Swift Backup.")
         }
 
-        return ResolvedTargets(clientId, v, cloudGms, homeVm, authUser, anonUser, oauthHelper, authRequestBuilder, appBackup, appMetadataXml, fireSynchronizer, firebaseWatcher, fireSynchronizerSuccess, fireSynchronizerWriteSuccess, fireSynchronizerCommitted, customClassMapper)
+        if (baseSettingsFragment == null) {
+            baseSettingsFragment = settingsFragment?.superclass ?: settingsDetailFragment?.superclass
+        }
+
+        return ResolvedTargets(
+            clientId, v, cloudGms, homeVm, authUser, anonUser, oauthHelper, authRequestBuilder,
+            appBackup, appMetadataXml, fireSynchronizer, firebaseWatcher, fireSynchronizerSuccess,
+            fireSynchronizerWriteSuccess, fireSynchronizerCommitted, customClassMapper,
+            settingsFragment, settingsDetailFragment, baseSettingsFragment
+        )
     }
 
     private fun DexKitBridge.findSingle(

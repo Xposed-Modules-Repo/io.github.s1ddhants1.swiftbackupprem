@@ -16,6 +16,8 @@
 # AndroidX Preference (compileOnly provided by target app)
 -dontwarn androidx.preference.**
 -keep class io.github.s1ddhants1.swiftbackupprem.ui.settings.** { *; }
+-keep class io.github.s1ddhants1.swiftbackupprem.hook.InAppSettingsHook* { *; }
+-keepclassmembers class io.github.s1ddhants1.swiftbackupprem.hook.InAppSettingsHook* { *; }
 
 # Keep DexKit bridge classes used by native C++ (libdexkit.so) JNI reflection
 -keep class org.luckypray.dexkit.** { *; }

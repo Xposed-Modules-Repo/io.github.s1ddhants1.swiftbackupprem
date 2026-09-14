@@ -18,12 +18,6 @@ import java.util.concurrent.ConcurrentHashMap
 
 @Keep
 class Module : XposedModule() {
-    init {
-        attempt("load nativelib native library in module init", silent = true) {
-            System.loadLibrary("nativelib")
-        }
-    }
-
     private val hookHandles = ConcurrentHashMap<String, XposedInterface.HookHandle>()
 
     fun rememberHook(id: String?, handle: XposedInterface.HookHandle) {

@@ -563,7 +563,7 @@ While Snapshot Injection dynamically provides in-memory restore entries, you can
 
 ### Prerequisites
 
-- JDK 17 or higher
+- Adoptium Eclipse Temurin 25 (or JDK 17+)
 - Android SDK with Platform 37 (`compileSdk 37`)
 - Android NDK (`25.1.8937393` or higher) & CMake `3.22.1+`
 
