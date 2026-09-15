@@ -256,5 +256,113 @@ class LocalCloudUnlockHookTest {
         // In test environment without FirebaseAuth or Google user signed in, local cloud enforces
         assertTrue(LocalCloudUnlockHook.shouldEnforceLocalCloud(prefs, null))
     }
+
+    data class DummyLabelParams(
+        val id: String = "game",
+        val name: String = "Games",
+        val color: String = "#ff0000"
+    )
+
+    data class DummyLabelledApp(
+        val packageName: String = "com.rovio.baba",
+        val name: String = "Angry Birds",
+        val labelIds: List<String> = listOf("game")
+    )
+
+    data class DummyLabelsData(
+        val labelParamsMap: Map<String, DummyLabelParams> = mapOf("game" to DummyLabelParams()),
+        val labelledAppsMap: Map<String, DummyLabelledApp> = mapOf("com.rovio.baba" to DummyLabelledApp())
+    )
+
+    @Test
+    fun testAnyToJsonDeepSerializationOfLabelsData() {
+        val dummyData = DummyLabelsData()
+        val json = io.github.s1ddhants1.swiftbackupprem.hook.experimental.CloudDatabaseManager.anyToJson(dummyData)
+        assertTrue(json is JSONObject)
+        val jsonObject = json as JSONObject
+
+        val labelParamsObj = jsonObject.optJSONObject("labelParamsMap")
+        assertNotNull("labelParamsMap must be a JSONObject, not a String", labelParamsObj)
+        val gameObj = labelParamsObj!!.optJSONObject("game")
+        assertNotNull("game item must be a JSONObject", gameObj)
+        assertEquals("game", gameObj!!.optString("id"))
+        assertEquals("Games", gameObj.optString("name"))
+        assertEquals("#ff0000", gameObj.optString("color"))
+
+        val labelledAppsObj = jsonObject.optJSONObject("labelledAppsMap")
+        assertNotNull("labelledAppsMap must be a JSONObject, not a String", labelledAppsObj)
+        val appObj = labelledAppsObj!!.optJSONObject("com.rovio.baba")
+        assertNotNull("app item must be a JSONObject", appObj)
+        assertEquals("com.rovio.baba", appObj!!.optString("packageName"))
+        assertEquals("Angry Birds", appObj.optString("name"))
+        val labelIdsArr = appObj.optJSONArray("labelIds")
+        assertNotNull("labelIds must be a JSONArray", labelIdsArr)
+        assertEquals(1, labelIdsArr!!.length())
+        assertEquals("game", labelIdsArr.getString(0))
+    }
+
+    @Test
+    fun testReconcileDatabaseNodesHealsCorruptedLabelsDataString() {
+        val db = JSONObject("""
+        {
+          "users": {
+            "test_uid": {
+              "labelsData": {
+                "labelParamsMap": "{game=org.swiftapps.swiftbackup.appslist.ui.labels.LabelParams@e96035c}",
+                "labelledAppsMap": "{com.rovio.baba=org.swiftapps.swiftbackup.appslist.ui.labels.LabelledApp@9a35e45}"
+              }
+            }
+          }
+        }
+        """.trimIndent())
+
+        val prefs = PreferencesManager(null)
+        val changed = io.github.s1ddhants1.swiftbackupprem.hook.experimental.CloudDatabaseManager.reconcileDatabaseNodes(db, prefs)
+        assertTrue(changed)
+
+        val userObj = db.getJSONObject("users").getJSONObject("test_uid")
+        val labelsData = userObj.getJSONObject("labelsData")
+        assertNotNull(labelsData.optJSONObject("labelParamsMap"))
+        assertNotNull(labelsData.optJSONObject("labelledAppsMap"))
+        assertFalse(labelsData.opt("labelParamsMap") is String)
+        assertFalse(labelsData.opt("labelledAppsMap") is String)
+    }
+
+    @Test
+    fun testGetSnapshotDataForPathSanitizesLabelsDataSubmaps() {
+        val testDb = JSONObject("""
+        {
+          "users": {
+            "test_uid": {
+              "labelsData": {
+                "labelParamsMap": {
+                  "work": {
+                    "id": "work",
+                    "name": "Work",
+                    "color": "#00ff00"
+                  }
+                },
+                "labelledAppsMap": {
+                  "com.slack": {
+                    "packageName": "com.slack",
+                    "name": "Slack",
+                    "labelIds": ["work"]
+                  }
+                }
+              }
+            }
+          }
+        }
+        """.trimIndent())
+
+        val segments = io.github.s1ddhants1.swiftbackupprem.hook.experimental.CloudDatabaseManager.extractPathSegments("users/test_uid/labelsData")
+        val node = io.github.s1ddhants1.swiftbackupprem.hook.experimental.CloudDatabaseManager.resolvePathInJson(testDb, segments)
+        assertNotNull(node)
+        val value = io.github.s1ddhants1.swiftbackupprem.hook.experimental.CloudDatabaseManager.jsonToValue(node)
+        assertTrue(value is Map<*, *>)
+        val map = value as Map<*, *>
+        assertTrue(map["labelParamsMap"] is Map<*, *>)
+        assertTrue(map["labelledAppsMap"] is Map<*, *>)
+    }
 }
 

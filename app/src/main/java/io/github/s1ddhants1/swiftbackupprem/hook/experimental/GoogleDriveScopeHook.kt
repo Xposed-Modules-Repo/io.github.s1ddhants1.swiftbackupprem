@@ -149,7 +149,8 @@ object GoogleDriveScopeHook : HookHandler {
         attempt("hook NoGmsSignInActivity.startActivityForResult", silent = true) {
             val activityClass = cl.loadClass("org.swiftapps.swiftbackup.cloud.connect.NoGmsSignInActivity")
             for (m in activityClass.declaredMethods) {
-                if ((m.name == "startActivityForResult" || m.name == "O") && m.parameterTypes.isNotEmpty() && m.parameterTypes[0] == Intent::class.java) {
+                if (m.parameterTypes.isNotEmpty() && m.parameterTypes[0] == Intent::class.java &&
+                    (m.name == "startActivityForResult" || (m.parameterCount >= 2 && m.returnType == Void.TYPE))) {
                     module.hookTracked(
                         m,
                         idPrefix = "drive-scope-nogms-activity-${m.name}"

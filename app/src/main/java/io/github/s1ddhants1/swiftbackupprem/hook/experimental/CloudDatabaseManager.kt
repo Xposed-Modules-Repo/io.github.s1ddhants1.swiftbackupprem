@@ -13,6 +13,7 @@ import io.github.s1ddhants1.swiftbackupprem.util.BackupCrypto
 import io.github.s1ddhants1.swiftbackupprem.util.BackupMigratorEngine
 import io.github.s1ddhants1.swiftbackupprem.util.PreferencesManager
 import io.github.s1ddhants1.swiftbackupprem.util.attempt
+import io.github.s1ddhants1.swiftbackupprem.util.loadClassFlexible
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -182,6 +183,34 @@ object CloudDatabaseManager {
             userPv.put("validity", true)
             userPv.put("AQK8OqW4gtD36Xte/DRxZA4zBTU1sr0y0N5jq+IeqAxKIILVpxc=", true)
             changed = true
+        }
+
+        val users = db.optJSONObject("users")
+        if (users != null) {
+            val uids = users.keys().asSequence().toList()
+            for (u in uids) {
+                val uObj = users.optJSONObject(u) ?: continue
+                val ld = uObj.optJSONObject("labelsData")
+                if (ld == null) {
+                    if (uObj.has("labelsData")) {
+                        uObj.remove("labelsData")
+                    }
+                    uObj.put("labelsData", JSONObject().apply {
+                        put("labelParamsMap", JSONObject())
+                        put("labelledAppsMap", JSONObject())
+                    })
+                    changed = true
+                } else {
+                    if (ld.optJSONObject("labelParamsMap") == null) {
+                        ld.put("labelParamsMap", JSONObject())
+                        changed = true
+                    }
+                    if (ld.optJSONObject("labelledAppsMap") == null) {
+                        ld.put("labelledAppsMap", JSONObject())
+                        changed = true
+                    }
+                }
+            }
         }
         return changed
     }
@@ -471,6 +500,12 @@ object CloudDatabaseManager {
         val appSettings = buildAppSettings(sp, connectedCloud)
         userObj.put("appSettings", appSettings)
 
+        val labelsObj = JSONObject().apply {
+            put("labelParamsMap", JSONObject())
+            put("labelledAppsMap", JSONObject())
+        }
+        userObj.put("labelsData", labelsObj)
+
         val appVersionCode = attempt("get app version", silent = true) {
             if (android.os.Build.VERSION.SDK_INT >= 28) {
                 context.packageManager.getPackageInfo(context.packageName, 0).longVersionCode
@@ -613,6 +648,8 @@ object CloudDatabaseManager {
                 }
                 ?: if (keys.size == 1 && i > 0 && segments[i - 1].equals("tags", ignoreCase = true)) {
                     keys.first()
+                } else if (keys.size == 1 && i > 0 && segments[i - 1].equals("users", ignoreCase = true)) {
+                    keys.first()
                 } else null
 
             if (matchedKey != null) {
@@ -661,11 +698,41 @@ object CloudDatabaseManager {
 
         if (node != null) {
             val converted = jsonToValue(node)
+            val fullPathStr = segments.joinToString("/")
+            if (fullPathStr.endsWith("labelsData") || fullPathStr.endsWith("labelsData/")) {
+                val labelsMap = (converted as? Map<*, *>)?.mapKeys { it.key.toString() }?.toMutableMap() ?: mutableMapOf<String, Any?>()
+                if (labelsMap["labelParamsMap"] !is Map<*, *>) {
+                    labelsMap["labelParamsMap"] = emptyMap<String, Any>()
+                }
+                if (labelsMap["labelledAppsMap"] !is Map<*, *>) {
+                    labelsMap["labelledAppsMap"] = emptyMap<String, Any>()
+                }
+                Log.d(TAG, "[CloudDb] Resolved labelsData path '${segments.joinToString("/")}' with verified submaps")
+                return labelsMap
+            }
+            if (fullPathStr.endsWith("labelParamsMap") || fullPathStr.endsWith("labelParamsMap/")) {
+                return (converted as? Map<*, *>)?.mapKeys { it.key.toString() } ?: emptyMap<String, Any>()
+            }
+            if (fullPathStr.endsWith("labelledAppsMap") || fullPathStr.endsWith("labelledAppsMap/")) {
+                return (converted as? Map<*, *>)?.mapKeys { it.key.toString() } ?: emptyMap<String, Any>()
+            }
             Log.d(TAG, "[CloudDb] Resolved path '${segments.joinToString("/")}' to ${node.javaClass.simpleName}")
             return converted
         }
 
         val fullPathStr = segments.joinToString("/")
+        if (fullPathStr.endsWith("labelsData") || fullPathStr.endsWith("labelsData/")) {
+            return mapOf(
+                "labelParamsMap" to emptyMap<String, Any>(),
+                "labelledAppsMap" to emptyMap<String, Any>()
+            )
+        }
+        if (fullPathStr.endsWith("labelParamsMap") || fullPathStr.endsWith("labelParamsMap/")) {
+            return emptyMap<String, Any>()
+        }
+        if (fullPathStr.endsWith("labelledAppsMap") || fullPathStr.endsWith("labelledAppsMap/")) {
+            return emptyMap<String, Any>()
+        }
         if (fullPathStr.contains("smsBackupsCount")) {
             return CloudDiscoveryHook.discoveredSms.size
         }
@@ -714,11 +781,146 @@ object CloudDatabaseManager {
         return null
     }
 
+    fun anyToJson(
+        payload: Any?,
+        classLoader: ClassLoader? = null,
+        customClassMapperClass: Class<*>? = null
+    ): Any? {
+        if (payload == null || payload == JSONObject.NULL) return JSONObject.NULL
+        if (payload is JSONObject || payload is JSONArray) return payload
+        if (payload is Boolean || payload is Number || payload is String) return payload
+        if (payload is Enum<*>) return payload.name
+
+        // Try CustomClassMapper if payload is a custom class (not Map, Collection, Array)
+        if (payload !is Map<*, *> && payload !is Collection<*> && !payload.javaClass.isArray) {
+            val convertedViaFirebase = attempt("convertViaCustomClassMapper", silent = true) {
+                val mapperClass = customClassMapperClass
+                    ?: (classLoader?.let { cl ->
+                        loadClassFlexible(cl, "com.google.firebase.database.core.utilities.encoding.CustomClassMapper")
+                    })
+                val method = mapperClass?.declaredMethods?.firstOrNull {
+                    java.lang.reflect.Modifier.isStatic(it.modifiers) &&
+                    it.parameterCount == 1 &&
+                    it.parameterTypes[0] == Any::class.java &&
+                    it.returnType == Any::class.java
+                } ?: mapperClass?.methods?.firstOrNull {
+                    it.name == "convertToPlainJava" && it.parameterCount == 1
+                }
+                method?.isAccessible = true
+                method?.invoke(null, payload)
+            }
+            if (convertedViaFirebase != null && convertedViaFirebase !== payload) {
+                return anyToJson(convertedViaFirebase, classLoader, customClassMapperClass)
+            }
+        }
+
+        if (payload is Map<*, *>) {
+            val obj = JSONObject()
+            for ((k, v) in payload) {
+                if (k != null) {
+                    val convertedV = anyToJson(v, classLoader, customClassMapperClass)
+                    if (convertedV != null && convertedV != JSONObject.NULL) {
+                        obj.put(k.toString(), convertedV)
+                    }
+                }
+            }
+            return obj
+        }
+
+        if (payload is Collection<*>) {
+            val arr = JSONArray()
+            for (item in payload) {
+                val convertedItem = anyToJson(item, classLoader, customClassMapperClass)
+                if (convertedItem != null && convertedItem != JSONObject.NULL) {
+                    arr.put(convertedItem)
+                }
+            }
+            return arr
+        }
+
+        if (payload.javaClass.isArray) {
+            val arr = JSONArray()
+            val len = java.lang.reflect.Array.getLength(payload)
+            for (i in 0 until len) {
+                val item = java.lang.reflect.Array.get(payload, i)
+                val convertedItem = anyToJson(item, classLoader, customClassMapperClass)
+                if (convertedItem != null && convertedItem != JSONObject.NULL) {
+                    arr.put(convertedItem)
+                }
+            }
+            return arr
+        }
+
+        // Persistent field-backed reflection serializer
+        val obj = JSONObject()
+        val declaredFields = mutableMapOf<String, java.lang.reflect.Field>()
+        var curr: Class<*>? = payload.javaClass
+        while (curr != null && curr != Any::class.java) {
+            for (f in curr.declaredFields) {
+                if (java.lang.reflect.Modifier.isStatic(f.modifiers) || java.lang.reflect.Modifier.isTransient(f.modifiers)) continue
+                val name = f.name.removePrefix("_")
+                // Skip synthetic, compiler-generated, and Kotlin delegated property backing fields ($delegate)
+                if (name.contains("$")) continue
+                if (f.annotations.any { it.annotationClass.java.simpleName.equals("Exclude", ignoreCase = true) }) continue
+                val key = name.lowercase(java.util.Locale.ROOT)
+                if (!declaredFields.containsKey(key)) {
+                    f.isAccessible = true
+                    declaredFields[key] = f
+                }
+            }
+            curr = curr.superclass
+        }
+
+        val processedKeys = mutableSetOf<String>()
+
+        // 1. First extract values via public getters that match genuine persistent fields
+        for (m in payload.javaClass.methods) {
+            if (java.lang.reflect.Modifier.isStatic(m.modifiers) || !java.lang.reflect.Modifier.isPublic(m.modifiers)) continue
+            if (m.parameterCount != 0 || m.returnType == Void.TYPE || m.declaringClass == Any::class.java) continue
+            val name = m.name
+            if (!name.startsWith("get") && !name.startsWith("is")) continue
+            if (m.annotations.any { it.annotationClass.java.simpleName.equals("Exclude", ignoreCase = true) }) continue
+
+            val rawProp = if (name.startsWith("get")) name.removePrefix("get") else name.removePrefix("is")
+            val propKey = rawProp.lowercase(java.util.Locale.ROOT)
+            val matchingField = declaredFields[propKey] ?: continue
+            val propName = matchingField.name.removePrefix("_")
+
+            try {
+                m.isAccessible = true
+                val v = m.invoke(payload)
+                val convertedV = anyToJson(v, classLoader, customClassMapperClass)
+                if (convertedV != null && convertedV != JSONObject.NULL) {
+                    obj.put(propName, convertedV)
+                    processedKeys.add(propKey)
+                }
+            } catch (_: Throwable) {}
+        }
+
+        // 2. Read remaining persistent fields not covered by getters
+        for ((key, field) in declaredFields) {
+            if (processedKeys.contains(key)) continue
+            val propName = field.name.removePrefix("_")
+            try {
+                val v = field.get(payload)
+                val convertedV = anyToJson(v, classLoader, customClassMapperClass)
+                if (convertedV != null && convertedV != JSONObject.NULL) {
+                    obj.put(propName, convertedV)
+                }
+            } catch (_: Throwable) {}
+        }
+
+        return obj
+    }
+
     fun updateDbFromWrite(
         rawPath: String,
         payload: Any?,
         context: Context,
-        prefs: PreferencesManager
+        prefs: PreferencesManager,
+        classLoader: ClassLoader? = null,
+        customClassMapperClass: Class<*>? = null,
+        isMerge: Boolean = false
     ) {
         attempt("updateDbFromWrite", silent = true) {
             val db = currentDbJson ?: return@attempt
@@ -741,6 +943,11 @@ object CloudDatabaseManager {
                                 keys.firstOrNull { extractCloudProviderPrefix(it) == segPrefix }
                             } else null
                         }
+                        ?: if (keys.size == 1 && i > 0 && segments[i - 1].equals("tags", ignoreCase = true)) {
+                            keys.first()
+                        } else if (keys.size == 1 && i > 0 && segments[i - 1].equals("users", ignoreCase = true)) {
+                            keys.first()
+                        } else null
                 }
 
                 val targetKey = existingKey ?: seg
@@ -754,28 +961,12 @@ object CloudDatabaseManager {
             if (payload == null) {
                 current.remove(lastKey)
             } else {
-                val jsonVal = when (payload) {
-                    JSONObject.NULL -> null
-                    is JSONObject, is JSONArray, is Boolean, is Number, is String -> payload
-                    is Map<*, *> -> @Suppress("UNCHECKED_CAST") JSONObject(payload as Map<String, Any?>)
-                    else -> {
-                        val obj = JSONObject()
-                        for (field in payload.javaClass.declaredFields) {
-                            if (java.lang.reflect.Modifier.isStatic(field.modifiers)) continue
-                            try {
-                                field.isAccessible = true
-                                field.get(payload)?.let { obj.put(field.name.removePrefix("_"), it) }
-                            } catch (_: Throwable) {}
-                        }
-                        obj
-                    }
-                }
-
-                if (jsonVal == null) {
+                val jsonVal = anyToJson(payload, classLoader, customClassMapperClass)
+                if (jsonVal == null || jsonVal == JSONObject.NULL) {
                     current.remove(lastKey)
                 } else {
                     val existingObj = current.optJSONObject(lastKey)
-                    if (existingObj != null && jsonVal is JSONObject) {
+                    if (isMerge && existingObj != null && jsonVal is JSONObject) {
                         val keys = jsonVal.keys()
                         while (keys.hasNext()) {
                             val k = keys.next()

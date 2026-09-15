@@ -32,16 +32,21 @@ object PremiumFeatureHook : HookHandler {
                 val liveDataObj = attempt("read field ${field.name}", silent = true) { field.get(swiftApp) } ?: continue
                 val ldClass = liveDataObj.javaClass
 
-                val isTarget = field.name == "a" || field.name == "mutablePremium"
+                val isTarget = field.name == "mutablePremium" ||
+                    (ldClass.name.contains("LiveData") && attempt("check LiveData value type", silent = true) {
+                        ldClass.methods.firstOrNull { m -> m.parameterCount == 0 && m.returnType == Any::class.java }?.invoke(liveDataObj) is Boolean
+                    } == true)
 
                 if (isTarget) {
                     for (m in ldClass.methods) {
-                        if (m.parameterCount == 1 && m.name in listOf("k", "setValue", "postValue")) {
+                        if (m.parameterCount == 1 && (m.name in listOf("setValue", "postValue") ||
+                            (m.parameterTypes[0] == Any::class.java && (m.returnType == Void.TYPE || m.returnType == java.lang.Void::class.java)))) {
                             attempt("invoke LiveData setter ${m.name}", silent = true) { m.invoke(liveDataObj, isPremium) }
                         }
                     }
                     for (m in ldClass.declaredMethods) {
-                        if (m.parameterCount == 1 && m.name in listOf("k", "setValue", "postValue")) {
+                        if (m.parameterCount == 1 && (m.name in listOf("setValue", "postValue") ||
+                            (m.parameterTypes[0] == Any::class.java && (m.returnType == Void.TYPE || m.returnType == java.lang.Void::class.java)))) {
                             attempt("hook LiveData setter ${m.name}") {
                                 module.hookTracked(
                                     m,
@@ -53,7 +58,7 @@ object PremiumFeatureHook : HookHandler {
                                     } else chain.proceed()
                                 }
                             }
-                        } else if (m.parameterCount == 0 && (m.name == "getValue" || m.name == "d")) {
+                        } else if (m.parameterCount == 0 && (m.name == "getValue" || m.returnType == Any::class.java)) {
                             attempt("hook LiveData getter ${m.name}") {
                                 module.hookTracked(
                                     m,

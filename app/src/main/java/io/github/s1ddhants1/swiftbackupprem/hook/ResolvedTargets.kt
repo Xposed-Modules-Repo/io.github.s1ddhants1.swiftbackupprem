@@ -16,7 +16,10 @@ data class ResolvedTargets(
     val appMetadataXmlClass: Class<*>? = null,
     val fireSynchronizerClass: Class<*>? = null,
     val firebaseWatcherClass: Class<*>? = null,
-    val fireSynchronizerSuccessClass: Class<*>? = null
+    val fireSynchronizerSuccessClass: Class<*>? = null,
+    val fireSynchronizerWriteSuccessClass: Class<*>? = null,
+    val fireSynchronizerCommittedClass: Class<*>? = null,
+    val customClassMapperClass: Class<*>? = null
 ) {
     val isFullyResolved: Boolean
         get() = listOf(clientIdClass, vClass, homeViewModelClass, authUserClass).all { it != null }

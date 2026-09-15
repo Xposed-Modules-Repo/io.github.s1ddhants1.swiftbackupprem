@@ -36,7 +36,10 @@ object TargetClassResolver {
         var appMetadataXml: Class<*>? = null
         var fireSynchronizer: Class<*>? = null
         var fireSynchronizerSuccess: Class<*>? = null
+        var fireSynchronizerWriteSuccess: Class<*>? = null
+        var fireSynchronizerCommitted: Class<*>? = null
         var firebaseWatcher: Class<*>? = null
+        var customClassMapper: Class<*>? = null
 
         val ver = Integer.valueOf(ctx.packageManager.getPackageInfo(Consts.packageName, 0).versionCode)
         versionMap[ver]?.let { c ->
@@ -51,6 +54,7 @@ object TargetClassResolver {
             firebaseWatcher = c.firebaseWatcher?.let { loadClassFlexible(cl, it) }
             fireSynchronizer = c.fireSynchronizer?.let { loadClassFlexible(cl, it) }
             fireSynchronizerSuccess = c.fireSynchronizerSuccess?.let { loadClassFlexible(cl, it) }
+            customClassMapper = c.customClassMapper?.let { loadClassFlexible(cl, it) }
         }
 
         attempt("load V class fallback", silent = true) {
@@ -63,14 +67,17 @@ object TargetClassResolver {
             }
         }
 
-        for (name in listOf("org.swiftapps.swiftbackup.cloud.d0", "org.swiftapps.swiftbackup.cloud.d")) {
-            cloudGms = attempt("load cloud Gms class ($name)", silent = true) { cl.loadClass(name) }
-            if (cloudGms != null) break
+
+
+        attempt("load CustomClassMapper fallback", silent = true) {
+            if (customClassMapper == null) {
+                customClassMapper = loadClassFlexible(cl, "com.google.firebase.database.core.utilities.encoding.CustomClassMapper")
+            }
         }
 
-        if (clientId != null && v != null && homeVm != null && authUser != null && oauthHelper != null && authRequestBuilder != null && fireSynchronizer != null) {
+        if (clientId != null && v != null && homeVm != null && authUser != null && oauthHelper != null && authRequestBuilder != null && fireSynchronizer != null && customClassMapper != null) {
             Log.d(Consts.TAG, "Resolved Swift Backup hook classes without DexKit scan")
-            return ResolvedTargets(clientId, v, cloudGms, homeVm, authUser, anonUser, oauthHelper, authRequestBuilder, appBackup, appMetadataXml, fireSynchronizer, firebaseWatcher, fireSynchronizerSuccess)
+            return ResolvedTargets(clientId, v, cloudGms, homeVm, authUser, anonUser, oauthHelper, authRequestBuilder, appBackup, appMetadataXml, fireSynchronizer, firebaseWatcher, fireSynchronizerSuccess, fireSynchronizerWriteSuccess, fireSynchronizerCommitted, customClassMapper)
         }
 
         attempt("load dexkit native library") { System.loadLibrary("dexkit") }
@@ -83,16 +90,15 @@ object TargetClassResolver {
                     } ?: bridge.findSingle(cl, "clientIdClass by structure", filterInner = false) {
                         matcher {
                             fields {
-                                add { modifiers(Modifier.PUBLIC or Modifier.STATIC or Modifier.FINAL); name("a") }
-                                add { modifiers(Modifier.PRIVATE or Modifier.STATIC or Modifier.FINAL); name("b") }
-                                add { modifiers(Modifier.PRIVATE or Modifier.STATIC or Modifier.FINAL); name("c"); type("java.lang.String") }
-                                add { modifiers(Modifier.PRIVATE or Modifier.STATIC or Modifier.FINAL); name("d"); type("android.net.Uri") }
+                                add { modifiers(Modifier.PUBLIC or Modifier.STATIC or Modifier.FINAL) }
+                                add { modifiers(Modifier.PRIVATE or Modifier.STATIC or Modifier.FINAL) }
+                                add { modifiers(Modifier.PRIVATE or Modifier.STATIC or Modifier.FINAL); type("java.lang.String") }
+                                add { modifiers(Modifier.PRIVATE or Modifier.STATIC or Modifier.FINAL); type("android.net.Uri") }
                                 count(4)
                             }
                             addMethod {
                                 modifiers(Modifier.PUBLIC or Modifier.FINAL)
                                 returnType("android.content.Intent")
-                                name("f")
                                 addParamType("boolean")
                             }
                         }
@@ -182,7 +188,7 @@ object TargetClassResolver {
                     val resultBaseClass = readMethod?.returnType
                     if (resultBaseClass != null) {
                         fireSynchronizerSuccess = bridge.findSingle(cl, "fireSynchronizerSuccessClass", filterInner = false, extraFilter = { cd ->
-                            !cd.name.contains("we3") && !cd.name.lowercase(java.util.Locale.ROOT).contains("error")
+                            !cd.name.lowercase(java.util.Locale.ROOT).contains("error")
                         }) {
                             matcher {
                                 superClass(resultBaseClass.name)
@@ -191,9 +197,58 @@ object TargetClassResolver {
                     }
                 }
 
+                if (fireSynchronizer != null) {
+                    attempt("resolve FireSynchronizer result subclasses") {
+                        val writeMethod = fireSynchronizer!!.declaredMethods.firstOrNull {
+                            it.parameterCount == 2 && it.parameterTypes[1] == Any::class.java
+                        }
+                        val transactionMethod = fireSynchronizer!!.declaredMethods.firstOrNull {
+                            it.parameterCount == 2 &&
+                                it.parameterTypes[1] != Boolean::class.javaPrimitiveType &&
+                                it.parameterTypes[1] != Any::class.java
+                        }
+                        val writeBase = writeMethod?.returnType
+                        if (fireSynchronizerWriteSuccess == null && writeBase != null && writeBase != Any::class.java) {
+                            val candidates = bridge.findClass {
+                                excludePackages(EXCLUDE_PACKAGES)
+                                matcher { superClass(writeBase.name) }
+                            }.filter { !it.name.contains("$") && !it.name.lowercase(java.util.Locale.ROOT).contains("error") }
+                            for (cd in candidates) {
+                                val clazz = attempt("get class", silent = true) { cd.getInstance(cl) } ?: continue
+                                if (isSuccessResultClass(clazz, writeBase)) {
+                                    fireSynchronizerWriteSuccess = clazz
+                                    Log.d(Consts.TAG, "Found fireSynchronizerWriteSuccessClass: ${clazz.name}")
+                                    break
+                                }
+                            }
+                        }
+                        val txBase = transactionMethod?.returnType
+                        if (fireSynchronizerCommitted == null && txBase != null && txBase != Any::class.java) {
+                            val candidates = bridge.findClass {
+                                excludePackages(EXCLUDE_PACKAGES)
+                                matcher { superClass(txBase.name) }
+                            }.filter { !it.name.contains("$") && !it.name.lowercase(java.util.Locale.ROOT).contains("error") }
+                            for (cd in candidates) {
+                                val clazz = attempt("get class", silent = true) { cd.getInstance(cl) } ?: continue
+                                if (isSuccessResultClass(clazz, txBase)) {
+                                    fireSynchronizerCommitted = clazz
+                                    Log.d(Consts.TAG, "Found fireSynchronizerCommittedClass: ${clazz.name}")
+                                    break
+                                }
+                            }
+                        }
+                    }
+                }
+
                 if (firebaseWatcher == null) {
                     firebaseWatcher = bridge.findSingle(cl, "firebaseWatcherClass", filterInner = true) {
                         matcher { usingStrings("FCW", ".info/connected") }
+                    }
+                }
+
+                if (customClassMapper == null) {
+                    customClassMapper = bridge.findSingle(cl, "customClassMapperClass", filterInner = false) {
+                        matcher { usingStrings("Maps with non-string keys are not supported") }
                     }
                 }
             }
@@ -205,7 +260,7 @@ object TargetClassResolver {
             Log.w(Consts.TAG, "Couldn't fully hook Swift Backup.")
         }
 
-        return ResolvedTargets(clientId, v, cloudGms, homeVm, authUser, anonUser, oauthHelper, authRequestBuilder, appBackup, appMetadataXml, fireSynchronizer, firebaseWatcher, fireSynchronizerSuccess)
+        return ResolvedTargets(clientId, v, cloudGms, homeVm, authUser, anonUser, oauthHelper, authRequestBuilder, appBackup, appMetadataXml, fireSynchronizer, firebaseWatcher, fireSynchronizerSuccess, fireSynchronizerWriteSuccess, fireSynchronizerCommitted, customClassMapper)
     }
 
     private fun DexKitBridge.findSingle(
@@ -235,5 +290,15 @@ object TargetClassResolver {
         return selected?.getInstance(cl)?.also {
             Log.d(Consts.TAG, "Found $label: ${it.name}")
         }
+    }
+
+    private fun isSuccessResultClass(cls: Class<*>, baseClass: Class<*>): Boolean {
+        if (!baseClass.isAssignableFrom(cls)) return false
+        val name = cls.name.lowercase(java.util.Locale.ROOT)
+        if (name.contains("error") || name.contains("fail") || name.contains("abort")) return false
+        for (ctor in cls.declaredConstructors) {
+            if (ctor.parameterTypes.any { Throwable::class.java.isAssignableFrom(it) }) return false
+        }
+        return true
     }
 }

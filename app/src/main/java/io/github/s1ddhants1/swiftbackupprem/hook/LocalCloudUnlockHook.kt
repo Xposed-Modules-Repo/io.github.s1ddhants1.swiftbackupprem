@@ -418,7 +418,15 @@ object LocalCloudUnlockHook : HookHandler {
                     Log.d(TAG, "[LocalCloudUnlock] Intercepted FireSynchronizer.${m.name} for path: $path")
 
                     if (payload != null) {
-                        CloudDatabaseManager.updateDbFromWrite(path, payload, context, prefs)
+                        CloudDatabaseManager.updateDbFromWrite(
+                            path,
+                            payload,
+                            context,
+                            prefs,
+                            classLoader = classLoader,
+                            customClassMapperClass = targets.customClassMapperClass,
+                            isMerge = false
+                        )
                         if (path.contains("apps") || path.contains("cloud_v1")) {
                             bgExecutor.execute {
                                 dispatchMetadataToCloud(context, path, payload, classLoader)
@@ -436,7 +444,7 @@ object LocalCloudUnlockHook : HookHandler {
                         Log.w(TAG, "[LocalCloudUnlock] FireSynchronizer.${m.name} natural execution failed", t)
                     }
 
-                    val fallbackSuccess = getAuthenticSuccessInstance(m.returnType, classLoader)
+                    val fallbackSuccess = getAuthenticSuccessInstance(m.returnType, classLoader, targets)
                     if (fallbackSuccess != null) {
                         return@intercept fallbackSuccess
                     }
@@ -457,7 +465,7 @@ object LocalCloudUnlockHook : HookHandler {
                     val path = ref.toString()
                     Log.d(TAG, "[LocalCloudUnlock] Intercepted FireSynchronizer.${m.name} for path: $path")
 
-                    val committedVal = getAuthenticCommittedInstance(m.returnType, classLoader)
+                    val committedVal = getAuthenticCommittedInstance(m.returnType, classLoader, targets)
                     if (committedVal != null) {
                         return@intercept committedVal
                     }
@@ -474,7 +482,6 @@ object LocalCloudUnlockHook : HookHandler {
         targets: ResolvedTargets
     ): Any? = attempt("findSuccessResultInstance", silent = true) {
         val successClass = targets.fireSynchronizerSuccessClass?.takeIf { isSuccessClass(it, returnType) }
-            ?: loadClassFlexible(classLoader, "defpackage.xe3")
             ?: returnType.declaredClasses.firstOrNull { returnType.isAssignableFrom(it) && isSuccessClass(it, returnType) }
 
         if (successClass != null) {
@@ -490,13 +497,12 @@ object LocalCloudUnlockHook : HookHandler {
     fun isSuccessClass(cls: Class<*>, targetClass: Class<*>): Boolean {
         if (!targetClass.isAssignableFrom(cls)) return false
         val name = cls.name.lowercase(java.util.Locale.ROOT)
-        if (name.contains("error") || name.contains("fail") || name.contains("abort") ||
-            name.contains("ye3") || name.contains("we3") || name.contains("ue3")) {
+        if (name.contains("error") || name.contains("fail") || name.contains("abort")) {
             return false
         }
 
         for (ctor in cls.declaredConstructors) {
-            if (ctor.parameterTypes.any { Throwable::class.java.isAssignableFrom(it) || it.name.contains("wc2") }) {
+            if (ctor.parameterTypes.any { Throwable::class.java.isAssignableFrom(it) }) {
                 return false
             }
         }
@@ -509,10 +515,7 @@ object LocalCloudUnlockHook : HookHandler {
         if (str.contains("error") || str.contains("fail") || str.contains("abort")) {
             return false
         }
-        val className = instance.javaClass.name.lowercase(java.util.Locale.ROOT)
-        if (className.contains("ye3") || className.contains("we3") || className.contains("ue3")) {
-            return false
-        }
+
 
         var curr: Class<*>? = instance.javaClass
         while (curr != null && curr != Any::class.java) {
@@ -526,7 +529,7 @@ object LocalCloudUnlockHook : HookHandler {
                             }
                         } catch (_: Throwable) {}
                     }
-                    if (Throwable::class.java.isAssignableFrom(f.type) || f.type.name.contains("wc2")) {
+                    if (Throwable::class.java.isAssignableFrom(f.type)) {
                         return false
                     }
                 }
@@ -536,23 +539,21 @@ object LocalCloudUnlockHook : HookHandler {
         return true
     }
 
-    fun getAuthenticSuccessInstance(targetClass: Class<*>, classLoader: ClassLoader? = null): Any? =
+    fun getAuthenticSuccessInstance(targetClass: Class<*>, classLoader: ClassLoader? = null, targets: ResolvedTargets? = null): Any? =
         attempt("getAuthenticSuccessInstance", silent = true) {
-            if (classLoader != null) {
-                val ze3Class = loadClassFlexible(classLoader, "defpackage.ze3")
-                if (ze3Class != null && targetClass.isAssignableFrom(ze3Class) && isSuccessClass(ze3Class, targetClass)) {
-                    val fieldB = ze3Class.declaredFields.firstOrNull { Modifier.isStatic(it.modifiers) && ze3Class.isAssignableFrom(it.type) }
-                    if (fieldB != null) {
-                        fieldB.isAccessible = true
-                        val inst = fieldB.get(null)
-                        if (isSuccessInstance(inst)) return@attempt inst
-                    }
-                    val ctor = ze3Class.declaredConstructors.firstOrNull { it.parameterCount == 1 && it.parameterTypes[0] == Boolean::class.javaPrimitiveType }
-                    if (ctor != null) {
-                        ctor.isAccessible = true
-                        val inst = ctor.newInstance(true)
-                        if (isSuccessInstance(inst)) return@attempt inst
-                    }
+            val writeSuccessClass = targets?.fireSynchronizerWriteSuccessClass
+            if (writeSuccessClass != null && targetClass.isAssignableFrom(writeSuccessClass) && isSuccessClass(writeSuccessClass, targetClass)) {
+                val fieldB = writeSuccessClass.declaredFields.firstOrNull { Modifier.isStatic(it.modifiers) && writeSuccessClass.isAssignableFrom(it.type) }
+                if (fieldB != null) {
+                    fieldB.isAccessible = true
+                    val inst = fieldB.get(null)
+                    if (isSuccessInstance(inst)) return@attempt inst
+                }
+                val ctor = writeSuccessClass.declaredConstructors.firstOrNull { it.parameterCount == 1 && it.parameterTypes[0] == Boolean::class.javaPrimitiveType }
+                if (ctor != null) {
+                    ctor.isAccessible = true
+                    val inst = ctor.newInstance(true)
+                    if (isSuccessInstance(inst)) return@attempt inst
                 }
             }
             val candidateInnerClasses = targetClass.declaredClasses.filter {
@@ -575,23 +576,21 @@ object LocalCloudUnlockHook : HookHandler {
             null
         }
 
-    fun getAuthenticCommittedInstance(targetClass: Class<*>, classLoader: ClassLoader? = null): Any? =
+    fun getAuthenticCommittedInstance(targetClass: Class<*>, classLoader: ClassLoader? = null, targets: ResolvedTargets? = null): Any? =
         attempt("getAuthenticCommittedInstance", silent = true) {
-            if (classLoader != null) {
-                val te3Class = loadClassFlexible(classLoader, "defpackage.te3")
-                if (te3Class != null && targetClass.isAssignableFrom(te3Class) && isSuccessClass(te3Class, targetClass)) {
-                    val fieldA = te3Class.declaredFields.firstOrNull { Modifier.isStatic(it.modifiers) && te3Class.isAssignableFrom(it.type) }
-                    if (fieldA != null) {
-                        fieldA.isAccessible = true
-                        val inst = fieldA.get(null)
-                        if (isSuccessInstance(inst)) return@attempt inst
-                    }
-                    val ctor = te3Class.declaredConstructors.firstOrNull { it.parameterCount == 0 }
-                    if (ctor != null) {
-                        ctor.isAccessible = true
-                        val inst = ctor.newInstance()
-                        if (isSuccessInstance(inst)) return@attempt inst
-                    }
+            val committedClass = targets?.fireSynchronizerCommittedClass
+            if (committedClass != null && targetClass.isAssignableFrom(committedClass) && isSuccessClass(committedClass, targetClass)) {
+                val fieldA = committedClass.declaredFields.firstOrNull { Modifier.isStatic(it.modifiers) && committedClass.isAssignableFrom(it.type) }
+                if (fieldA != null) {
+                    fieldA.isAccessible = true
+                    val inst = fieldA.get(null)
+                    if (isSuccessInstance(inst)) return@attempt inst
+                }
+                val ctor = committedClass.declaredConstructors.firstOrNull { it.parameterCount == 0 }
+                if (ctor != null) {
+                    ctor.isAccessible = true
+                    val inst = ctor.newInstance()
+                    if (isSuccessInstance(inst)) return@attempt inst
                 }
             }
             val candidateInnerClasses = targetClass.declaredClasses.filter {
@@ -614,11 +613,11 @@ object LocalCloudUnlockHook : HookHandler {
             null
         }
 
-    fun findSuccessInstance(targetClass: Class<*>, classLoader: ClassLoader? = null): Any? =
-        getAuthenticSuccessInstance(targetClass, classLoader)
+    fun findSuccessInstance(targetClass: Class<*>, classLoader: ClassLoader? = null, targets: ResolvedTargets? = null): Any? =
+        getAuthenticSuccessInstance(targetClass, classLoader, targets)
 
-    fun findStaticInstance(targetClass: Class<*>, classLoader: ClassLoader? = null): Any? =
-        getAuthenticSuccessInstance(targetClass, classLoader)
+    fun findStaticInstance(targetClass: Class<*>, classLoader: ClassLoader? = null, targets: ResolvedTargets? = null): Any? =
+        getAuthenticSuccessInstance(targetClass, classLoader, targets)
 
     fun hookDatabaseReferenceWrites(
         module: XposedModule,
@@ -643,25 +642,43 @@ object LocalCloudUnlockHook : HookHandler {
             tasksClass?.getMethod("forResult", Any::class.java)?.invoke(null, null)
         }
 
-        dbRefClass.methods.forEach { m ->
-            when (m.name) {
-                "setValue", "updateChildren", "removeValue", "i" -> attempt("hook DatabaseReference.${m.name}") {
-                    module.hookTracked(m, idPrefix = "local-cloud-rtdb-write-${m.name}").intercept { chain ->
-                        val enforceLocal = shouldEnforceLocalCloud(prefs, context, classLoader)
-                        if (!enforceLocal) return@intercept chain.proceed()
+        dbRefClass.methods.filter { m ->
+            if (java.lang.reflect.Modifier.isStatic(m.modifiers)) return@filter false
+            val returnsTask = m.returnType.name.endsWith("Task") ||
+                (tasksClass != null && tasksClass.isAssignableFrom(m.returnType))
+            val hasWriteParams = m.parameterCount in 1..2 && (
+                m.parameterTypes[0] == Any::class.java ||
+                Map::class.java.isAssignableFrom(m.parameterTypes[0])
+            )
+            (returnsTask && hasWriteParams) || m.name in listOf("setValue", "updateChildren", "removeValue")
+        }.forEach { m ->
+            attempt("hook DatabaseReference.${m.name}") {
+                module.hookTracked(m, idPrefix = "local-cloud-rtdb-write-${m.name}").intercept { chain ->
+                    val enforceLocal = shouldEnforceLocalCloud(prefs, context, classLoader)
+                    if (!enforceLocal) return@intercept chain.proceed()
 
-                        val path = chain.thisObject?.toString() ?: ""
-                        Log.d(TAG, "[LocalCloudUnlock] Intercepted RTDB write ${m.name} for path: $path")
+                    val path = chain.thisObject?.toString() ?: ""
+                    Log.d(TAG, "[LocalCloudUnlock] Intercepted RTDB write ${m.name} for path: $path")
 
-                        val payload = if (m.name == "removeValue") null else chain.args.firstOrNull()
-                        CloudDatabaseManager.updateDbFromWrite(path, payload, context, prefs)
-                        if (payload != null && (path.contains("apps") || path.contains("cloud_v1"))) {
-                            bgExecutor.execute {
-                                dispatchMetadataToCloud(context, path, payload, classLoader)
-                            }
+                    val payload = if (m.name == "removeValue" || m.parameterCount == 0) null else chain.args.firstOrNull()
+                    val isMerge = (m.parameterTypes.isNotEmpty() && Map::class.java.isAssignableFrom(m.parameterTypes[0])) ||
+                        m.name == "updateChildren"
+                    CloudDatabaseManager.updateDbFromWrite(
+                        path,
+                        payload,
+                        context,
+                        prefs,
+                        classLoader = classLoader,
+                        customClassMapperClass = targets.customClassMapperClass,
+                        isMerge = isMerge
+                    )
+                    if (payload != null && (path.contains("apps") || path.contains("cloud_v1"))) {
+                        bgExecutor.execute {
+                            dispatchMetadataToCloud(context, path, payload, classLoader)
                         }
+                    }
 
-                        val lastArg = chain.args.lastOrNull()
+                    val lastArg = chain.args.lastOrNull()
                         if (lastArg != null && lastArg != payload) {
                             attempt("invoke CompletionListener.onComplete", silent = true) {
                                 val onCompleteMethod = lastArg.javaClass.methods.firstOrNull {
@@ -682,11 +699,10 @@ object LocalCloudUnlockHook : HookHandler {
                 }
             }
         }
-    }
 
     private fun dispatchMetadataToCloud(context: Context, path: String, payload: Any, classLoader: ClassLoader) {
         attempt("dispatchMetadataToCloud", silent = true) {
-            val json = when (payload) {
+            val json = (CloudDatabaseManager.anyToJson(payload, classLoader, null) as? JSONObject) ?: when (payload) {
                 is JSONObject -> payload
                 is Map<*, *> -> {
                     @Suppress("UNCHECKED_CAST")
@@ -814,9 +830,14 @@ object LocalCloudUnlockHook : HookHandler {
         Log.d(TAG, "[LocalCloudUnlock] queryClass=$queryClass")
         if (queryClass == null) return
 
-        queryClass.methods.filter {
-            it.parameterCount == 1 && !it.parameterTypes[0].isPrimitive &&
-            it.name in listOf("addListenerForSingleValueEvent", "addValueEventListener", "b", "c")
+        queryClass.methods.filter { m ->
+            if (java.lang.reflect.Modifier.isStatic(m.modifiers)) return@filter false
+            if (m.parameterCount != 1 || m.parameterTypes[0].isPrimitive) return@filter false
+            val paramType = m.parameterTypes[0]
+            m.name in listOf("addListenerForSingleValueEvent", "addValueEventListener") ||
+                (paramType.isInterface && paramType.declaredMethods.any { method ->
+                    method.parameterCount == 1 && (dataSnapshotClass == null || method.parameterTypes[0] == dataSnapshotClass)
+                })
         }.forEach { m ->
             attempt("hook Query.${m.name}") {
                 module.hookTracked(m, idPrefix = "local-cloud-query-${m.name}").intercept { chain ->
@@ -829,9 +850,20 @@ object LocalCloudUnlockHook : HookHandler {
 
                     Log.d(TAG, "[LocalCloudUnlock] Intercepted Query.${m.name} for path: $path")
 
-                    val syntheticSnapshot = CloudDiscoveryHook.FirebaseSnapshotSynthesizer.createSnapshotForPath(
+                    var syntheticSnapshot = CloudDiscoveryHook.FirebaseSnapshotSynthesizer.createSnapshotForPath(
                         classLoader, query, path, context, targets, prefs
                     )
+
+                    if (syntheticSnapshot == null && path.contains("labelsData")) {
+                        syntheticSnapshot = CloudDiscoveryHook.FirebaseSnapshotSynthesizer.createSnapshotFromMap(
+                            classLoader,
+                            query,
+                            mapOf(
+                                "labelParamsMap" to emptyMap<String, Any>(),
+                                "labelledAppsMap" to emptyMap<String, Any>()
+                            )
+                        )
+                    }
 
                     if (syntheticSnapshot != null) {
                         val isSingleShot = m.returnType == Void.TYPE || m.returnType == java.lang.Void::class.java
