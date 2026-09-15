@@ -33,6 +33,8 @@ jobs:
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v4
+        with:
+          packages: ''
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v6
