@@ -679,23 +679,23 @@ object LocalCloudUnlockHook : HookHandler {
                     }
 
                     val lastArg = chain.args.lastOrNull()
-                        if (lastArg != null && lastArg != payload) {
-                            attempt("invoke CompletionListener.onComplete", silent = true) {
-                                val onCompleteMethod = lastArg.javaClass.methods.firstOrNull {
-                                    it.name == "onComplete" && it.parameterCount == 2
-                                }
-                                onCompleteMethod?.invoke(lastArg, null, chain.thisObject)
+                    if (lastArg != null && lastArg != payload) {
+                        attempt("invoke CompletionListener.onComplete", silent = true) {
+                            val onCompleteMethod = lastArg.javaClass.methods.firstOrNull {
+                                it.name == "onComplete" && it.parameterCount == 2
                             }
+                            onCompleteMethod?.invoke(lastArg, null, chain.thisObject)
                         }
+                    }
 
-                        if (successTask != null && m.returnType.isInstance(successTask)) {
-                            return@intercept successTask
-                        }
-                        if (m.returnType == Void.TYPE || m.returnType == java.lang.Void::class.java) {
-                            return@intercept null
-                        }
+                    if (successTask != null && m.returnType.isInstance(successTask)) {
                         return@intercept successTask
                     }
+                    if (m.returnType == Void.TYPE || m.returnType == java.lang.Void::class.java) {
+                        return@intercept null
+                    }
+                    return@intercept successTask
+                }
                 }
             }
         }
