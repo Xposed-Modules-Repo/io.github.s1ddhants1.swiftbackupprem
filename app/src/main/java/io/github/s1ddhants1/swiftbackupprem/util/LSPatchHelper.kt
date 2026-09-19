@@ -115,7 +115,11 @@ object LSPatchHelper {
             } ?: return@attempt TargetStatus(isInstalled = false, isPatched = false, isModuleEmbedded = false)
 
             val hasMeta = appInfo.metaData?.containsKey("lspatch") == true
-            val hasFactory = appInfo.appComponentFactory?.contains("lspatch", ignoreCase = true) == true
+            val hasFactory = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                appInfo.appComponentFactory?.contains("lspatch", ignoreCase = true) == true
+            } else {
+                false
+            }
             val sourceDir = appInfo.sourceDir
 
             var hasLspAsset = false
