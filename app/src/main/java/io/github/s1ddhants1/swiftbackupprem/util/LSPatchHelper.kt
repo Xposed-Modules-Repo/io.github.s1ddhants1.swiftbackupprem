@@ -32,6 +32,11 @@ object LSPatchHelper {
      * when the service is absent or running under upstream LSPatch.
      */
     fun requestServicePush(context: Context) {
+        val currentFramework = io.github.s1ddhants1.swiftbackupprem.App.serviceState.value?.frameworkName.orEmpty()
+        if (currentFramework.isNotEmpty() && !currentFramework.contains("LSPatch", ignoreCase = true)) {
+            Log.d(Consts.TAG, "Active non-LSPatch framework detected ($currentFramework); skipping LSPatch push request")
+            return
+        }
         attempt("request LSPatch service push", silent = true) {
             val now = android.os.SystemClock.elapsedRealtime()
             if (now - lastRequestTime < 3000L) {
@@ -262,12 +267,12 @@ object LSPatchHelper {
                 }
                 if (!targetStatus.isPatched) {
                     return BannerEvaluation(
-                        isConnected = true,
+                        isConnected = false,
                         isInjectable = false,
                         frameworkName = name,
                         frameworkVersion = version,
-                        titleRes = R.string.framework_sb_not_patched_title,
-                        descRes = R.string.framework_sb_not_patched_desc
+                        titleRes = R.string.framework_inactive_title,
+                        descRes = R.string.framework_inactive_desc
                     )
                 }
 
@@ -315,8 +320,8 @@ object LSPatchHelper {
                         isInjectable = false,
                         frameworkName = name,
                         frameworkVersion = version,
-                        titleRes = R.string.framework_sb_not_in_scope_title,
-                        descRes = R.string.framework_sb_not_in_scope_desc
+                        titleRes = if (isLSPosed) R.string.framework_lsposed_not_in_scope_title else R.string.framework_sb_not_in_scope_title,
+                        descRes = if (isLSPosed) R.string.framework_lsposed_not_in_scope_desc else R.string.framework_sb_not_in_scope_desc
                     )
                 }
 

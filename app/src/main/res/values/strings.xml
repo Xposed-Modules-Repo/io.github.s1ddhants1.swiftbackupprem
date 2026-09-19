@@ -43,13 +43,15 @@
     <!-- Framework Status Card -->
     <string name="framework_active_title">Module Active</string>
     <string name="framework_active_title_dynamic">%1$s Module Active</string>
-    <string name="framework_inactive_title">Module Not Connected</string>
+    <string name="framework_inactive_title">Module Inactive</string>
     <string name="framework_active_desc">Connected to %1$s %2$s</string>
-    <string name="framework_inactive_desc">Enable in LSPosed / LSPatch Manager or install integrated patch</string>
+    <string name="framework_inactive_desc">Enable in LSPosed Manager (root) or patch Swift Backup in LSPatch (rootless)</string>
     <string name="framework_sb_not_installed_title">Swift Backup Not Installed</string>
-    <string name="framework_sb_not_installed_desc">Install and patch Swift Backup with LSPatch</string>
+    <string name="framework_sb_not_installed_desc">Install Swift Backup to use this module</string>
     <string name="framework_sb_not_patched_title">Swift Backup Not Patched</string>
     <string name="framework_sb_not_patched_desc">Patch Swift Backup in LSPatch Manager to enable hooks</string>
+    <string name="framework_lsposed_not_in_scope_title">Swift Backup Not in Scope</string>
+    <string name="framework_lsposed_not_in_scope_desc">Add Swift Backup to module scope in LSPosed Manager</string>
     <string name="framework_sb_not_in_scope_title">Module Disabled in LSPatch</string>
     <string name="framework_sb_not_in_scope_desc">Enable SwiftBackupPrem for Swift Backup in LSPatch Manager</string>
     <string name="framework_lspatch_embedded_active_title">LSPatch Embedded Module Active</string>
@@ -68,7 +70,7 @@
     <string name="section_advanced_features_subtitle">Preview features and advanced tweaks</string>
     <string name="pref_enable_drive_discovery_title">Universal Cloud Discovery</string>
     <string name="pref_enable_drive_discovery_subtitle">Scan and index backups across configured cloud providers</string>
-    <string name="pref_enable_drive_discovery_requires_custom_firebase">Requires Custom Firebase App or Local Account Cloud Features</string>
+    <string name="pref_enable_drive_discovery_requires_custom_firebase">Requires Custom Firebase App</string>
 
     <!-- Custom Firebase Configuration -->
     <string name="firebase_credentials_title">Credentials &amp; Review</string>

@@ -33,7 +33,7 @@ class LSPatchHelperTest {
     }
 
     @Test
-    fun lspatchConnected_swiftBackupNotPatched_returnsNotPatched() {
+    fun lspatchConnected_swiftBackupNotPatched_returnsInactive() {
         val result = LSPatchHelper.evaluateFrameworkStatus(
             frameworkName = "LSPatch",
             frameworkVersion = "0.6",
@@ -45,9 +45,10 @@ class LSPatchHelperTest {
                 isModuleEmbedded = false
             )
         )
-        assertTrue(result.isConnected)
+        assertFalse(result.isConnected)
         assertFalse(result.isInjectable)
-        assertEquals(R.string.framework_sb_not_patched_title, result.titleRes)
+        assertEquals(R.string.framework_inactive_title, result.titleRes)
+        assertEquals(R.string.framework_inactive_desc, result.descRes)
     }
 
     @Test
@@ -159,7 +160,8 @@ class LSPatchHelperTest {
         )
         assertTrue(result.isConnected)
         assertFalse(result.isInjectable)
-        assertEquals(R.string.framework_sb_not_in_scope_title, result.titleRes)
+        assertEquals(R.string.framework_lsposed_not_in_scope_title, result.titleRes)
+        assertEquals(R.string.framework_lsposed_not_in_scope_desc, result.descRes)
     }
 
     @Test
@@ -213,7 +215,8 @@ class LSPatchHelperTest {
         )
         assertTrue(result.isConnected)
         assertFalse(result.isInjectable)
-        assertEquals(R.string.framework_sb_not_in_scope_title, result.titleRes)
+        assertEquals(R.string.framework_lsposed_not_in_scope_title, result.titleRes)
+        assertEquals(R.string.framework_lsposed_not_in_scope_desc, result.descRes)
     }
 
     @Test
