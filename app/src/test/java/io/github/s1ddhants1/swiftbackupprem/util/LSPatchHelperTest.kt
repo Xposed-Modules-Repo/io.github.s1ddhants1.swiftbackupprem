@@ -145,10 +145,46 @@ class LSPatchHelperTest {
     }
 
     @Test
-    fun lsposedConnected_emptyScope_returnsActive() {
+    fun lsposedConnected_emptyScope_returnsNotInScope() {
         val result = LSPatchHelper.evaluateFrameworkStatus(
             frameworkName = "LSPosed",
             frameworkVersion = "1.9.3",
+            scope = emptyList(),
+            isServiceBound = true,
+            targetStatus = LSPatchHelper.TargetStatus(
+                isInstalled = true,
+                isPatched = false,
+                isModuleEmbedded = false
+            )
+        )
+        assertTrue(result.isConnected)
+        assertFalse(result.isInjectable)
+        assertEquals(R.string.framework_sb_not_in_scope_title, result.titleRes)
+    }
+
+    @Test
+    fun lsposedConnected_packageInScope_returnsActive() {
+        val result = LSPatchHelper.evaluateFrameworkStatus(
+            frameworkName = "LSPosed",
+            frameworkVersion = "1.9.3",
+            scope = listOf(Consts.packageName),
+            isServiceBound = true,
+            targetStatus = LSPatchHelper.TargetStatus(
+                isInstalled = true,
+                isPatched = false,
+                isModuleEmbedded = false
+            )
+        )
+        assertTrue(result.isConnected)
+        assertTrue(result.isInjectable)
+        assertEquals(R.string.framework_active_title_dynamic, result.titleRes)
+    }
+
+    @Test
+    fun legacyXposedConnected_emptyScope_returnsActive() {
+        val result = LSPatchHelper.evaluateFrameworkStatus(
+            frameworkName = "Xposed",
+            frameworkVersion = "90",
             scope = emptyList(),
             isServiceBound = true,
             targetStatus = LSPatchHelper.TargetStatus(

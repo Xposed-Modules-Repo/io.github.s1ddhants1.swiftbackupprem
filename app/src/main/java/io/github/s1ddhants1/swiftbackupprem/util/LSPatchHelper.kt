@@ -302,7 +302,12 @@ object LSPatchHelper {
                 )
             } else {
                 val currentScope = scope ?: emptyList()
-                val isInScope = currentScope.isEmpty() || currentScope.contains(Consts.packageName)
+                val isLSPosed = name.contains("LSPosed", ignoreCase = true)
+                val isInScope = if (isLSPosed) {
+                    currentScope.contains(Consts.packageName)
+                } else {
+                    currentScope.isEmpty() || currentScope.contains(Consts.packageName)
+                }
 
                 if (!isInScope) {
                     return BannerEvaluation(
