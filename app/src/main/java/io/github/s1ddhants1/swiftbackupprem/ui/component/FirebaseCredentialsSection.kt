@@ -5,12 +5,10 @@ import android.os.Build
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Launch
-import androidx.compose.material.icons.automirrored.filled.ListAlt
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -340,11 +338,3 @@ fun CredentialActionButton(
         )
     }
 }
-
-@Deprecated("Use FirebaseCredentialsSection instead")
-@Composable
-fun GuidedSetupWizard(
-    prefs: PreferencesManager,
-    onImportGoogleServices: (Uri) -> Unit,
-    onFinish: () -> Unit = {}
-) = FirebaseCredentialsSection(prefs = prefs, onImportGoogleServices = onImportGoogleServices, onFinish = onFinish)

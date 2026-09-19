@@ -233,7 +233,6 @@ class PreferencesManagerTest {
             prefsA.updatedAt = 1000L
             prefsA.saveToFallbackStorage(fakeContext)
 
-            // prefsB has newer timestamp in memory (2000L), should NOT load older fallback (1000L) when force=false
             val prefsB = PreferencesManager(null)
             prefsB.enablePremium = true
             prefsB.updatedAt = 2000L
@@ -241,17 +240,14 @@ class PreferencesManagerTest {
             assertFalse(loadedOlder)
             assertTrue(prefsB.enablePremium)
 
-            // When force=true, fallback should be applied
             val loadedForced = prefsB.loadFromFallbackStorage(fakeContext, force = true)
             assertTrue(loadedForced)
             assertFalse(prefsB.enablePremium)
 
-            // Now write newer fallback (3000L)
             prefsA.enablePremium = true
             prefsA.updatedAt = 3000L
             prefsA.saveToFallbackStorage(fakeContext)
 
-            // prefsC has older timestamp (2000L), should load newer fallback (3000L) when force=false
             val prefsC = PreferencesManager(null)
             prefsC.enablePremium = false
             prefsC.updatedAt = 2000L

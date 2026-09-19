@@ -5,7 +5,6 @@ import android.content.SharedPreferences
 import android.util.Log
 import androidx.annotation.Keep
 import io.github.s1ddhants1.swiftbackupprem.Consts
-import io.github.s1ddhants1.swiftbackupprem.util.AppUtils
 import io.github.s1ddhants1.swiftbackupprem.util.attempt
 import org.json.JSONArray
 import org.json.JSONObject

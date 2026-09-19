@@ -791,7 +791,6 @@ object CloudDatabaseManager {
         if (payload is Boolean || payload is Number || payload is String) return payload
         if (payload is Enum<*>) return payload.name
 
-        // Try CustomClassMapper if payload is a custom class (not Map, Collection, Array)
         if (payload !is Map<*, *> && payload !is Collection<*> && !payload.javaClass.isArray) {
             val convertedViaFirebase = attempt("convertViaCustomClassMapper", silent = true) {
                 val mapperClass = customClassMapperClass
@@ -851,7 +850,6 @@ object CloudDatabaseManager {
             return arr
         }
 
-        // Persistent field-backed reflection serializer
         val obj = JSONObject()
         val declaredFields = mutableMapOf<String, java.lang.reflect.Field>()
         var curr: Class<*>? = payload.javaClass
@@ -859,7 +857,6 @@ object CloudDatabaseManager {
             for (f in curr.declaredFields) {
                 if (java.lang.reflect.Modifier.isStatic(f.modifiers) || java.lang.reflect.Modifier.isTransient(f.modifiers)) continue
                 val name = f.name.removePrefix("_")
-                // Skip synthetic, compiler-generated, and Kotlin delegated property backing fields ($delegate)
                 if (name.contains("$")) continue
                 if (f.annotations.any { it.annotationClass.java.simpleName.equals("Exclude", ignoreCase = true) }) continue
                 val key = name.lowercase(java.util.Locale.ROOT)
@@ -873,7 +870,6 @@ object CloudDatabaseManager {
 
         val processedKeys = mutableSetOf<String>()
 
-        // 1. First extract values via public getters that match genuine persistent fields
         for (m in payload.javaClass.methods) {
             if (java.lang.reflect.Modifier.isStatic(m.modifiers) || !java.lang.reflect.Modifier.isPublic(m.modifiers)) continue
             if (m.parameterCount != 0 || m.returnType == Void.TYPE || m.declaringClass == Any::class.java) continue
@@ -897,7 +893,6 @@ object CloudDatabaseManager {
             } catch (_: Throwable) {}
         }
 
-        // 2. Read remaining persistent fields not covered by getters
         for ((key, field) in declaredFields) {
             if (processedKeys.contains(key)) continue
             val propName = field.name.removePrefix("_")

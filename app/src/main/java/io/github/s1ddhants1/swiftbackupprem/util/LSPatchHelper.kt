@@ -23,14 +23,6 @@ object LSPatchHelper {
     @Volatile
     private var lastRequestTime = 0L
 
-    /**
-     * Requests LSPatch manager to push XposedService binding via [ACTION_REQUEST_PUSH].
-     *
-     * Note: [IXposedServicePull] is a fork-specific IPC interface introduced in the JingMatrix fork
-     * of LSPatch (https://github.com/JingMatrix/LSPatch). Upstream LSPosed/LSPatch does not expose
-     * this pull service; this method queries intent services dynamically and gracefully no-ops
-     * when the service is absent or running under upstream LSPatch.
-     */
     fun requestServicePush(context: Context) {
         val currentFramework = io.github.s1ddhants1.swiftbackupprem.App.serviceState.value?.frameworkName.orEmpty()
         if (currentFramework.isNotEmpty() && !currentFramework.contains("LSPatch", ignoreCase = true)) {

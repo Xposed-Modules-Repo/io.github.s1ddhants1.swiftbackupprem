@@ -4,8 +4,10 @@ import android.content.Context
 import androidx.core.content.pm.PackageInfoCompat
 import org.json.JSONObject
 import java.io.File
+import java.io.RandomAccessFile
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
+import java.util.zip.CRC32
 
 object BackupMigratorEngine {
 
@@ -373,18 +375,25 @@ object BackupMigratorEngine {
 
             files.forEach { file ->
                 if (!file.name.endsWith(".xml") && !file.name.endsWith(".extra")) {
-                    val destFileName = if (isPortable) resolvePortableFileName(pkgName, file.name) else file.name
-                    val destFile = File(destBackupDir, destFileName)
-                    if (targetUid == null && (file.name.endsWith(".dat") || file.name.endsWith(".extdat") || file.name.endsWith(".med"))) {
-                        try {
-                            val rawBytes = file.readBytes()
-                            val decBytes = BackupCrypto.concealDecryptRawBytes(rawBytes, sourceKey)
-                            destFile.writeBytes(decBytes)
-                        } catch (_: Throwable) {
-                            file.copyTo(destFile, overwrite = true)
-                        }
+                    val isSbaCandidate = file.name.endsWith(".dat") || file.name.endsWith(".extdat")
+                            || file.name.endsWith(".med") || file.name.endsWith(".splits")
+                    val destFile = if (isPortable && isSbaCandidate && Sba1Parser.isSba1File(file)) {
+                        processSba1ForPortable(file, destBackupDir, pkgName)
                     } else {
-                        file.copyTo(destFile, overwrite = true)
+                        val destFileName = if (isPortable) resolvePortableFileName(pkgName, file.name) else file.name
+                        val dest = File(destBackupDir, destFileName)
+                        if (targetUid == null && (file.name.endsWith(".dat") || file.name.endsWith(".extdat") || file.name.endsWith(".med"))) {
+                            try {
+                                val rawBytes = file.readBytes()
+                                val decBytes = BackupCrypto.concealDecryptRawBytes(rawBytes, sourceKey)
+                                dest.writeBytes(decBytes)
+                            } catch (_: Throwable) {
+                                file.copyTo(dest, overwrite = true)
+                            }
+                        } else {
+                            file.copyTo(dest, overwrite = true)
+                        }
+                        dest
                     }
                     destFile.setReadable(true, false)
                     destFile.setWritable(true, false)
@@ -410,9 +419,8 @@ object BackupMigratorEngine {
                 )
 
                 sliceDefinitions.forEach { (suffix, dateKey, sizeKey) ->
-                    val checkFileName = if (isPortable) resolvePortableFileName(pkgName, "$pkgName.$suffix") else "$pkgName.$suffix"
-                    val sliceFile = File(destBackupDir, checkFileName)
-                    if (sliceFile.exists()) {
+                    val sliceFile = findDestSliceFile(destBackupDir, pkgName, suffix, isPortable)
+                    if (sliceFile != null) {
                         if (!has(dateKey)) put(dateKey, now)
                         put(sizeKey, sliceFile.length())
                         if (suffix != "app") {
@@ -431,9 +439,8 @@ object BackupMigratorEngine {
                     }
                 }
 
-                val splitsFileName = if (isPortable) resolvePortableFileName(pkgName, "$pkgName.splits") else "$pkgName.splits"
-                val splitsFile = File(destBackupDir, splitsFileName)
-                if (splitsFile.exists()) {
+                val splitsFile = findDestSliceFile(destBackupDir, pkgName, "splits", isPortable)
+                if (splitsFile != null) {
                     put("splitsBackupSize", splitsFile.length())
                 }
 
@@ -533,18 +540,33 @@ object BackupMigratorEngine {
 
             files.forEach { file ->
                 if (!file.name.endsWith(".flm") && file.name != "metadata.json") {
-                    val destFileName = if (isPortable && file.name == "folder-base.fld") "$folderName.tar" else file.name
-                    val destFile = File(destFolderDir, destFileName)
-                    if (targetUid == null && file.name == "folder-base.fld") {
-                        try {
-                            val rawBytes = file.readBytes()
-                            val decBytes = BackupCrypto.concealDecryptRawBytes(rawBytes, sourceKey)
-                            destFile.writeBytes(decBytes)
-                        } catch (_: Throwable) {
-                            file.copyTo(destFile, overwrite = true)
+                    val destFile = if (isPortable && file.name == "folder-base.fld" && Sba1Parser.isSba1File(file)) {
+                        val info = Sba1Parser.parse(file)
+                        if (info != null && !info.header.isEncrypted) {
+                            val ext = if (info.header.isZstdCompressed) ".tar.zst" else ".tar"
+                            val dest = File(destFolderDir, "$folderName$ext")
+                            Sba1Parser.extractFirstEntryPayload(file, dest)
+                            dest
+                        } else {
+                            val dest = File(destFolderDir, "$folderName.sba")
+                            file.copyTo(dest, overwrite = true)
+                            dest
                         }
                     } else {
-                        file.copyTo(destFile, overwrite = true)
+                        val destFileName = if (isPortable && file.name == "folder-base.fld") "$folderName.tar" else file.name
+                        val dest = File(destFolderDir, destFileName)
+                        if (targetUid == null && file.name == "folder-base.fld") {
+                            try {
+                                val rawBytes = file.readBytes()
+                                val decBytes = BackupCrypto.concealDecryptRawBytes(rawBytes, sourceKey)
+                                dest.writeBytes(decBytes)
+                            } catch (_: Throwable) {
+                                file.copyTo(dest, overwrite = true)
+                            }
+                        } else {
+                            file.copyTo(dest, overwrite = true)
+                        }
+                        dest
                     }
                     destFile.setReadable(true, false)
                     destFile.setWritable(true, false)
@@ -616,7 +638,263 @@ object BackupMigratorEngine {
         fileName.endsWith(".wal") -> "${pkgName}_wallpaper.png"
         else -> fileName
     }
+
+    private fun processSba1ForPortable(file: File, destDir: File, pkgName: String): File {
+        val info = Sba1Parser.parse(file)
+        val suffix = portableSuffix(file.name)
+
+        if (info != null && !info.header.isEncrypted) {
+            val ext = if (info.header.isZstdCompressed) ".tar.zst" else ".tar"
+            val dest = File(destDir, "${pkgName}$suffix$ext")
+            Sba1Parser.extractFirstEntryPayload(file, dest)
+            return dest
+        }
+
+        val dest = File(destDir, "${pkgName}$suffix.sba")
+        file.copyTo(dest, overwrite = true)
+        return dest
+    }
+
+    private fun portableSuffix(fileName: String): String = when {
+        fileName.endsWith(".splits") || fileName == "splits" -> "_splits"
+        fileName.endsWith(".dat") || fileName == "dat" -> "_data"
+        fileName.endsWith(".extdat") || fileName == "extdat" -> "_external_data"
+        fileName.endsWith(".med") || fileName == "med" -> "_media"
+        else -> ""
+    }
+
+    private fun findDestSliceFile(destDir: File, pkgName: String, suffix: String, isPortable: Boolean): File? {
+        if (!isPortable) {
+            val f = File(destDir, "$pkgName.$suffix")
+            return if (f.exists()) f else null
+        }
+        val defaultName = resolvePortableFileName(pkgName, "$pkgName.$suffix")
+        val defaultFile = File(destDir, defaultName)
+        if (defaultFile.exists()) return defaultFile
+        val pfx = portableSuffix(suffix)
+        val zstFile = File(destDir, "${pkgName}$pfx.tar.zst")
+        if (zstFile.exists()) return zstFile
+        val sbaFile = File(destDir, "${pkgName}$pfx.sba")
+        if (sbaFile.exists()) return sbaFile
+        return null
+    }
+
+    object Sba1Parser {
+        private val SBA1_MAGIC = byteArrayOf(0x53, 0x42, 0x41, 0x31)
+        private val FOOTER_MAGIC = byteArrayOf(0x53, 0x41, 0x46, 0x31)
+        private val INDEX_MAGIC = byteArrayOf(0x53, 0x41, 0x49, 0x31)
+        private const val FOOTER_SIZE = 32
+        private const val V1_HEADER_SIZE = 96
+        private const val V2_HEADER_SIZE = 144
+
+        data class SbaHeader(
+            val version: Int,
+            val headerSize: Int,
+            val compressionMethod: Int,
+            val encryptionMethod: Int
+        ) {
+            val isEncrypted: Boolean get() = encryptionMethod != 0
+            val isZstdCompressed: Boolean get() = compressionMethod == 1
+        }
+
+        data class SbaFooter(
+            val indexOffset: Long,
+            val indexSize: Long,
+            val indexCrc32: Int
+        )
+
+        data class SbaEntry(
+            val name: String,
+            val entryHeaderOffset: Long,
+            val payloadOffset: Long,
+            val storedSize: Long,
+            val compressedSize: Long,
+            val tarSize: Long
+        )
+
+        data class SbaArchiveInfo(
+            val header: SbaHeader,
+            val footer: SbaFooter,
+            val entries: List<SbaEntry>
+        )
+
+        fun isSba1File(file: File): Boolean {
+            if (file.length() < FOOTER_SIZE + V1_HEADER_SIZE) return false
+            return file.inputStream().use { stream ->
+                val magic = ByteArray(4)
+                stream.read(magic) == 4 && magic.contentEquals(SBA1_MAGIC)
+            }
+        }
+
+        fun isSba1Bytes(raw: ByteArray): Boolean {
+            return raw.size >= 4 &&
+                    raw[0] == 0x53.toByte() &&
+                    raw[1] == 0x42.toByte() &&
+                    raw[2] == 0x41.toByte() &&
+                    raw[3] == 0x31.toByte()
+        }
+
+        fun parse(file: File): SbaArchiveInfo? = attempt("parse SBA1 archive", silent = true) {
+            RandomAccessFile(file, "r").use { raf ->
+                val header = parseHeader(raf) ?: return@attempt null
+                val footer = parseFooter(raf, file.length(), header.version) ?: return@attempt null
+                val indexBytes = readAndVerifyIndex(raf, footer) ?: return@attempt null
+                val entries = parseIndex(indexBytes, header.version) ?: return@attempt null
+                SbaArchiveInfo(header, footer, entries)
+            }
+        }
+
+        fun extractFirstEntryPayload(sourceFile: File, destFile: File): String? =
+            attempt("extract SBA1 payload", silent = true) {
+                val info = parse(sourceFile) ?: return@attempt null
+                if (info.header.isEncrypted) return@attempt null
+                val entry = info.entries.firstOrNull() ?: return@attempt null
+
+                RandomAccessFile(sourceFile, "r").use { raf ->
+                    raf.seek(entry.payloadOffset)
+                    val payloadSize = if (info.header.isZstdCompressed) entry.compressedSize else entry.storedSize
+                    destFile.outputStream().use { out ->
+                        val buffer = ByteArray(8192)
+                        var remaining = payloadSize
+                        while (remaining > 0) {
+                            val toRead = minOf(remaining, buffer.size.toLong()).toInt()
+                            val read = raf.read(buffer, 0, toRead)
+                            if (read <= 0) break
+                            out.write(buffer, 0, read)
+                            remaining -= read
+                        }
+                    }
+                }
+
+                if (info.header.isZstdCompressed) ".tar.zst" else ".tar"
+            }
+
+        private fun parseHeader(raf: RandomAccessFile): SbaHeader? {
+            raf.seek(0)
+            val magic = ByteArray(4)
+            raf.readFully(magic)
+            if (!magic.contentEquals(SBA1_MAGIC)) return null
+
+            val version = raf.readUnsignedShort()
+            if (version !in 1..2) return null
+            val headerSize = raf.readUnsignedShort()
+            val expectedSize = if (version == 1) V1_HEADER_SIZE else V2_HEADER_SIZE
+            if (headerSize != expectedSize) return null
+
+            raf.readInt()
+            raf.readLong()
+
+            val compressionMethod = raf.readUnsignedShort()
+            raf.readUnsignedShort()
+            val encryptionMethod = raf.readUnsignedShort()
+
+            return SbaHeader(version, headerSize, compressionMethod, encryptionMethod)
+        }
+
+        private fun parseFooter(raf: RandomAccessFile, fileSize: Long, headerVersion: Int): SbaFooter? {
+            if (fileSize < FOOTER_SIZE) return null
+            val footerStart = fileSize - FOOTER_SIZE
+            raf.seek(footerStart)
+
+            val footerBytes = ByteArray(FOOTER_SIZE)
+            raf.readFully(footerBytes)
+
+            val storedCrc = readInt32BE(footerBytes, 28)
+            val crc32 = CRC32()
+            crc32.update(footerBytes, 0, 28)
+            if (storedCrc != crc32.value.toInt()) return null
+
+            val footerMagic = footerBytes.copyOfRange(0, 4)
+            if (!footerMagic.contentEquals(FOOTER_MAGIC)) return null
+
+            val footerDataSize = readUShort16BE(footerBytes, 4)
+            if (footerDataSize != FOOTER_SIZE) return null
+            val footerVersion = readUShort16BE(footerBytes, 6)
+            if (footerVersion != headerVersion) return null
+
+            val indexOffset = readLong64BE(footerBytes, 8)
+            val indexSize = readLong64BE(footerBytes, 16)
+            val indexCrc32 = readInt32BE(footerBytes, 24)
+
+            return SbaFooter(indexOffset, indexSize, indexCrc32)
+        }
+
+        private fun readAndVerifyIndex(raf: RandomAccessFile, footer: SbaFooter): ByteArray? {
+            if (footer.indexSize <= 0 || footer.indexSize > 10 * 1024 * 1024) return null
+            raf.seek(footer.indexOffset)
+            val indexBytes = ByteArray(footer.indexSize.toInt())
+            raf.readFully(indexBytes)
+
+            val crc32 = CRC32()
+            crc32.update(indexBytes)
+            if (footer.indexCrc32 != crc32.value.toInt()) return null
+
+            return indexBytes
+        }
+
+        private fun parseIndex(indexBytes: ByteArray, archiveVersion: Int): List<SbaEntry>? {
+            if (indexBytes.size < 16) return null
+
+            val magic = indexBytes.copyOfRange(0, 4)
+            if (!magic.contentEquals(INDEX_MAGIC)) return null
+
+            val headerSize = readUShort16BE(indexBytes, 4)
+            if (headerSize != 16) return null
+            val indexVersion = readUShort16BE(indexBytes, 6)
+            if (indexVersion !in 1..2) return null
+
+            val entryCount = readInt32BE(indexBytes, 8)
+            if (entryCount < 0) return null
+            val metadataLength = readInt32BE(indexBytes, 12)
+            if (metadataLength < 0) return null
+
+            var offset = 16 + metadataLength
+
+            val fixedRecordSize = if (indexVersion >= 2) 108 else 84
+            val entries = mutableListOf<SbaEntry>()
+
+            for (i in 0 until entryCount) {
+                if (offset + fixedRecordSize > indexBytes.size) return null
+
+                val entryHeaderOffset = readLong64BE(indexBytes, offset)
+                val payloadOffset = readLong64BE(indexBytes, offset + 8)
+                val storedSize = readLong64BE(indexBytes, offset + 16)
+                val compressedSize = readLong64BE(indexBytes, offset + 24)
+                val tarSize = readLong64BE(indexBytes, offset + 32)
+                val nameLength = readUShort16BE(indexBytes, offset + 44)
+                val nameStart = offset + (if (indexVersion >= 2) 108 else 84)
+                if (nameStart + nameLength > indexBytes.size) return null
+
+                val name = String(indexBytes, nameStart, nameLength, Charsets.UTF_8)
+                entries.add(SbaEntry(name, entryHeaderOffset, payloadOffset, storedSize, compressedSize, tarSize))
+                offset = nameStart + nameLength
+            }
+
+            return entries
+        }
+
+        private fun readUShort16BE(bytes: ByteArray, off: Int): Int =
+            ((bytes[off].toInt() and 0xFF) shl 8) or (bytes[off + 1].toInt() and 0xFF)
+
+        private fun readInt32BE(bytes: ByteArray, off: Int): Int =
+            ((bytes[off].toInt() and 0xFF) shl 24) or
+            ((bytes[off + 1].toInt() and 0xFF) shl 16) or
+            ((bytes[off + 2].toInt() and 0xFF) shl 8) or
+            (bytes[off + 3].toInt() and 0xFF)
+
+        private fun readLong64BE(bytes: ByteArray, off: Int): Long =
+            ((bytes[off].toLong() and 0xFF) shl 56) or
+            ((bytes[off + 1].toLong() and 0xFF) shl 48) or
+            ((bytes[off + 2].toLong() and 0xFF) shl 40) or
+            ((bytes[off + 3].toLong() and 0xFF) shl 32) or
+            ((bytes[off + 4].toLong() and 0xFF) shl 24) or
+            ((bytes[off + 5].toLong() and 0xFF) shl 16) or
+            ((bytes[off + 6].toLong() and 0xFF) shl 8) or
+            (bytes[off + 7].toLong() and 0xFF)
+    }
 }
+
+typealias Sba1Parser = BackupMigratorEngine.Sba1Parser
 
 object Base64Wrapper {
     fun encodeToString(bytes: ByteArray): String = java.util.Base64.getEncoder().encodeToString(bytes)

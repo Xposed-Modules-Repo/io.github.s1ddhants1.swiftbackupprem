@@ -613,12 +613,6 @@ object LocalCloudUnlockHook : HookHandler {
             null
         }
 
-    fun findSuccessInstance(targetClass: Class<*>, classLoader: ClassLoader? = null, targets: ResolvedTargets? = null): Any? =
-        getAuthenticSuccessInstance(targetClass, classLoader, targets)
-
-    fun findStaticInstance(targetClass: Class<*>, classLoader: ClassLoader? = null, targets: ResolvedTargets? = null): Any? =
-        getAuthenticSuccessInstance(targetClass, classLoader, targets)
-
     fun hookDatabaseReferenceWrites(
         module: XposedModule,
         context: Context,

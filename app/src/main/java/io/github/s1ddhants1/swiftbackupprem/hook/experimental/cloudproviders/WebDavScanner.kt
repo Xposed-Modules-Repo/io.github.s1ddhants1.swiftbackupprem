@@ -6,7 +6,6 @@ import android.util.Base64
 import android.util.Log
 import androidx.annotation.Keep
 import io.github.s1ddhants1.swiftbackupprem.Consts
-import io.github.s1ddhants1.swiftbackupprem.util.AppUtils
 import io.github.s1ddhants1.swiftbackupprem.util.attempt
 import org.w3c.dom.Element
 import java.io.ByteArrayInputStream

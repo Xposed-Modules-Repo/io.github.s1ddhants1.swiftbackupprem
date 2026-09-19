@@ -3,7 +3,6 @@
     <string name="app_name">SwiftBackupPrem</string>
     <string name="app_description">Swift Backup Premium</string>
 
-    <!-- Top App Bar & Menu -->
     <string name="screen_settings">SwiftBackupPrem</string>
     <string name="screen_about">About</string>
     <string name="screen_firebase_setup">Firebase Setup</string>
@@ -13,17 +12,9 @@
     <string name="cd_back_to_settings">Back to settings</string>
     <string name="cd_menu_options">Menu options</string>
 
-    <!-- Action Buttons & Snackbars -->
     <string name="btn_force_stop">Force Stop</string>
     <string name="btn_open_app">Open App</string>
-    <string name="btn_back">Back</string>
-    <string name="btn_next">Next</string>
-    <string name="btn_review">Review</string>
-    <string name="btn_finish_save">Save</string>
-    <string name="btn_start_setup">Start Setup</string>
-    <string name="btn_edit_setup">Edit Credentials</string>
     <string name="btn_import_json">Import google-services.json</string>
-    <string name="btn_open_console">Firebase Console</string>
     <string name="btn_copy_rules">Copy Rules</string>
     <string name="btn_copy_package">Copy Package</string>
     <string name="btn_copy_fingerprint">Copy Fingerprint</string>
@@ -40,16 +31,12 @@
     <string name="msg_swift_backup_force_stopped">Swift Backup force-stopped</string>
     <string name="msg_opened_swift_backup_settings">Opened Swift Backup app settings</string>
 
-    <!-- Framework Status Card -->
-    <string name="framework_active_title">Module Active</string>
     <string name="framework_active_title_dynamic">%1$s Module Active</string>
     <string name="framework_inactive_title">Module Inactive</string>
     <string name="framework_active_desc">Connected to %1$s %2$s</string>
     <string name="framework_inactive_desc">Enable in LSPosed Manager (root) or patch Swift Backup in LSPatch (rootless)</string>
     <string name="framework_sb_not_installed_title">Swift Backup Not Installed</string>
     <string name="framework_sb_not_installed_desc">Install Swift Backup to use this module</string>
-    <string name="framework_sb_not_patched_title">Swift Backup Not Patched</string>
-    <string name="framework_sb_not_patched_desc">Patch Swift Backup in LSPatch Manager to enable hooks</string>
     <string name="framework_lsposed_not_in_scope_title">Swift Backup Not in Scope</string>
     <string name="framework_lsposed_not_in_scope_desc">Add Swift Backup to module scope in LSPosed Manager</string>
     <string name="framework_sb_not_in_scope_title">Module Disabled in LSPatch</string>
@@ -57,7 +44,6 @@
     <string name="framework_lspatch_embedded_active_title">LSPatch Embedded Module Active</string>
     <string name="framework_lspatch_embedded_active_desc">Hooks integrated directly into Swift Backup</string>
 
-    <!-- Settings Switches -->
     <string name="pref_enable_premium_title">Premium Features</string>
     <string name="pref_enable_premium_subtitle">Enable Premium Features</string>
     <string name="pref_disable_telemetry_title">Disable Telemetry</string>
@@ -65,35 +51,24 @@
     <string name="pref_custom_firebase_title">Custom Firebase App</string>
     <string name="pref_custom_firebase_subtitle">Use personal Firebase database and credentials</string>
 
-    <!-- Experimental Section -->
     <string name="section_advanced_features">Experimental Features</string>
     <string name="section_advanced_features_subtitle">Preview features and advanced tweaks</string>
-    <string name="pref_enable_drive_discovery_title">Universal Cloud Discovery</string>
-    <string name="pref_enable_drive_discovery_subtitle">Scan and index backups across configured cloud providers</string>
     <string name="pref_enable_drive_discovery_requires_custom_firebase">Requires Custom Firebase App</string>
 
-    <!-- Custom Firebase Configuration -->
-    <string name="firebase_credentials_title">Credentials &amp; Review</string>
     <string name="firebase_tools_title">Setup Tools &amp; Consoles</string>
     <string name="firebase_consoles_label">Consoles &amp; APIs</string>
     <string name="firebase_copy_helpers_label">Copy Configuration Helpers</string>
     <string name="btn_firebase_console">Firebase Console</string>
-    <string name="btn_edit_credentials">Edit Credentials</string>
-    <string name="btn_close">Close</string>
     <string name="btn_oauth_scopes">OAuth Scopes</string>
     <string name="btn_copy_scope">Copy Scope</string>
 
-    <string name="wizard_title_step_6">Credentials &amp; Review</string>
     <string name="wizard_step6_manual_title">Manual Configuration</string>
-    <string name="wizard_step6_manual_desc">Review or manually enter your credentials below.</string>
 
-    <string name="wizard_credentials_incomplete_title">Incomplete Credentials</string>
     <string name="wizard_credentials_incomplete_desc">Some required Firebase credentials are missing</string>
     <string name="wizard_credentials_complete">Credentials Configured</string>
     <string name="wizard_status_ok">OK</string>
     <string name="wizard_status_missing">Missing</string>
 
-    <!-- Input Field Labels -->
     <string name="label_project_id">Project ID</string>
     <string name="label_firebase_db_url">Firebase Database URL</string>
     <string name="label_google_app_id">Google App ID</string>
@@ -103,7 +78,6 @@
     <string name="label_client_id">Client ID</string>
     <string name="label_firebase_rtdb">Firebase RTDB</string>
 
-    <!-- About Screen -->
     <string name="about_version_format">Version %1$s (%2$d)</string>
     <string name="about_authors_maintainers">Authors &amp; Maintainers</string>
     <string name="about_original_author_role">Original Author</string>
@@ -114,7 +88,6 @@
     <string name="about_lib_compose">AndroidX Jetpack Compose &amp; Material 3</string>
     <string name="about_lib_serialization">Kotlinx Serialization JSON</string>
 
-    <!-- Accessibility Content Descriptions -->
     <string name="cd_clear_input">Clear input</string>
     <string name="cd_app_icon">SwiftBackupPrem app icon</string>
     <string name="cd_author_avatar">Author avatar</string>
@@ -126,7 +99,6 @@
     <string name="cd_detect_uids">Detect UIDs</string>
     <string name="cd_pick_output_directory">Pick output directory</string>
 
-    <!-- Backup Migrator & Decryptor Tool -->
     <string name="migrator_permission_required_title">Storage Permission Required</string>
     <string name="migrator_permission_required_desc">All files access is required to scan and migrate backup folders on device storage</string>
     <string name="btn_grant_storage_permission">Grant All Files Access</string>
@@ -136,7 +108,6 @@
     <string name="migrator_step2_title">2. Decryption Key (Source UID)</string>
     <string name="migrator_source_uid_label">Source UID</string>
     <string name="migrator_source_uid_placeholder">Enter source UID</string>
-    <string name="migrator_detected_uids">Detected UIDs</string>
     <string name="migrator_chip_anon_key">Shared Anonymous Key</string>
     <string name="migrator_step3_title">3. Target Encryption Mode</string>
     <string name="migrator_mode_anon_title">Shared Anonymous Key</string>
@@ -146,7 +117,7 @@
     <string name="migrator_target_uid_label">Target UID</string>
     <string name="migrator_target_uid_placeholder">Enter target Firebase UID</string>
     <string name="migrator_mode_unencrypted_title">Unencrypted Backups</string>
-    <string name="migrator_mode_unencrypted_desc">Strip Conceal encryption and keep directory layout</string>
+    <string name="migrator_mode_unencrypted_desc">Remove encryption</string>
     <string name="migrator_mode_portable_checkbox">Export standard portable formats (.apk, .tar.gz, .json)</string>
     <string name="migrator_mode_portable_checkbox_desc">Extract APKs and tar archives for external tools</string>
     <string name="migrator_step4_title">4. Destination Folder</string>
@@ -161,7 +132,6 @@
     <string name="migrator_result_output_format">Output: %1$s</string>
     <string name="migrator_logs_title">Execution Logs</string>
 
-    <!-- Backup Migration Hub -->
     <string name="screen_experimental_hub">Backup Migration</string>
     <string name="btn_open_migrator">Open Migrator</string>
     <string name="tab_local_migrator">Local Migration</string>
