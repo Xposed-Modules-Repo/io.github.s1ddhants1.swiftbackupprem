@@ -8,6 +8,7 @@
     <string name="screen_firebase_setup">Firebase Setup</string>
     <string name="menu_export_config">Export Config</string>
     <string name="menu_import_config">Import Config</string>
+    <string name="menu_hide_icon">Hide icon from launcher</string>
     <string name="menu_about">About</string>
     <string name="cd_back_to_settings">Back to settings</string>
     <string name="cd_menu_options">Menu options</string>

@@ -1,6 +1,8 @@
 package io.github.s1ddhants1.swiftbackupprem
 
+import android.content.ComponentName
 import android.content.Context
+import android.content.pm.PackageManager
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -122,6 +124,14 @@ class MainActivity : ComponentActivity() {
 
             var currentScreen by remember { mutableStateOf(AppScreen.Settings) }
             var showMenu by remember { mutableStateOf(false) }
+            val aliasName = remember { ComponentName(this@MainActivity, "${MainActivity::class.java.name}Alias") }
+            var isIconHidden by remember {
+                mutableStateOf(
+                    runCatching {
+                        packageManager.getComponentEnabledSetting(aliasName) == PackageManager.COMPONENT_ENABLED_STATE_DISABLED
+                    }.getOrDefault(false)
+                )
+            }
             val snackbarHostState = remember { SnackbarHostState() }
             val coroutineScope = rememberCoroutineScope()
 
@@ -189,7 +199,12 @@ class MainActivity : ComponentActivity() {
                             },
                             actions = {
                                 if (currentScreen == AppScreen.Settings) {
-                                    IconButton(onClick = { showMenu = true }) {
+                                    IconButton(onClick = {
+                                        isIconHidden = runCatching {
+                                            packageManager.getComponentEnabledSetting(aliasName) == PackageManager.COMPONENT_ENABLED_STATE_DISABLED
+                                        }.getOrDefault(false)
+                                        showMenu = true
+                                    }) {
                                         Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.cd_menu_options))
                                     }
                                     DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
@@ -202,6 +217,33 @@ class MainActivity : ComponentActivity() {
                                             text = { Text(stringResource(R.string.menu_import_config)) },
                                             onClick = { showMenu = false; importLauncher.launch(arrayOf("application/json", "text/*", "*/*")) },
                                             leadingIcon = { Icon(Icons.Default.Download, contentDescription = null) }
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text(stringResource(R.string.menu_hide_icon)) },
+                                            onClick = {
+                                                val newChecked = !isIconHidden
+                                                val status = if (newChecked) PackageManager.COMPONENT_ENABLED_STATE_DISABLED
+                                                else PackageManager.COMPONENT_ENABLED_STATE_ENABLED
+                                                packageManager.setComponentEnabledSetting(
+                                                    aliasName,
+                                                    status,
+                                                    PackageManager.DONT_KILL_APP
+                                                )
+                                                isIconHidden = newChecked
+                                                showMenu = false
+                                            },
+                                            leadingIcon = {
+                                                Icon(
+                                                    if (isIconHidden) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                                    contentDescription = null
+                                                )
+                                            },
+                                            trailingIcon = {
+                                                Checkbox(
+                                                    checked = isIconHidden,
+                                                    onCheckedChange = null
+                                                )
+                                            }
                                         )
                                         DropdownMenuItem(
                                             text = { Text(stringResource(R.string.menu_about)) },
