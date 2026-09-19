@@ -103,6 +103,15 @@ object PremiumFeatureHook : HookHandler {
         }
 
         for (m in targetClass.declaredMethods) {
+            if (m.name.startsWith("_get_") && (m.returnType == Boolean::class.javaPrimitiveType || m.returnType == Boolean::class.javaObjectType)) {
+                attempt("hook V synthetic lambda ${m.name}") {
+                    module.hookTracked(
+                        m,
+                        idPrefix = "premium-v-lambda-${m.name}",
+                        deoptimize = true
+                    ).intercept { isPremium }
+                }
+            }
             when (m.name) {
                 "getA", "getG", "getVp" -> attempt("hook V getter ${m.name}") {
                     module.hookTracked(

@@ -17,6 +17,7 @@ keystore.properties
 *.p12
 *.mobileprovision
 .kotlin
+*.apk
 
 # Documentation
 /docs/

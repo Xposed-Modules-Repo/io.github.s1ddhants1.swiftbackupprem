@@ -41,4 +41,34 @@ val versionMap = mapOf(
         settingsDetailFragment = "org.swiftapps.swiftbackup.settings.a",
         baseSettingsFragment = "defpackage.fm0"
     ),
+    623 to VersionClasses(
+        clientId = "defpackage.gp5",
+        homeViewModel = "defpackage.p74",
+        authUser = "defpackage.n55",
+        anonUser = "defpackage.l55",
+        oauthHelper = "defpackage.hp5",
+        authRequestBuilder = "defpackage.wj",
+        firebaseWatcher = "defpackage.oh3",
+        fireSynchronizer = "defpackage.jg3",
+        fireSynchronizerSuccess = "defpackage.ag3",
+        customClassMapper = "defpackage.a72",
+        settingsFragment = "defpackage.bd7",
+        settingsDetailFragment = "org.swiftapps.swiftbackup.settings.a",
+        baseSettingsFragment = "defpackage.qm0"
+    ),
+    626 to VersionClasses(
+        clientId = "defpackage.dp5",
+        homeViewModel = "defpackage.f74",
+        authUser = "defpackage.w55",
+        anonUser = "defpackage.u55",
+        oauthHelper = "defpackage.fp5",
+        authRequestBuilder = "defpackage.rj",
+        firebaseWatcher = "defpackage.rh3",
+        fireSynchronizer = "defpackage.lg3",
+        fireSynchronizerSuccess = "defpackage.cg3",
+        customClassMapper = "defpackage.n72",
+        settingsFragment = "defpackage.re7",
+        settingsDetailFragment = "org.swiftapps.swiftbackup.settings.a",
+        baseSettingsFragment = "defpackage.qm0"
+    ),
 )

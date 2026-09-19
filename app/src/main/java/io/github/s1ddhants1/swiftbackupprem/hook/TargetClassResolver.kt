@@ -99,7 +99,12 @@ object TargetClassResolver {
         try {
             DexKitBridge.create(sourceDir).use { bridge ->
                 if (clientId == null) {
-                    clientId = bridge.findSingle(cl, "clientIdClass", filterInner = false) {
+                    clientId = bridge.findSingle(
+                        cl,
+                        "clientIdClass",
+                        filterInner = false,
+                        extraFilter = { cd -> cd.fields.any { Modifier.isStatic(it.modifiers) && it.typeName == "java.lang.String" } }
+                    ) {
                         matcher { usingStrings("org.swiftapps.swiftbackup:/oauth") }
                     } ?: bridge.findSingle(cl, "clientIdClass by structure", filterInner = false) {
                         matcher {
@@ -166,7 +171,12 @@ object TargetClassResolver {
                 }
 
                 if (oauthHelper == null) {
-                    oauthHelper = bridge.findSingle(cl, "oauthHelperClass", filterInner = false) {
+                    oauthHelper = bridge.findSingle(
+                        cl,
+                        "oauthHelperClass",
+                        filterInner = false,
+                        extraFilter = { cd -> cd.fields.none { Modifier.isStatic(it.modifiers) && it.typeName == "java.lang.String" } }
+                    ) {
                         matcher { usingStrings("org.swiftapps.swiftbackup:/oauth") }
                     }
                 }
@@ -177,20 +187,19 @@ object TargetClassResolver {
                     }
                 }
 
-                if (appBackup == null) {
-                    appBackup = bridge.findSingle(cl, "appBackupClass", filterInner = false) {
-                        matcher { usingStrings("apkBackupDate", "dataBackupDate") }
-                    }
-                }
-
-                if (appMetadataXml == null) {
-                    appMetadataXml = bridge.findSingle(cl, "appMetadataXmlClass", filterInner = false) {
-                        matcher { usingStrings("dateBackupUpdated", "minSBVersionCodeRequired") }
-                    }
-                }
-
                 if (fireSynchronizer == null) {
-                    fireSynchronizer = bridge.findSingle(cl, "fireSynchronizerClass", filterInner = true) {
+                    fireSynchronizer = bridge.findSingle(
+                        cl,
+                        "fireSynchronizerClass",
+                        filterInner = true,
+                        extraFilter = { cd ->
+                            cd.methods.any { m ->
+                                m.paramCount == 2 &&
+                                    m.paramTypeNames.getOrNull(1) == "boolean" &&
+                                    m.returnTypeName != "void"
+                            }
+                        }
+                    ) {
                         matcher { usingStrings("FireSynchronizer") }
                     }
                 }
