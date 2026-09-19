@@ -10,11 +10,11 @@ import android.util.AttributeSet
 import android.util.Log
 import android.widget.Toast
 import androidx.annotation.Keep
-import androidx.recyclerview.widget.RecyclerView
 import io.github.libxposed.api.XposedInterface
 import io.github.libxposed.api.XposedModule
 import io.github.s1ddhants1.swiftbackupprem.Consts
 import io.github.s1ddhants1.swiftbackupprem.util.GoogleServicesJson
+import io.github.s1ddhants1.swiftbackupprem.util.LSPatchHelper
 import io.github.s1ddhants1.swiftbackupprem.util.PreferencesManager
 import io.github.s1ddhants1.swiftbackupprem.util.attempt
 import io.github.s1ddhants1.swiftbackupprem.util.loadClassFlexible
@@ -34,6 +34,9 @@ object InAppSettingsHook : HookHandler {
 
     @Volatile
     var activePrefs: PreferencesManager? = null
+
+    @Volatile
+    var activeTargets: ResolvedTargets? = null
 
     @Volatile
     private var activeImportPrefRef: WeakReference<Any>? = null
@@ -93,7 +96,16 @@ object InAppSettingsHook : HookHandler {
         targets: ResolvedTargets,
         prefs: PreferencesManager
     ) {
+        val hasRemote = prefs.prefs != null && prefs.prefs.all.isNotEmpty()
+        val isIntegrated = LSPatchHelper.isIntegratedMode(context, remotePrefsAvailable = hasRemote)
+        Log.i(Consts.TAG, "InAppSettingsHook.apply: isIntegrated=$isIntegrated, hasRemote=$hasRemote")
+        if (!isIntegrated) {
+            Log.d(Consts.TAG, "Skipping InAppSettingsHook: Running in Manager/LSPosed mode")
+            return
+        }
+
         activePrefs = prefs
+        activeTargets = targets
 
         val prefClass = classLoader.loadClass("androidx.preference.Preference")
         val helper = HostPreferenceHelper(classLoader, context, targets.baseSettingsFragmentClass)
@@ -185,14 +197,16 @@ object InAppSettingsHook : HookHandler {
                             if (screen != null) {
                                 val hostHelper = HostPreferenceHelper(classLoader, activity, baseFragmentClass)
                                 hostHelper.clearScreen(screen)
+                                val currentPrefs = activePrefs ?: PreferencesManager().also { activePrefs = it }
+                                currentPrefs.loadFromFallbackStorage(activity, force = true)
                                 hostHelper.populateSbpSettings(
                                     screen,
                                     activity,
                                     fragment,
-                                    activePrefs ?: PreferencesManager().also { it.loadFromFallbackStorage(activity) }
+                                    currentPrefs
                                 )
                                 val rv = findRecyclerView(fragment)
-                                rv?.itemAnimator = null
+                                disableItemAnimator(rv)
                                 refreshRecyclerAdapter(fragment)
                             }
                         }
@@ -240,7 +254,7 @@ object InAppSettingsHook : HookHandler {
                 if (fragment != null) {
                     attempt("disable item animator on fragment RecyclerView", silent = true) {
                         val rv = findRecyclerView(fragment)
-                        rv?.itemAnimator = null
+                        disableItemAnimator(rv)
                         Log.i(Consts.TAG, "Disabled ItemAnimator on settings RecyclerView")
                     }
                 }
@@ -284,9 +298,9 @@ object InAppSettingsHook : HookHandler {
                 priority = XposedInterface.PRIORITY_DEFAULT,
                 deoptimize = true
             ).intercept { chain ->
-                val rv = chain.thisObject as? RecyclerView
+                val rv = chain.thisObject
                 val result = chain.proceed()
-                rv?.itemAnimator = null
+                disableItemAnimator(rv)
                 result
             }
         }
@@ -348,14 +362,18 @@ object InAppSettingsHook : HookHandler {
     }
 
     private fun handleSbpClick(pref: Any, key: String?, activity: Activity, helper: HostPreferenceHelper): Boolean {
-        val p = activePrefs ?: PreferencesManager().also { it.loadFromFallbackStorage(activity) }
-        activePrefs = p
+        val p = activePrefs ?: PreferencesManager().also { activePrefs = it }
 
         if (helper.isTwoStatePreference(pref) && key != null) {
             val newChecked = helper.isChecked(pref)
 
             when (key) {
-                "enable_premium" -> p.enablePremium = newChecked
+                "enable_premium" -> {
+                    p.enablePremium = newChecked
+                    activeTargets?.let { targets ->
+                        PremiumFeatureHook.updateVpField(targets, newChecked)
+                    }
+                }
                 "disable_telemetry" -> p.disableTelemetry = newChecked
                 "unlock_local_cloud_features" -> p.unlockLocalCloudFeatures = newChecked
                 "custom_firebase_app" -> p.customFirebaseApp = newChecked
@@ -483,19 +501,29 @@ object InAppSettingsHook : HookHandler {
         return null
     }
 
-    private fun findRecyclerView(fragment: Any): RecyclerView? {
+    private fun findRecyclerView(fragment: Any): Any? {
         var curr: Class<*>? = fragment.javaClass
         while (curr != null && curr != Any::class.java) {
             for (f in curr.declaredFields) {
-                if (RecyclerView::class.java.isAssignableFrom(f.type)) {
+                if (f.type.name.endsWith("RecyclerView")) {
                     f.isAccessible = true
-                    val rv = f.get(fragment) as? RecyclerView
+                    val rv = f.get(fragment)
                     if (rv != null) return rv
                 }
             }
             curr = curr.superclass
         }
-        return findFieldInHierarchy(fragment.javaClass, "c")?.get(fragment) as? RecyclerView
+        return findFieldInHierarchy(fragment.javaClass, "c")?.get(fragment)
+    }
+
+    private fun disableItemAnimator(rv: Any?) {
+        if (rv == null) return
+        attempt("disable item animator", silent = true) {
+            val m = rv.javaClass.methods.firstOrNull {
+                it.name == "setItemAnimator" && it.parameterCount == 1
+            }
+            m?.invoke(rv, null)
+        }
     }
 
     private fun getPreferenceScreen(fragment: Any): Any? {
@@ -545,22 +573,22 @@ object InAppSettingsHook : HookHandler {
 
     private fun refreshRecyclerAdapter(fragment: Any) {
         attempt("refresh recycler adapter", silent = true) {
-            val rv = findRecyclerView(fragment)
-            val adapter = rv?.adapter
-            if (adapter != null) {
-                rv.itemAnimator = null
-                adapter.notifyDataSetChanged()
-                for (m in adapter.javaClass.declaredMethods) {
-                    if (m.parameterCount == 0 && m.returnType == java.lang.Void.TYPE &&
-                        !Modifier.isStatic(m.modifiers) && m.name != "notifyDataSetChanged"
-                    ) {
-                        try {
-                            m.isAccessible = true
-                            m.invoke(adapter)
-                            Log.i(Consts.TAG, "Invoked adapter.${m.name}() successfully")
-                            return@attempt
-                        } catch (_: Throwable) {}
-                    }
+            val rv = findRecyclerView(fragment) ?: return@attempt
+            disableItemAnimator(rv)
+            val getAdapter = rv.javaClass.methods.firstOrNull { it.name == "getAdapter" && it.parameterCount == 0 }
+            val adapter = getAdapter?.invoke(rv) ?: return@attempt
+            val notifyMethod = adapter.javaClass.methods.firstOrNull { it.name == "notifyDataSetChanged" && it.parameterCount == 0 }
+            notifyMethod?.invoke(adapter)
+            for (m in adapter.javaClass.declaredMethods) {
+                if (m.parameterCount == 0 && m.returnType == java.lang.Void.TYPE &&
+                    !Modifier.isStatic(m.modifiers) && m.name != "notifyDataSetChanged"
+                ) {
+                    try {
+                        m.isAccessible = true
+                        m.invoke(adapter)
+                        Log.i(Consts.TAG, "Invoked adapter.${m.name}() successfully")
+                        return@attempt
+                    } catch (_: Throwable) {}
                 }
             }
         }

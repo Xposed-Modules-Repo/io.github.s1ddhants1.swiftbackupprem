@@ -179,4 +179,84 @@ class LSPatchHelperTest {
         assertFalse(result.isInjectable)
         assertEquals(R.string.framework_sb_not_in_scope_title, result.titleRes)
     }
+
+    @Test
+    fun isIntegratedMode_useManagerFalse_returnsTrue() {
+        val isIntegrated = LSPatchHelper.isIntegratedMode(
+            remotePrefsAvailable = false,
+            targetStatusProvider = {
+                LSPatchHelper.TargetStatus(
+                    isInstalled = true,
+                    isPatched = true,
+                    isModuleEmbedded = true,
+                    useManager = false
+                )
+            }
+        )
+        assertTrue(isIntegrated)
+    }
+
+    @Test
+    fun isIntegratedMode_useManagerTrue_returnsFalse() {
+        val isIntegrated = LSPatchHelper.isIntegratedMode(
+            remotePrefsAvailable = false,
+            targetStatusProvider = {
+                LSPatchHelper.TargetStatus(
+                    isInstalled = true,
+                    isPatched = true,
+                    isModuleEmbedded = false,
+                    useManager = true
+                )
+            }
+        )
+        assertFalse(isIntegrated)
+    }
+
+    @Test
+    fun isIntegratedMode_moduleEmbeddedWithoutExplicitUseManager_returnsTrue() {
+        val isIntegrated = LSPatchHelper.isIntegratedMode(
+            remotePrefsAvailable = false,
+            targetStatusProvider = {
+                LSPatchHelper.TargetStatus(
+                    isInstalled = true,
+                    isPatched = true,
+                    isModuleEmbedded = true,
+                    useManager = null
+                )
+            }
+        )
+        assertTrue(isIntegrated)
+    }
+
+    @Test
+    fun isIntegratedMode_lsposedFrameworkWithRemotePrefs_returnsFalse() {
+        val isIntegrated = LSPatchHelper.isIntegratedMode(
+            remotePrefsAvailable = true,
+            targetStatusProvider = {
+                LSPatchHelper.TargetStatus(
+                    isInstalled = true,
+                    isPatched = false,
+                    isModuleEmbedded = false,
+                    useManager = null
+                )
+            }
+        )
+        assertFalse(isIntegrated)
+    }
+
+    @Test
+    fun isIntegratedMode_standaloneWithoutRemotePrefs_returnsTrue() {
+        val isIntegrated = LSPatchHelper.isIntegratedMode(
+            remotePrefsAvailable = false,
+            targetStatusProvider = {
+                LSPatchHelper.TargetStatus(
+                    isInstalled = true,
+                    isPatched = false,
+                    isModuleEmbedded = false,
+                    useManager = null
+                )
+            }
+        )
+        assertTrue(isIntegrated)
+    }
 }

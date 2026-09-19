@@ -174,6 +174,50 @@ object LSPatchHelper {
         } ?: TargetStatus(isInstalled = false, isPatched = false, isModuleEmbedded = false)
     }
 
+    fun isIntegratedMode(
+        context: Context? = null,
+        remotePrefsAvailable: Boolean = false,
+        targetStatusProvider: () -> TargetStatus = {
+            if (context != null) inspectTargetApp(context) else TargetStatus(isInstalled = false, isPatched = false, isModuleEmbedded = false)
+        }
+    ): Boolean {
+        if (context != null) {
+            val metaResult = attempt("check lspatch metadata", silent = true) {
+                val pm = context.packageManager
+                val appInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    pm.getApplicationInfo(
+                        context.packageName,
+                        PackageManager.ApplicationInfoFlags.of(PackageManager.GET_META_DATA.toLong())
+                    )
+                } else {
+                    @Suppress("DEPRECATION")
+                    pm.getApplicationInfo(context.packageName, PackageManager.GET_META_DATA)
+                }
+                val meta = appInfo.metaData
+                val b64 = meta?.getString("lspatch")
+                if (!b64.isNullOrBlank()) {
+                    val jsonStr = String(Base64.decode(b64, Base64.DEFAULT), StandardCharsets.UTF_8)
+                    val json = JSONObject(jsonStr)
+                    if (json.has("useManager")) {
+                        return@attempt !json.optBoolean("useManager", true)
+                    }
+                }
+                null
+            }
+            if (metaResult != null) return metaResult
+        }
+
+        val status = targetStatusProvider()
+        if (status.useManager != null) {
+            return !status.useManager
+        }
+        if (status.isModuleEmbedded) {
+            return true
+        }
+
+        return !remotePrefsAvailable
+    }
+
     fun evaluateFrameworkStatus(
         context: Context,
         service: XposedService?

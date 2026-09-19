@@ -211,6 +211,59 @@ class PreferencesManagerTest {
         assertEquals(3, changeCount)
     }
 
+    @Test
+    fun mutatingPreferenceUpdatesTimestamp() {
+        val fakePrefs = FakeSharedPreferences()
+        val prefs = PreferencesManager(fakePrefs)
+        val before = System.currentTimeMillis()
+
+        prefs.enablePremium = false
+
+        assertTrue(prefs.updatedAt >= before)
+        assertEquals(prefs.updatedAt, fakePrefs.getLong("updated_at", 0L))
+    }
+
+    @Test
+    fun timestampBasedFallbackStorageConflictResolution() {
+        val tempDir = java.nio.file.Files.createTempDirectory("sbp_timestamp_test").toFile()
+        try {
+            val fakeContext = FakeContext(tempDir)
+            val prefsA = PreferencesManager(null)
+            prefsA.enablePremium = false
+            prefsA.updatedAt = 1000L
+            prefsA.saveToFallbackStorage(fakeContext)
+
+            // prefsB has newer timestamp in memory (2000L), should NOT load older fallback (1000L) when force=false
+            val prefsB = PreferencesManager(null)
+            prefsB.enablePremium = true
+            prefsB.updatedAt = 2000L
+            val loadedOlder = prefsB.loadFromFallbackStorage(fakeContext, force = false)
+            assertFalse(loadedOlder)
+            assertTrue(prefsB.enablePremium)
+
+            // When force=true, fallback should be applied
+            val loadedForced = prefsB.loadFromFallbackStorage(fakeContext, force = true)
+            assertTrue(loadedForced)
+            assertFalse(prefsB.enablePremium)
+
+            // Now write newer fallback (3000L)
+            prefsA.enablePremium = true
+            prefsA.updatedAt = 3000L
+            prefsA.saveToFallbackStorage(fakeContext)
+
+            // prefsC has older timestamp (2000L), should load newer fallback (3000L) when force=false
+            val prefsC = PreferencesManager(null)
+            prefsC.enablePremium = false
+            prefsC.updatedAt = 2000L
+            val loadedNewer = prefsC.loadFromFallbackStorage(fakeContext, force = false)
+            assertTrue(loadedNewer)
+            assertTrue(prefsC.enablePremium)
+            assertEquals(3000L, prefsC.updatedAt)
+        } finally {
+            tempDir.deleteRecursively()
+        }
+    }
+
     private class FakeContext(private val externalDir: java.io.File?) : android.content.ContextWrapper(null) {
         override fun getExternalFilesDir(type: String?): java.io.File? = externalDir
     }

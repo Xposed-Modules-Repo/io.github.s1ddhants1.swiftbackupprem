@@ -12,6 +12,7 @@ import io.github.s1ddhants1.swiftbackupprem.hook.experimental.BackupRebuilderHoo
 import io.github.s1ddhants1.swiftbackupprem.hook.experimental.CloudDiscoveryHook
 import io.github.s1ddhants1.swiftbackupprem.hook.experimental.GoogleDriveScopeHook
 import io.github.s1ddhants1.swiftbackupprem.util.BackupCrypto
+import io.github.s1ddhants1.swiftbackupprem.util.LSPatchHelper
 import io.github.s1ddhants1.swiftbackupprem.util.PreferencesManager
 import io.github.s1ddhants1.swiftbackupprem.util.attempt
 import java.util.concurrent.ConcurrentHashMap
@@ -104,8 +105,11 @@ class Module : XposedModule() {
 
     private fun applyHooks(ctx: Context, cl: ClassLoader, sourceDir: String, swiftAppInstance: Any? = null): Pair<ResolvedTargets, PreferencesManager>? {
         val remotePrefs = attempt("get remote preferences") { getRemotePreferences(Consts.PREFS_SETTINGS) }
+        val hasRemotePrefs = remotePrefs != null && remotePrefs.all.isNotEmpty()
+        val isIntegrated = LSPatchHelper.isIntegratedMode(ctx, remotePrefsAvailable = hasRemotePrefs)
+        Log.i(Consts.TAG, "applyHooks: isIntegrated=$isIntegrated, hasRemotePrefs=$hasRemotePrefs")
         val prefs = PreferencesManager(remotePrefs, isDynamic = true)
-        if (remotePrefs == null || remotePrefs.all.isEmpty()) {
+        if (isIntegrated || remotePrefs == null || remotePrefs.all.isEmpty()) {
             prefs.loadFromFallbackStorage(ctx)
         }
 
@@ -118,7 +122,7 @@ class Module : XposedModule() {
         FirebaseInitHook.apply(this, ctx, cl, targets, prefs)
         PremiumFeatureHook.apply(this, ctx, cl, targets, prefs)
         if (swiftAppInstance != null) {
-            PremiumFeatureHook.hookSwiftAppPremium(this, swiftAppInstance, prefs.enablePremium)
+            PremiumFeatureHook.hookSwiftAppPremium(this, swiftAppInstance, prefs)
         }
         AuthBypassHook.apply(this, ctx, cl, targets, prefs)
         GoogleDriveScopeHook.apply(this, ctx, cl, targets, prefs)
@@ -126,7 +130,9 @@ class Module : XposedModule() {
         BackupRebuilderHook.apply(this, ctx, cl, targets, prefs)
         CloudDiscoveryHook.apply(this, ctx, cl, targets, prefs)
         LocalCloudUnlockHook.apply(this, ctx, cl, targets, prefs)
-        InAppSettingsHook.apply(this, ctx, cl, targets, prefs)
+        if (isIntegrated) {
+            InAppSettingsHook.apply(this, ctx, cl, targets, prefs)
+        }
 
         attempt("export detected UIDs and auth state to storage", silent = true) {
             val uids = BackupCrypto.resolveCandidateUids(ctx, cl, targets)

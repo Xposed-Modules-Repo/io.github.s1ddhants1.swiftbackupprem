@@ -68,9 +68,7 @@ class MainActivity : ComponentActivity() {
             val localPrefs = remember { getSharedPreferences(Consts.PREFS_SETTINGS, Context.MODE_PRIVATE) }
             val prefsState = remember {
                 val mgr = PreferencesManager(localPrefs)
-                if (localPrefs.all.isEmpty()) {
-                    mgr.loadFromFallbackStorage(this@MainActivity)
-                }
+                mgr.loadFromFallbackStorage(this@MainActivity)
                 mgr.onPreferenceChanged = { mgr.saveToFallbackStorageAsync(this@MainActivity) }
                 mutableStateOf(mgr)
             }
@@ -100,6 +98,9 @@ class MainActivity : ComponentActivity() {
                         }
                     } else {
                         val fallbackMgr = PreferencesManager(localPrefs).apply {
+                            if (localPrefs.all.isEmpty()) {
+                                loadFromFallbackStorage(this@MainActivity)
+                            }
                             onPreferenceChanged = { saveToFallbackStorageAsync(this@MainActivity) }
                         }
                         prefsState.value = fallbackMgr

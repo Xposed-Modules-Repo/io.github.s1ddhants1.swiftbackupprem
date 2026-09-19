@@ -17,7 +17,7 @@ import kotlinx.serialization.json.Json
 
 @Stable
 class PreferencesManager(
-    private val prefs: SharedPreferences? = null,
+    val prefs: SharedPreferences? = null,
     private val isDynamic: Boolean = false,
     private val backupPrefs: SharedPreferences? = null
 ) {
@@ -50,17 +50,46 @@ class PreferencesManager(
         onPreferenceChanged = null
     }
 
+    private var rawUpdatedAt: Long = prefs?.getLong("updated_at", 0L) ?: 0L
+
+    var updatedAt: Long
+        get() = prefs?.getLong("updated_at", rawUpdatedAt) ?: rawUpdatedAt
+        set(value) {
+            rawUpdatedAt = value
+            attempt("save preference long updated_at", silent = true) {
+                prefs?.edit(commit = true) { putLong("updated_at", value) }
+                backupPrefs?.edit(commit = true) { putLong("updated_at", value) }
+            }
+        }
+
     private fun putString(key: String, value: String?) {
         attempt("save preference string $key", silent = true) {
-            prefs?.edit(commit = true) { putString(key, value) }
-            backupPrefs?.edit(commit = true) { putString(key, value) }
+            val now = System.currentTimeMillis()
+            prefs?.edit(commit = true) {
+                putString(key, value)
+                putLong("updated_at", now)
+            }
+            backupPrefs?.edit(commit = true) {
+                putString(key, value)
+                putLong("updated_at", now)
+            }
+            rawUpdatedAt = now
             onPreferenceChanged?.invoke()
         }
     }
+
     private fun putBoolean(key: String, value: Boolean) {
         attempt("save preference boolean $key", silent = true) {
-            prefs?.edit(commit = true) { putBoolean(key, value) }
-            backupPrefs?.edit(commit = true) { putBoolean(key, value) }
+            val now = System.currentTimeMillis()
+            prefs?.edit(commit = true) {
+                putBoolean(key, value)
+                putLong("updated_at", now)
+            }
+            backupPrefs?.edit(commit = true) {
+                putBoolean(key, value)
+                putLong("updated_at", now)
+            }
+            rawUpdatedAt = now
             onPreferenceChanged?.invoke()
         }
     }
@@ -113,7 +142,8 @@ class PreferencesManager(
         googleStorageBucket = googleStorageBucket,
         projectId = projectId,
         clientId = clientId,
-        localAccountCustomUid = localAccountCustomUid
+        localAccountCustomUid = localAccountCustomUid,
+        updatedAt = if (updatedAt != 0L) updatedAt else System.currentTimeMillis()
     )
 
     fun applyConfig(config: SbpConfig) {
@@ -135,6 +165,7 @@ class PreferencesManager(
         googleStorageBucket = config.googleStorageBucket
         projectId = config.projectId
         clientId = config.clientId
+        updatedAt = config.updatedAt
     }
 
     companion object {
@@ -145,29 +176,55 @@ class PreferencesManager(
     }
 
     private fun getCandidateDirs(context: Context?): List<File> {
-        return listOfNotNull(
-            context?.getExternalFilesDir(null),
-            File("/storage/emulated/0/Android/data/${Consts.packageName}/files")
-        ).distinctBy { it.canonicalPath }
+        val list = mutableListOf<File>()
+        try {
+            list.add(File("/storage/emulated/0/SwiftBackup"))
+            val envDir = android.os.Environment.getExternalStorageDirectory()
+            if (envDir != null && envDir.isAbsolute && envDir.path.startsWith("/")) {
+                list.add(File(envDir, "SwiftBackup"))
+            }
+        } catch (_: Throwable) {}
+
+        context?.getExternalFilesDir(null)?.let { list.add(it) }
+
+        try {
+            list.add(File("/storage/emulated/0/Android/data/${Consts.packageName}/files"))
+            list.add(File("/storage/emulated/0/Android/data/io.github.s1ddhants1.swiftbackupprem/files"))
+        } catch (_: Throwable) {}
+
+        return list.distinctBy { it.canonicalPath }
     }
 
-    fun loadFromFallbackStorage(context: Context?): Boolean {
+    fun loadFromFallbackStorage(context: Context?, force: Boolean = false): Boolean {
         return attempt("load config from fallback storage", silent = true) {
             val candidateDirs = getCandidateDirs(context)
+            var newestConfig: SbpConfig? = null
+            var newestTimestamp = if (force) -1L else this.updatedAt
+
+            val json = Json { ignoreUnknownKeys = true }
             for (dir in candidateDirs) {
                 val file = File(dir, "sbp_config.json")
                 if (file.exists() && file.canRead()) {
-                    val text = file.readText(StandardCharsets.UTF_8)
-                    if (text.isNotBlank()) {
-                        val json = Json { ignoreUnknownKeys = true }
-                        val config = json.decodeFromString<SbpConfig>(text)
-                        applyConfig(config)
-                        attempt("log fallback loaded", silent = true) {
-                            Log.i(Consts.TAG, "Loaded fallback configuration from ${file.absolutePath}")
+                    try {
+                        val text = file.readText(StandardCharsets.UTF_8)
+                        if (text.isNotBlank()) {
+                            val config = json.decodeFromString<SbpConfig>(text)
+                            val fileTimestamp = if (config.updatedAt > 0L) config.updatedAt else file.lastModified()
+                            if (fileTimestamp > newestTimestamp) {
+                                newestTimestamp = fileTimestamp
+                                newestConfig = config.copy(updatedAt = fileTimestamp)
+                            }
                         }
-                        return@attempt true
-                    }
+                    } catch (_: Throwable) {}
                 }
+            }
+
+            if (newestConfig != null) {
+                applyConfig(newestConfig)
+                attempt("log fallback loaded", silent = true) {
+                    Log.i(Consts.TAG, "Loaded fallback configuration with updatedAt=$newestTimestamp")
+                }
+                return@attempt true
             }
             false
         } ?: false
@@ -178,7 +235,8 @@ class PreferencesManager(
             attempt("save config to fallback storage", silent = true) {
                 val candidateDirs = getCandidateDirs(context)
                 val json = Json { ignoreUnknownKeys = true; prettyPrint = true; encodeDefaults = true }
-                val jsonStr = json.encodeToString(SbpConfig.serializer(), toConfig())
+                val currentConfig = toConfig()
+                val jsonStr = json.encodeToString(SbpConfig.serializer(), currentConfig)
                 var saved = false
                 for (dir in candidateDirs) {
                     try {

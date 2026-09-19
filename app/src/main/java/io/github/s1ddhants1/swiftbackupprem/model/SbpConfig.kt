@@ -21,7 +21,8 @@ data class SbpConfig(
     val googleStorageBucket: String = "",
     val projectId: String = "",
     val clientId: String = "",
-    val localAccountCustomUid: String = ""
+    val localAccountCustomUid: String = "",
+    val updatedAt: Long = 0L
 ) {
     val isCompleteFirebaseConfig: Boolean
         get() = FirebaseConfigValidator.isValidConfig(
