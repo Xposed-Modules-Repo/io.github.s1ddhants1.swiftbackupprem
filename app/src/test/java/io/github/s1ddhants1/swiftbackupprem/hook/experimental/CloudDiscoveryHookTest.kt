@@ -387,6 +387,100 @@ class CloudDiscoveryHookTest {
         assertFalse(CloudDiscoveryHook.isSnapshotInjectionEnabled())
         assertFalse(CloudDiscoveryHook.isCloudDiscoveryEnabled())
     }
+
+    @Test
+    fun testFolderFileNameRegexBaseAndIncremental() {
+        val regex = Pattern.compile("^folder-(base|inc-[a-zA-Z0-9_-]+)\\.(fld|flm)(?:\\s+\\((.*?)\\))?\\s+\\(id-(.*?)\\)$")
+
+        val baseFld = "folder-base.fld (POCO X6) (id-EDAXUQ)"
+        val m1 = regex.matcher(baseFld)
+        assertTrue(m1.matches())
+        assertEquals("base", m1.group(1))
+        assertEquals("fld", m1.group(2))
+        assertEquals("POCO X6", m1.group(3))
+        assertEquals("EDAXUQ", m1.group(4))
+
+        val incFlm = "folder-inc-20260917-183547-281.flm (POCO X6) (id-EDAXUQ)"
+        val m2 = regex.matcher(incFlm)
+        assertTrue(m2.matches())
+        assertEquals("inc-20260917-183547-281", m2.group(1))
+        assertEquals("flm", m2.group(2))
+        assertEquals("POCO X6", m2.group(3))
+        assertEquals("EDAXUQ", m2.group(4))
+
+        val baseNoTag = "folder-base.flm (id-BKFEUA)"
+        val m3 = regex.matcher(baseNoTag)
+        assertTrue(m3.matches())
+        assertEquals("base", m3.group(1))
+        assertEquals("flm", m3.group(2))
+        assertNull(m3.group(3))
+        assertEquals("BKFEUA", m3.group(4))
+
+        val incNoTag = "folder-inc-20260904-185417-999.fld (id-EVBCHQ)"
+        val m4 = regex.matcher(incNoTag)
+        assertTrue(m4.matches())
+        assertEquals("inc-20260904-185417-999", m4.group(1))
+        assertEquals("fld", m4.group(2))
+        assertNull(m4.group(3))
+        assertEquals("EVBCHQ", m4.group(4))
+    }
+
+    @Test
+    fun testDiscoveredCloudFolderIncrementalSlicesAndFirebaseMap() {
+        val incSlice = CloudDiscoveryHook.DiscoveredIncrementalSlice(
+            timestamp = "20260917-183547-281",
+            fldLink = "drive_fld_123",
+            fldSize = 5000000L,
+            flmLink = "drive_flm_123",
+            flmSize = 2048L,
+            originalSize = 5000000L
+        )
+
+        val folder = CloudDiscoveryHook.DiscoveredCloudFolder(
+            id = "EDAXUQ",
+            displayName = "Pictures",
+            tag = "POCO X6",
+            fldLink = "base_fld_link",
+            fldSize = 10000000L,
+            flmLink = "base_flm_link",
+            flmSize = 4096L,
+            totalSize = 15006144L,
+            timestamp = 1726588547000L,
+            sourceFolder = "/storage/emulated/0/Pictures",
+            provider = "GoogleDrive",
+            incrementalSlices = mapOf("20260917-183547-281" to incSlice)
+        )
+
+        // Test JSON round trip
+        val json = folder.toJson()
+        val restored = CloudDiscoveryHook.DiscoveredCloudFolder.fromJson("EDAXUQ", json)
+        assertEquals(folder.id, restored.id)
+        assertEquals(folder.displayName, restored.displayName)
+        assertEquals(folder.sourceFolder, restored.sourceFolder)
+        assertEquals(1, restored.incrementalSlices.size)
+        assertEquals("drive_fld_123", restored.incrementalSlices["20260917-183547-281"]?.fldLink)
+
+        // Test Firebase metadata map
+        val fbMap = folder.toFirebaseMetadataMap()
+        assertTrue(fbMap.containsKey("folderItem"))
+        assertTrue(fbMap.containsKey("baseBackup"))
+        assertTrue(fbMap.containsKey("incrementalBackups"))
+
+        @Suppress("UNCHECKED_CAST")
+        val itemMap = fbMap["folderItem"] as Map<String, Any?>
+        assertEquals("EDAXUQ", itemMap["id"])
+        assertEquals("Pictures", itemMap["displayName"])
+        assertEquals("/storage/emulated/0/Pictures", itemMap["sourceFolder"])
+
+        @Suppress("UNCHECKED_CAST")
+        val baseMap = fbMap["baseBackup"] as Map<String, Any?>
+        assertEquals("base_fld_link", baseMap["backupLink"])
+        assertEquals(10000000L, baseMap["backupSize"])
+
+        @Suppress("UNCHECKED_CAST")
+        val incBackups = fbMap["incrementalBackups"] as Map<String, Any?>
+        assertTrue(incBackups.containsKey("20260917-183547-281"))
+    }
 }
 
 

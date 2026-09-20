@@ -56,6 +56,35 @@ object CloudDiscoveryHook : HookHandler {
         isScanRunning.set(false)
     }
 
+    data class DiscoveredIncrementalSlice(
+        val timestamp: String,
+        val fldLink: String? = null,
+        val fldSize: Long = 0,
+        val flmLink: String? = null,
+        val flmSize: Long = 0,
+        val originalSize: Long = 0
+    ) {
+        fun toJson(): JSONObject = JSONObject().apply {
+            put("timestamp", timestamp)
+            fldLink?.let { put("fldLink", it) }
+            put("fldSize", fldSize)
+            flmLink?.let { put("flmLink", it) }
+            put("flmSize", flmSize)
+            put("originalSize", originalSize)
+        }
+
+        companion object {
+            fun fromJson(obj: JSONObject): DiscoveredIncrementalSlice = DiscoveredIncrementalSlice(
+                timestamp = obj.optString("timestamp", ""),
+                fldLink = obj.optString("fldLink").takeIf { it.isNotBlank() },
+                fldSize = obj.optLong("fldSize", 0L),
+                flmLink = obj.optString("flmLink").takeIf { it.isNotBlank() },
+                flmSize = obj.optLong("flmSize", 0L),
+                originalSize = obj.optLong("originalSize", 0L)
+            )
+        }
+    }
+
     data class DiscoveredCloudFolder(
         val id: String,
         val displayName: String,
@@ -67,7 +96,8 @@ object CloudDiscoveryHook : HookHandler {
         val totalSize: Long = 0,
         val timestamp: Long = System.currentTimeMillis(),
         val sourceFolder: String = "/storage/emulated/0",
-        val provider: String = "Generic"
+        val provider: String = "Generic",
+        val incrementalSlices: Map<String, DiscoveredIncrementalSlice> = emptyMap()
     ) {
         fun toJson(): JSONObject = JSONObject().apply {
             put("id", id)
@@ -81,22 +111,75 @@ object CloudDiscoveryHook : HookHandler {
             put("timestamp", timestamp)
             put("sourceFolder", sourceFolder)
             put("provider", provider)
+            if (incrementalSlices.isNotEmpty()) {
+                val incObj = JSONObject()
+                incrementalSlices.forEach { (ts, slice) -> incObj.put(ts, slice.toJson()) }
+                put("incrementalSlices", incObj)
+            }
+        }
+
+        fun toFirebaseMetadataMap(): Map<String, Any?> {
+            val tsFormat = java.text.SimpleDateFormat("yyyyMMdd-HHmmss-SSS", java.util.Locale.US)
+            val tsFormatted = tsFormat.format(java.util.Date(timestamp))
+
+            val incMap = mutableMapOf<String, Any?>()
+            incrementalSlices.forEach { (ts, slice) ->
+                incMap[ts] = mapOf(
+                    "backupLink" to (slice.fldLink ?: ""),
+                    "backupSize" to slice.fldSize,
+                    "manifestLink" to (slice.flmLink ?: ""),
+                    "manifestSize" to slice.flmSize,
+                    "originalSize" to slice.originalSize,
+                    "timestamp" to slice.timestamp
+                )
+            }
+
+            return mapOf(
+                "folderItem" to mapOf(
+                    "id" to id,
+                    "displayName" to displayName,
+                    "sourceFolder" to sourceFolder,
+                    "setupCreationTime" to timestamp
+                ),
+                "baseBackup" to mapOf(
+                    "backupLink" to (fldLink ?: ""),
+                    "backupSize" to fldSize,
+                    "manifestLink" to (flmLink ?: ""),
+                    "manifestSize" to flmSize,
+                    "originalSize" to fldSize,
+                    "timestamp" to tsFormatted
+                ),
+                "incrementalBackups" to incMap
+            )
         }
 
         companion object {
-            fun fromJson(id: String, obj: JSONObject): DiscoveredCloudFolder = DiscoveredCloudFolder(
-                id = obj.optString("id", id),
-                displayName = obj.optString("displayName", "Folder-$id"),
-                tag = obj.optString("tag", "DEFAULT"),
-                fldLink = obj.optString("fldLink").takeIf { it.isNotBlank() },
-                fldSize = obj.optLong("fldSize", 0L),
-                flmLink = obj.optString("flmLink").takeIf { it.isNotBlank() },
-                flmSize = obj.optLong("flmSize", 0L),
-                totalSize = obj.optLong("totalSize", 0L),
-                timestamp = obj.optLong("timestamp", System.currentTimeMillis()),
-                sourceFolder = obj.optString("sourceFolder", "/storage/emulated/0"),
-                provider = obj.optString("provider", "Generic")
-            )
+            fun fromJson(id: String, obj: JSONObject): DiscoveredCloudFolder {
+                val incMap = mutableMapOf<String, DiscoveredIncrementalSlice>()
+                obj.optJSONObject("incrementalSlices")?.let { incObj ->
+                    val keys = incObj.keys()
+                    while (keys.hasNext()) {
+                        val ts = keys.next()
+                        incObj.optJSONObject(ts)?.let { sliceObj ->
+                            incMap[ts] = DiscoveredIncrementalSlice.fromJson(sliceObj)
+                        }
+                    }
+                }
+                return DiscoveredCloudFolder(
+                    id = obj.optString("id", id),
+                    displayName = obj.optString("displayName", "Folder-$id"),
+                    tag = obj.optString("tag", "DEFAULT"),
+                    fldLink = obj.optString("fldLink").takeIf { it.isNotBlank() },
+                    fldSize = obj.optLong("fldSize", 0L),
+                    flmLink = obj.optString("flmLink").takeIf { it.isNotBlank() },
+                    flmSize = obj.optLong("flmSize", 0L),
+                    totalSize = obj.optLong("totalSize", 0L),
+                    timestamp = obj.optLong("timestamp", System.currentTimeMillis()),
+                    sourceFolder = obj.optString("sourceFolder", "/storage/emulated/0"),
+                    provider = obj.optString("provider", "Generic"),
+                    incrementalSlices = incMap
+                )
+            }
         }
     }
 
@@ -1221,7 +1304,7 @@ object CloudDiscoveryHook : HookHandler {
         }
 
         val appRegex = Pattern.compile("^(.*?)\\.([a-z]+)\\s+\\((.*?)\\)\\s+\\(id-(.*?)\\)$")
-        val folderRegex = Pattern.compile("^folder-base\\.(fld|flm)\\s+\\((.*?)\\)\\s+\\(id-(.*?)\\)$")
+        val folderRegex = Pattern.compile("^folder-(base|inc-[a-zA-Z0-9_-]+)\\.(fld|flm)(?:\\s+\\((.*?)\\))?\\s+\\(id-(.*?)\\)$")
         val callRegex = Pattern.compile("^v3\\.(\\d+)\\.(\\d+)\\.(.*?)\\.cls(?:\\s+\\((.*?)\\))?$")
         val callFallbackRegex = Pattern.compile("^(.*?)\\.cls(?:\\s+\\((.*?)\\))?$")
         val smsRegex = Pattern.compile("^v3\\.(\\d+)\\.(\\d+)\\.(\\d+)\\.(.*?)\\.msg(?:\\s+\\((.*?)\\))?$")
@@ -1236,8 +1319,15 @@ object CloudDiscoveryHook : HookHandler {
             val fileList = providerResult.items
             val providerName = scanner.providerName
 
+            class FolderScanGroup {
+                var baseFld: CloudFileItem? = null
+                var baseFlm: CloudFileItem? = null
+                val incFlds = sortedMapOf<String, CloudFileItem>()
+                val incFlms = sortedMapOf<String, CloudFileItem>()
+            }
+
             val appGroups = mutableMapOf<Pair<String, String>, MutableMap<String, Pair<String, CloudFileItem>>>()
-            val folderGroups = mutableMapOf<Pair<String, String>, MutableMap<String, CloudFileItem>>()
+            val folderGroups = mutableMapOf<Pair<String, String>, FolderScanGroup>()
 
             for (fileObj in fileList) {
                 val fileName = fileObj.name
@@ -1246,10 +1336,20 @@ object CloudDiscoveryHook : HookHandler {
 
                 val folderMatcher = folderRegex.matcher(fileName)
                 if (folderMatcher.matches()) {
-                    val part = folderMatcher.group(1) ?: continue
-                    val tag = folderMatcher.group(2) ?: deviceTag
-                    val fid = folderMatcher.group(3) ?: continue
-                    folderGroups.getOrPut(Pair(fid, tag)) { mutableMapOf() }[part] = fileObj
+                    val sliceType = folderMatcher.group(1) ?: continue
+                    val ext = folderMatcher.group(2) ?: continue
+                    val tag = folderMatcher.group(3)?.takeIf { it.isNotBlank() } ?: deviceTag
+                    val fid = folderMatcher.group(4) ?: continue
+
+                    val group = folderGroups.getOrPut(Pair(fid, tag)) { FolderScanGroup() }
+                    if (sliceType == "base") {
+                        if (ext == "fld") group.baseFld = fileObj
+                        else if (ext == "flm") group.baseFlm = fileObj
+                    } else if (sliceType.startsWith("inc-")) {
+                        val incTs = sliceType.removePrefix("inc-")
+                        if (ext == "fld") group.incFlds[incTs] = fileObj
+                        else if (ext == "flm") group.incFlms[incTs] = fileObj
+                    }
                     continue
                 }
 
@@ -1499,34 +1599,73 @@ object CloudDiscoveryHook : HookHandler {
                 totalIndexedCount++
             }
 
-            for ((key, parts) in folderGroups) {
+            for ((key, group) in folderGroups) {
                 val (fid, tag) = key
-                val fldObj = parts["fld"]
-                val flmObj = parts["flm"]
-                val fldLink = fldObj?.id
-                val fldSize = fldObj?.size ?: 0L
-                val flmLink = flmObj?.id
-                val flmSize = flmObj?.size ?: 0L
+
+                var baseFldObj = group.baseFld
+                var baseFlmObj = group.baseFlm
+                val incSlices = mutableMapOf<String, DiscoveredIncrementalSlice>()
+
+                if (baseFldObj == null && group.incFlds.isNotEmpty()) {
+                    val earliestTs = group.incFlds.firstKey()
+                    baseFldObj = group.incFlds[earliestTs]
+                    baseFlmObj = group.incFlms[earliestTs] ?: baseFlmObj
+                }
+
+                val allIncTimestamps = (group.incFlds.keys + group.incFlms.keys).toSortedSet()
+                for (ts in allIncTimestamps) {
+                    val fld = group.incFlds[ts]
+                    val flm = group.incFlms[ts]
+                    if (group.baseFld == null && fld == baseFldObj && flm == baseFlmObj) {
+                        continue
+                    }
+                    val sFld = fld?.size ?: 0L
+                    val sFlm = flm?.size ?: 0L
+                    incSlices[ts] = DiscoveredIncrementalSlice(
+                        timestamp = ts,
+                        fldLink = fld?.id,
+                        fldSize = sFld,
+                        flmLink = flm?.id,
+                        flmSize = sFlm,
+                        originalSize = sFld
+                    )
+                }
+
+                val fldLink = baseFldObj?.id
+                val fldSize = baseFldObj?.size ?: 0L
+                val flmLink = baseFlmObj?.id
+                val flmSize = baseFlmObj?.size ?: 0L
+                val totalIncSize = incSlices.values.sumOf { it.fldSize + it.flmSize }
 
                 var displayName = "Folder-$fid"
                 var sourceFolder = "/storage/emulated/0"
-                var backupTimestamp = flmObj?.timestamp ?: fldObj?.timestamp ?: System.currentTimeMillis()
+                var backupTimestamp = baseFlmObj?.timestamp ?: baseFldObj?.timestamp ?: System.currentTimeMillis()
 
-                if (flmObj != null) {
-                    val rawFlmText = scanner.downloadFileText(context, sp, flmObj)
-                    if (rawFlmText != null) {
+                val candidateManifests = mutableListOf<CloudFileItem>()
+                group.incFlms.values.reversed().forEach { candidateManifests.add(it) }
+                group.baseFlm?.let { if (!candidateManifests.contains(it)) candidateManifests.add(it) }
+                baseFlmObj?.let { if (!candidateManifests.contains(it)) candidateManifests.add(it) }
+
+                for (flmCand in candidateManifests) {
+                    val rawFlmText = scanner.downloadFileText(context, sp, flmCand)
+                    if (!rawFlmText.isNullOrBlank()) {
                         val manifest = BackupCrypto.parseFolderManifest(rawFlmText, candidateUids, classLoader)
                         if (manifest != null) {
-                            sourceFolder = manifest.sourcePath
-                            displayName = manifest.displayName
+                            if (manifest.sourcePath.isNotBlank() && manifest.sourcePath != "/storage/emulated/0") {
+                                sourceFolder = manifest.sourcePath
+                            }
+                            if (manifest.displayName.isNotBlank() && manifest.displayName != "Folder-$fid" && manifest.displayName != "0") {
+                                displayName = manifest.displayName
+                            }
                             if (manifest.created > 0) {
                                 backupTimestamp = manifest.created
                             }
+                            break
                         }
                     }
                 }
 
-                if (displayName == "Folder-$fid") {
+                if (displayName == "Folder-$fid" || sourceFolder == "/storage/emulated/0") {
                     val accountsDir = File(Environment.getExternalStorageDirectory(), "SwiftBackup/accounts")
                     if (accountsDir.isDirectory) {
                         accountsDir.listFiles { f -> f.isDirectory }?.forEach { acc ->
@@ -1544,6 +1683,13 @@ object CloudDiscoveryHook : HookHandler {
                     }
                 }
 
+                if (displayName == "Folder-$fid" && sourceFolder.isNotBlank() && sourceFolder != "/storage/emulated/0") {
+                    val derived = sourceFolder.trimEnd('/').substringAfterLast('/')
+                    if (derived.isNotBlank() && derived != "0" && derived != "emulated") {
+                        displayName = derived
+                    }
+                }
+
                 val discoveredFolder = DiscoveredCloudFolder(
                     id = fid,
                     displayName = displayName,
@@ -1552,10 +1698,11 @@ object CloudDiscoveryHook : HookHandler {
                     fldSize = fldSize,
                     flmLink = flmLink,
                     flmSize = flmSize,
-                    totalSize = fldSize + flmSize,
+                    totalSize = fldSize + flmSize + totalIncSize,
                     timestamp = backupTimestamp,
                     sourceFolder = sourceFolder,
-                    provider = providerName
+                    provider = providerName,
+                    incrementalSlices = incSlices
                 )
                 discoveredFolders[fid] = discoveredFolder
                 totalIndexedCount++

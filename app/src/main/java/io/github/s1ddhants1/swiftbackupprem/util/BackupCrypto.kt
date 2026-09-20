@@ -134,7 +134,26 @@ object BackupCrypto {
         candidateUids: List<String>,
         classLoader: ClassLoader
     ): DecryptedFolderManifest? {
-        val parts = rawFlmText.split(":::").filter { it.isNotBlank() }
+        val trimmed = rawFlmText.trim()
+        if (trimmed.startsWith("{")) {
+            try {
+                val json = JSONObject(trimmed)
+                val srcPath = json.optString("sourcePath").takeIf { it.isNotBlank() } ?: "/storage/emulated/0"
+                val name = json.optString("displayName").takeIf { it.isNotBlank() }
+                    ?: srcPath.trimEnd('/').substringAfterLast('/').takeIf { it.isNotBlank() && it != "0" && it != "emulated" }
+                    ?: "Folder"
+                val created = json.optLong("created", 0L)
+                val bId = json.optString("backupId")
+                return DecryptedFolderManifest(
+                    sourcePath = srcPath,
+                    displayName = name,
+                    created = created,
+                    backupId = bId
+                )
+            } catch (_: Throwable) {}
+        }
+
+        val parts = trimmed.split(":::").filter { it.isNotBlank() }
         if (parts.size < 3) return null
 
         val payload = parts[2].trim()
@@ -145,7 +164,9 @@ object BackupCrypto {
                 val decompJson = decompressZstdOrRaw(decBytes, classLoader) ?: continue
                 val json = JSONObject(decompJson)
                 val srcPath = json.optString("sourcePath").takeIf { it.isNotBlank() } ?: "/storage/emulated/0"
-                val name = srcPath.trimEnd('/').substringAfterLast('/').takeIf { it.isNotBlank() } ?: srcPath
+                val name = json.optString("displayName").takeIf { it.isNotBlank() }
+                    ?: srcPath.trimEnd('/').substringAfterLast('/').takeIf { it.isNotBlank() && it != "0" && it != "emulated" }
+                    ?: "Folder"
                 val created = json.optLong("created", 0L)
                 val bId = json.optString("backupId")
                 return DecryptedFolderManifest(

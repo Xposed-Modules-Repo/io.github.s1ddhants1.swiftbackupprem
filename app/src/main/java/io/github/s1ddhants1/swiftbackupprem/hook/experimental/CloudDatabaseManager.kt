@@ -554,7 +554,7 @@ object CloudDatabaseManager {
 
         val foldersObj = JSONObject()
         CloudDiscoveryHook.discoveredFolders.forEach { (fid, folder) ->
-            foldersObj.put(fid, folder.toJson())
+            foldersObj.put(fid, JSONObject(folder.toFirebaseMetadataMap()))
         }
         tagObj.put("folders", foldersObj)
         tagObj.put("smsBackupsCount", CloudDiscoveryHook.discoveredSms.size)
@@ -775,7 +775,14 @@ object CloudDatabaseManager {
             }
         }
         if (fullPathStr.endsWith("folders") || fullPathStr.endsWith("folders/")) {
-            return CloudDiscoveryHook.discoveredFolders.mapValues { (_, folder) -> folder.toJson() }
+            return CloudDiscoveryHook.discoveredFolders.mapValues { (_, folder) -> folder.toFirebaseMetadataMap() }
+        }
+        val folderIdMatch = Regex(".*/folders/([a-zA-Z0-9_-]+)/?$").find(fullPathStr)
+        if (folderIdMatch != null) {
+            val fid = folderIdMatch.groupValues[1]
+            CloudDiscoveryHook.discoveredFolders[fid]?.let {
+                return it.toFirebaseMetadataMap()
+            }
         }
 
         return null
