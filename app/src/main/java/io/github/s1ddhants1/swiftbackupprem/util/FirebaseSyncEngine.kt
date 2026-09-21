@@ -316,7 +316,7 @@ object FirebaseSyncEngine {
         firebaseDbUrl: String,
         uid: String,
         cloudDir: String = "local",
-        tag: String = "DEFAULT",
+        tag: String = BackupTagHelper.getDefaultTag(),
         pkgName: String,
         backupId: String,
         metadataJson: JSONObject,
@@ -324,7 +324,7 @@ object FirebaseSyncEngine {
     ): Boolean = attempt("sync $pkgName ($backupId) metadata to Firebase Realtime Database", silent = true) {
         val base = cleanDbUrl(firebaseDbUrl)
         val sanitizedAppId = pkgName.replace(".", "")
-        val resolvedTag = if (tag.isNotBlank()) tag else metadataJson.optString("backupTag", "DEFAULT")
+        val resolvedTag = if (tag.isNotBlank()) tag else metadataJson.optString("backupTag", BackupTagHelper.getDefaultTag())
         val authParam = if (!idToken.isNullOrBlank()) "?auth=$idToken" else ""
         val endpoint = "$base/users/$uid/cloud_v1/$cloudDir/tags/$resolvedTag/apps/$sanitizedAppId/$backupId.json$authParam"
 
@@ -341,13 +341,13 @@ object FirebaseSyncEngine {
         firebaseDbUrl: String,
         uid: String,
         cloudDir: String = "local",
-        tag: String = "DEFAULT",
+        tag: String = BackupTagHelper.getDefaultTag(),
         folderId: String,
         metadataJson: JSONObject,
         idToken: String? = null
     ): Boolean = attempt("sync folder $folderId metadata to Firebase Realtime Database", silent = true) {
         val base = cleanDbUrl(firebaseDbUrl)
-        val resolvedTag = if (tag.isNotBlank()) tag else metadataJson.optString("backupTag", "DEFAULT")
+        val resolvedTag = if (tag.isNotBlank()) tag else metadataJson.optString("backupTag", BackupTagHelper.getDefaultTag())
         val authParam = if (!idToken.isNullOrBlank()) "?auth=$idToken" else ""
         val endpoint = "$base/users/$uid/cloud_v1/$cloudDir/tags/$resolvedTag/folders/$folderId.json$authParam"
 
@@ -462,7 +462,7 @@ object FirebaseSyncEngine {
 
                     for (item in items) {
                         val backupId = item.optString("backupId").takeIf { it.isNotBlank() } ?: continue
-                        val tag = item.optString("backupTag").takeIf { it.isNotBlank() } ?: "DEFAULT"
+                        val tag = item.optString("backupTag").takeIf { it.isNotBlank() } ?: BackupTagHelper.getDefaultTag()
                         val provider = item.optString("provider", "OneDrive")
                         val cloudDir = resolveCloudDir(provider, userEmail, existingCloudV1)
 
@@ -492,7 +492,7 @@ object FirebaseSyncEngine {
                 foldersObj.keys().forEach { fid ->
                     val fItem = foldersObj.optJSONObject(fid) ?: return@forEach
                     val folderId = fItem.optString("id", fid)
-                    val tag = fItem.optString("backupTag").takeIf { it.isNotBlank() } ?: "DEFAULT"
+                    val tag = fItem.optString("backupTag").takeIf { it.isNotBlank() } ?: BackupTagHelper.getDefaultTag()
                     val provider = fItem.optString("provider", "OneDrive")
                     val cloudDir = resolveCloudDir(provider, userEmail, existingCloudV1)
 
@@ -538,7 +538,7 @@ object FirebaseSyncEngine {
             put("versionCode", json.optLong("versionCode", 1L))
             put("versionName", json.optString("versionName", "1.0"))
             put("dateBackup", dateBackup)
-            put("backupTag", json.optString("backupTag", "DEFAULT"))
+            put("backupTag", json.optString("backupTag", BackupTagHelper.getDefaultTag()))
             put("minSBVersionCodeRequired", 580L)
             put("keyVersion", 1)
 
@@ -596,7 +596,7 @@ object FirebaseSyncEngine {
                 (if (connectedCloud != null) sp.getString("${connectedCloud}_cloud_backup_tag", null) else null)
                     ?: sp.getString("google_drive_cloud_backup_tag", null)
                     ?: sp.getString("cloud_backup_tag", null)
-                    ?: "DEFAULT"
+                    ?: BackupTagHelper.getDefaultTag()
             }
         metadataJson.put("backupTag", tag)
 

@@ -17,6 +17,7 @@ import io.github.s1ddhants1.swiftbackupprem.hook.getFieldValue
 import io.github.s1ddhants1.swiftbackupprem.util.BackupCrypto
 import io.github.s1ddhants1.swiftbackupprem.util.PreferencesManager
 import io.github.s1ddhants1.swiftbackupprem.util.AppUtils
+import io.github.s1ddhants1.swiftbackupprem.util.BackupTagHelper
 import io.github.s1ddhants1.swiftbackupprem.util.ApkRangeManifestParser
 import io.github.s1ddhants1.swiftbackupprem.util.attempt
 import io.github.s1ddhants1.swiftbackupprem.util.loadClassFlexible
@@ -168,7 +169,7 @@ object CloudDiscoveryHook : HookHandler {
                 return DiscoveredCloudFolder(
                     id = obj.optString("id", id),
                     displayName = obj.optString("displayName", "Folder-$id"),
-                    tag = obj.optString("tag", "DEFAULT"),
+                    tag = obj.optString("tag", BackupTagHelper.getDefaultTag()),
                     fldLink = obj.optString("fldLink").takeIf { it.isNotBlank() },
                     fldSize = obj.optLong("fldSize", 0L),
                     flmLink = obj.optString("flmLink").takeIf { it.isNotBlank() },
@@ -203,7 +204,7 @@ object CloudDiscoveryHook : HookHandler {
                 fileName = obj.optString("fileName", ""),
                 size = obj.optLong("size", 0L),
                 count = obj.optInt("count", 1),
-                tag = obj.optString("tag", "DEFAULT"),
+                tag = obj.optString("tag", BackupTagHelper.getDefaultTag()),
                 timestamp = obj.optLong("timestamp", System.currentTimeMillis()),
                 provider = obj.optString("provider", "Generic")
             )
@@ -230,7 +231,7 @@ object CloudDiscoveryHook : HookHandler {
                 fileName = obj.optString("fileName", ""),
                 size = obj.optLong("size", 0L),
                 totalCount = obj.optInt("totalCount", 1),
-                tag = obj.optString("tag", "DEFAULT"),
+                tag = obj.optString("tag", BackupTagHelper.getDefaultTag()),
                 timestamp = obj.optLong("timestamp", System.currentTimeMillis()),
                 provider = obj.optString("provider", "Generic")
             )
@@ -364,7 +365,7 @@ object CloudDiscoveryHook : HookHandler {
                 val resolvedPkg = s("packageName", "pkgName", "pName") ?: pkg
                 val resolvedSanitized = s("sanitizedAppId", "appId") ?: resolvedPkg.replace(".", "")
                 val resolvedBackupId = s("backupId", "id") ?: ""
-                val resolvedTag = s("backupTag", "tag") ?: "DEFAULT"
+                val resolvedTag = s("backupTag", "tag") ?: BackupTagHelper.getDefaultTag()
                 val resolvedAppName = s("appName", "name")
                 val resolvedApkLink = s("apkLink")
                 val resolvedApkSize = l("apkSize")
@@ -1274,7 +1275,7 @@ object CloudDiscoveryHook : HookHandler {
 
         val deviceTag = sp.getString("google_drive_cloud_backup_tag", null)
             ?: sp.getString("cloud_backup_tag", null)
-            ?: "DEFAULT"
+            ?: BackupTagHelper.getDefaultTag()
 
         val candidateUids = resolveCandidateUids(context, classLoader, targets)
         Log.d(TAG, "[CloudDiscovery] Starting discovery across all configured cloud providers...")

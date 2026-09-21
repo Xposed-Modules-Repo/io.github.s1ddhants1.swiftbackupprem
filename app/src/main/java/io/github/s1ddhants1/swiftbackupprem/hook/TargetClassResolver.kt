@@ -43,6 +43,7 @@ object TargetClassResolver {
         var settingsFragment: Class<*>? = null
         var settingsDetailFragment: Class<*>? = null
         var baseSettingsFragment: Class<*>? = null
+        var rootServiceManager: Class<*>? = null
 
         val ver = Integer.valueOf(ctx.packageManager.getPackageInfo(Consts.packageName, 0).versionCode)
         versionMap[ver]?.let { c ->
@@ -61,6 +62,7 @@ object TargetClassResolver {
             settingsFragment = c.settingsFragment?.let { loadClassFlexible(cl, it) }
             settingsDetailFragment = c.settingsDetailFragment?.let { loadClassFlexible(cl, it) }
             baseSettingsFragment = c.baseSettingsFragment?.let { loadClassFlexible(cl, it) }
+            rootServiceManager = c.rootServiceManager?.let { loadClassFlexible(cl, it) }
         }
 
         attempt("load V class fallback", silent = true) {
@@ -73,7 +75,11 @@ object TargetClassResolver {
             }
         }
 
-
+        attempt("load RootServiceManager fallback", silent = true) {
+            if (rootServiceManager == null) {
+                rootServiceManager = loadClassFlexible(cl, "com.topjohnwu.superuser.internal.RootServiceManager")
+            }
+        }
 
         attempt("load CustomClassMapper fallback", silent = true) {
             if (customClassMapper == null) {
@@ -90,7 +96,7 @@ object TargetClassResolver {
                 clientId, v, cloudGms, homeVm, authUser, anonUser, oauthHelper, authRequestBuilder,
                 appBackup, appMetadataXml, fireSynchronizer, firebaseWatcher, fireSynchronizerSuccess,
                 fireSynchronizerWriteSuccess, fireSynchronizerCommitted, customClassMapper,
-                settingsFragment, settingsDetailFragment, baseSettingsFragment
+                settingsFragment, settingsDetailFragment, baseSettingsFragment, rootServiceManager
             )
         }
 
@@ -287,6 +293,12 @@ object TargetClassResolver {
                     }
                 }
 
+                if (rootServiceManager == null) {
+                    rootServiceManager = bridge.findSingle(cl, "rootServiceManagerClass", filterInner = false) {
+                        matcher { usingStrings("com.topjohnwu.superuser.RECEIVER_BROADCAST") }
+                    }
+                }
+
                 if (baseSettingsFragment == null) {
                     baseSettingsFragment = settingsFragment?.superclass ?: settingsDetailFragment?.superclass
                 }
@@ -307,7 +319,7 @@ object TargetClassResolver {
             clientId, v, cloudGms, homeVm, authUser, anonUser, oauthHelper, authRequestBuilder,
             appBackup, appMetadataXml, fireSynchronizer, firebaseWatcher, fireSynchronizerSuccess,
             fireSynchronizerWriteSuccess, fireSynchronizerCommitted, customClassMapper,
-            settingsFragment, settingsDetailFragment, baseSettingsFragment
+            settingsFragment, settingsDetailFragment, baseSettingsFragment, rootServiceManager
         )
     }
 

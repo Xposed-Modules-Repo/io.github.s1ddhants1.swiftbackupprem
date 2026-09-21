@@ -175,6 +175,106 @@ object LSPatchHelper {
         } ?: TargetStatus(isInstalled = false, isPatched = false, isModuleEmbedded = false)
     }
 
+    /**
+     * Detects whether the current process is running under LSPatch by checking
+     * multiple signals. Newer LSPatch versions (JingMatrix v1.2+) don't inject
+     * metadata or override appComponentFactory, so we also check the installer
+     * package name and the existence of the lspatch cache directory.
+     * Intended for use inside the hooked target process.
+     */
+    fun isLSPatched(context: Context): Boolean {
+        return attempt("check if running under LSPatch", silent = true) {
+            val appInfo = context.applicationInfo
+            val hasMeta = appInfo.metaData?.containsKey("lspatch") == true
+            val hasFactory = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                appInfo.appComponentFactory?.contains("lspatch", ignoreCase = true) == true
+            } else false
+            if (hasMeta || hasFactory) return@attempt true
+
+            // JingMatrix LSPatch v1.2+ detection: check installer package name
+            val pm = context.packageManager
+            val installer = attempt("get installer package", silent = true) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    pm.getInstallSourceInfo(context.packageName).installingPackageName
+                } else {
+                    @Suppress("DEPRECATION")
+                    pm.getInstallerPackageName(context.packageName)
+                }
+            }
+            if (installer?.contains("lspatch", ignoreCase = true) == true) return@attempt true
+
+            // Fallback: check for lspatch cache directory
+            val cacheDir = java.io.File(context.cacheDir, "lspatch/origin")
+            cacheDir.isDirectory
+        } ?: false
+    }
+
+    /**
+     * Resolves the path to the original (unwrapped) APK that LSPatch extracted
+     * and loaded into the running ClassLoader.
+     *
+     * LSPatch wraps the real APK inside `assets/lspatch/origin.apk` in the outer
+     * patched APK. At runtime, it extracts `origin.apk` to a cache directory and
+     * loads it via a new ClassLoader. This method walks the ClassLoader's dex path
+     * list to find that extracted path.
+     *
+     * @return absolute path to the origin APK, or null if not found
+     */
+    fun resolveOriginApkPath(classLoader: ClassLoader): String? {
+        return attempt("resolve origin APK from classloader dex elements", silent = true) {
+            var cl: ClassLoader? = classLoader
+            while (cl != null) {
+                val currentCl = cl ?: continue
+                val pathList = attempt("get pathList from ${currentCl.javaClass.name}", silent = true) {
+                    val field = currentCl.javaClass.superclass?.getDeclaredField("pathList")
+                        ?: currentCl.javaClass.getDeclaredField("pathList")
+                    field.isAccessible = true
+                    field.get(currentCl)
+                }
+                if (pathList != null) {
+                    val dexElements = attempt("get dexElements", silent = true) {
+                        val field = pathList.javaClass.getDeclaredField("dexElements")
+                        field.isAccessible = true
+                        field.get(pathList) as? Array<*>
+                    }
+                    if (dexElements != null) {
+                        for (element in dexElements) {
+                            if (element == null) continue
+                            val path = attempt("get element path", silent = true) {
+                                val pathField = element.javaClass.getDeclaredField("path")
+                                pathField.isAccessible = true
+                                pathField.get(element) as? java.io.File
+                            } ?: continue
+
+                            val absPath = path.absolutePath
+                            if (absPath.contains("origin", ignoreCase = true) && absPath.endsWith(".apk")) {
+                                return@attempt absPath
+                            }
+                        }
+                    }
+                }
+                cl = cl.parent
+            }
+
+            // Fallback: scan known LSPatch cache directories for any APK.
+            // JingMatrix v1.2+ uses hash-based filenames (e.g. 2507548724.apk)
+            // inside cache/lspatch/origin/.
+            val candidateDirs = listOf(
+                "/data/data/${Consts.packageName}/cache/lspatch/origin",
+                "/data/user/0/${Consts.packageName}/cache/lspatch/origin"
+            )
+            for (dirPath in candidateDirs) {
+                val dir = java.io.File(dirPath)
+                if (dir.isDirectory) {
+                    val apk = dir.listFiles()?.firstOrNull { it.extension == "apk" }
+                    if (apk != null) return@attempt apk.absolutePath
+                }
+            }
+
+            null
+        }
+    }
+
     fun isIntegratedMode(
         context: Context? = null,
         remotePrefsAvailable: Boolean = false,

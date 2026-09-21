@@ -17,7 +17,8 @@ data class VersionClasses(
     val customClassMapper: String? = null,
     val settingsFragment: String? = null,
     val settingsDetailFragment: String? = null,
-    val baseSettingsFragment: String? = null
+    val baseSettingsFragment: String? = null,
+    val rootServiceManager: String? = null
 )
 
 val versionMap = mapOf(
@@ -39,7 +40,8 @@ val versionMap = mapOf(
         customClassMapper = "defpackage.t62",
         settingsFragment = "defpackage.pa7",
         settingsDetailFragment = "org.swiftapps.swiftbackup.settings.a",
-        baseSettingsFragment = "defpackage.fm0"
+        baseSettingsFragment = "defpackage.fm0",
+        rootServiceManager = "defpackage.bq6"
     ),
     623 to VersionClasses(
         clientId = "defpackage.gp5",

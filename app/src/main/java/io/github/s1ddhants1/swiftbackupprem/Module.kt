@@ -119,6 +119,11 @@ class Module : XposedModule() {
         }
 
         ExitProtectionHook.apply(this, ctx, cl, targets, prefs)
+
+        if (LSPatchHelper.isLSPatched(ctx)) {
+            RootServiceFixHook.apply(this, ctx, cl, targets, prefs)
+        }
+
         FirebaseInitHook.apply(this, ctx, cl, targets, prefs)
         PremiumFeatureHook.apply(this, ctx, cl, targets, prefs)
         if (swiftAppInstance != null) {

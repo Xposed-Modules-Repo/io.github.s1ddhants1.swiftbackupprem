@@ -22,7 +22,8 @@ data class ResolvedTargets(
     val customClassMapperClass: Class<*>? = null,
     val settingsFragmentClass: Class<*>? = null,
     val settingsDetailFragmentClass: Class<*>? = null,
-    val baseSettingsFragmentClass: Class<*>? = null
+    val baseSettingsFragmentClass: Class<*>? = null,
+    val rootServiceManagerClass: Class<*>? = null
 ) {
     val isFullyResolved: Boolean
         get() = listOf(clientIdClass, vClass, homeViewModelClass, authUserClass).all { it != null }

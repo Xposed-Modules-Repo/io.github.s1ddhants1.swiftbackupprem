@@ -11,6 +11,7 @@ import io.github.s1ddhants1.swiftbackupprem.hook.ResolvedTargets
 import io.github.s1ddhants1.swiftbackupprem.hook.experimental.cloudproviders.CloudScannerRegistry
 import io.github.s1ddhants1.swiftbackupprem.util.BackupCrypto
 import io.github.s1ddhants1.swiftbackupprem.util.BackupMigratorEngine
+import io.github.s1ddhants1.swiftbackupprem.util.BackupTagHelper
 import io.github.s1ddhants1.swiftbackupprem.util.PreferencesManager
 import io.github.s1ddhants1.swiftbackupprem.util.attempt
 import io.github.s1ddhants1.swiftbackupprem.util.loadClassFlexible
@@ -490,7 +491,7 @@ object CloudDatabaseManager {
         val deviceTag = sp.getString("${connectedCloud}_cloud_backup_tag", null)
             ?: sp.getString("google_drive_cloud_backup_tag", null)
             ?: sp.getString("cloud_backup_tag", null)
-            ?: "DEFAULT"
+            ?: BackupTagHelper.getDefaultTag()
 
         val allApps = CloudDiscoveryHook.getAllDiscoveredApps()
         val root = JSONObject()

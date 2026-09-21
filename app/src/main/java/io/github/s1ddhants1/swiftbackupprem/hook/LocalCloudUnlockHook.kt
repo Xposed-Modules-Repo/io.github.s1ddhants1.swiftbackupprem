@@ -11,6 +11,7 @@ import io.github.s1ddhants1.swiftbackupprem.hook.experimental.BackupRebuilderHoo
 import io.github.s1ddhants1.swiftbackupprem.hook.experimental.CloudDatabaseManager
 import io.github.s1ddhants1.swiftbackupprem.hook.experimental.CloudDiscoveryHook
 import io.github.s1ddhants1.swiftbackupprem.util.AppUtils
+import io.github.s1ddhants1.swiftbackupprem.util.BackupTagHelper
 import io.github.s1ddhants1.swiftbackupprem.util.FirebaseSyncEngine
 import io.github.s1ddhants1.swiftbackupprem.util.PreferencesManager
 import io.github.s1ddhants1.swiftbackupprem.util.attempt
@@ -769,7 +770,7 @@ object LocalCloudUnlockHook : HookHandler {
                 ?: (if (connectedCloud != null) sp.getString("${connectedCloud}_cloud_backup_tag", null) else null)
                 ?: sp.getString("google_drive_cloud_backup_tag", null)
                 ?: sp.getString("cloud_backup_tag", null)
-                ?: "DEFAULT"
+                ?: BackupTagHelper.getDefaultTag()
 
             json.put("packageName", pkgName)
             json.put("sanitizedAppId", pkgName.replace(".", ""))
