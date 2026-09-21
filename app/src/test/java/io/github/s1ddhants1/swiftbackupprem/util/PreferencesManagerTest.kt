@@ -268,7 +268,6 @@ class PreferencesManagerTest {
     fun applyConfigReconcilesMutualExclusivityBetweenUnlockLocalCloudAndCustomFirebase() {
         val prefs = PreferencesManager(null)
 
-        // Case 1: Both true with valid projectId -> favors customFirebaseApp
         val configWithProject = io.github.s1ddhants1.swiftbackupprem.model.SbpConfig(
             customFirebaseApp = true,
             unlockLocalCloudFeatures = true,
@@ -278,7 +277,6 @@ class PreferencesManagerTest {
         assertTrue(prefs.customFirebaseApp)
         assertFalse(prefs.unlockLocalCloudFeatures)
 
-        // Case 2: Both true without projectId -> favors unlockLocalCloudFeatures
         val configWithoutProject = io.github.s1ddhants1.swiftbackupprem.model.SbpConfig(
             customFirebaseApp = true,
             unlockLocalCloudFeatures = true,

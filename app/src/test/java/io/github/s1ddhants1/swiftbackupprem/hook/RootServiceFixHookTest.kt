@@ -50,8 +50,6 @@ class RootServiceFixHookTest {
         val destination = ByteArrayOutputStream()
 
         val interceptingStream = RootServiceFixHook.createInterceptingOutputStream(destination, originPath, installedApk)
-
-        // Simulate libsu's write pattern: write string bytes, write newline, flush
         interceptingStream.write(originalCmd.toByteArray(Charsets.UTF_8))
         interceptingStream.write('\n'.code)
         interceptingStream.flush()

@@ -16,29 +16,6 @@ import java.io.OutputStream
 import java.lang.reflect.InvocationHandler
 import java.lang.reflect.Method
 import java.lang.reflect.Proxy
-
-/**
- * Fixes libsu's RootService binding failure under LSPatch.
- *
- * **Problem**: libsu launches a root daemon via `su -c app_process` with
- * `CLASSPATH` set to `main.jar` (extracted from assets). Inside `RootServerMain`,
- * it calls `systemContext.createPackageContextAsUser("org.swiftapps.swiftbackup", ...)`
- * which loads the installed APK from `/data/app/.../base.apk`.
- * Under LSPatch, `base.apk` is the patched wrapper containing `LSPAppComponentFactory`
- * and `liblspatch.so`. In the bare `app_process` daemon context (no Application,
- * null ActivityThread), `liblspatch.so` JNI initialization invokes
- * `GetObjectField(null, ...)` resulting in `SIGABRT` (exit code 134).
- *
- * **Fix**: Intercepts `RootServiceManager.startRootProcess` (and its caller tasks)
- * to wrap the shell launch command inside an isolated mount namespace using
- * `unshare -m`. Inside the private namespace, it marks mounts private (`mount --make-rprivate /`)
- * and bind-mounts the clean, extracted origin APK over `base.apk` before executing
- * `app_process`. This causes `createPackageContextAsUser` to load Swift Backup's
- * original classes and libraries without any LSPatch presence, allowing the root daemon
- * to start cleanly and bind its IPC interface.
- *
- * Only activated when [LSPatchHelper.isLSPatched] returns true.
- */
 @Keep
 object RootServiceFixHook : HookHandler {
 
@@ -66,9 +43,6 @@ object RootServiceFixHook : HookHandler {
         patchSourceDir(context.applicationInfo, originPath)
     }
 
-    /**
-     * Resolves the real installed APK path in `/data/app/...` from PackageManagerService.
-     */
     fun resolveInstalledApkPath(context: Context, originPath: String): String? {
         val pmPath = attempt("get sourceDir from PackageManager", silent = true) {
             context.packageManager.getApplicationInfo(Consts.packageName, 0).sourceDir
@@ -94,9 +68,6 @@ object RootServiceFixHook : HookHandler {
         return pmPath ?: codePath
     }
 
-    /**
-     * Hooks `RootServiceManager` methods that spawn root daemon processes.
-     */
     private fun hookRootServiceManager(
         module: XposedModule,
         targetManagerClass: Class<*>?,
@@ -108,7 +79,6 @@ object RootServiceFixHook : HookHandler {
             classLoader.loadClass("com.topjohnwu.superuser.internal.RootServiceManager")
         } ?: return
 
-        // Hook startRootProcess(ComponentName, String) -> Shell.Task (handles both obfuscated and unobfuscated)
         val startRootProcessMethod = managerClass.declaredMethods.firstOrNull {
             it.name == "startRootProcess"
         } ?: managerClass.declaredMethods.firstOrNull {
@@ -132,10 +102,6 @@ object RootServiceFixHook : HookHandler {
         }
     }
 
-    /**
-     * Wraps a [com.topjohnwu.superuser.Shell.Task] in a dynamic proxy that intercepts STDIN
-     * during `task.run(stdin, stdout, stderr)` (or obfuscated `a(stdin, stdout, stderr)`).
-     */
     fun wrapShellTask(
         originalTask: Any,
         classLoader: ClassLoader,
@@ -166,10 +132,6 @@ object RootServiceFixHook : HookHandler {
         )
     }
 
-    /**
-     * Creates an [OutputStream] filter that buffers command lines written to STDIN and
-     * rewrites any `RootServerMain` invocation to execute in an isolated mount namespace.
-     */
     fun createInterceptingOutputStream(
         originalStdin: OutputStream,
         originPath: String,
@@ -218,10 +180,6 @@ object RootServiceFixHook : HookHandler {
         }
     }
 
-    /**
-     * Rewrites a libsu root daemon launch command to bind-mount the clean origin APK
-     * over the patched installed APK inside an isolated mount namespace.
-     */
     fun transformRootCommand(cmd: String, originPath: String, installedApkPath: String): String {
         val trimmed = cmd.trim()
         if (!trimmed.contains("RootServerMain") || trimmed.contains("mount -o bind") || trimmed.contains("mount --bind")) {
@@ -250,9 +208,6 @@ object RootServiceFixHook : HookHandler {
         return wrapped
     }
 
-    /**
-     * Hooks `ContextWrapper.getPackageCodePath()` and `getPackageResourcePath()`.
-     */
     private fun hookGetPackageCodePath(module: XposedModule, originPath: String) {
         val contextWrapperClass = android.content.ContextWrapper::class.java
 
@@ -287,9 +242,6 @@ object RootServiceFixHook : HookHandler {
         }
     }
 
-    /**
-     * Reflectively patches `sourceDir` and `publicSourceDir` on [ApplicationInfo].
-     */
     private fun patchSourceDir(appInfo: ApplicationInfo, originPath: String) {
         attempt("patch ApplicationInfo.sourceDir for RootService", silent = true) {
             val currentSource = appInfo.sourceDir

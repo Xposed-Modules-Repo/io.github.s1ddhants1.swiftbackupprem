@@ -451,7 +451,6 @@ class CloudDiscoveryHookTest {
             incrementalSlices = mapOf("20260917-183547-281" to incSlice)
         )
 
-        // Test JSON round trip
         val json = folder.toJson()
         val restored = CloudDiscoveryHook.DiscoveredCloudFolder.fromJson("EDAXUQ", json)
         assertEquals(folder.id, restored.id)
@@ -460,7 +459,6 @@ class CloudDiscoveryHookTest {
         assertEquals(1, restored.incrementalSlices.size)
         assertEquals("drive_fld_123", restored.incrementalSlices["20260917-183547-281"]?.fldLink)
 
-        // Test Firebase metadata map
         val fbMap = folder.toFirebaseMetadataMap()
         assertTrue(fbMap.containsKey("folderItem"))
         assertTrue(fbMap.containsKey("baseBackup"))

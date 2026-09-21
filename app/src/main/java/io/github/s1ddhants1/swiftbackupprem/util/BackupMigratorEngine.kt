@@ -726,14 +726,6 @@ object BackupMigratorEngine {
             }
         }
 
-        fun isSba1Bytes(raw: ByteArray): Boolean {
-            return raw.size >= 4 &&
-                    raw[0] == 0x53.toByte() &&
-                    raw[1] == 0x42.toByte() &&
-                    raw[2] == 0x41.toByte() &&
-                    raw[3] == 0x31.toByte()
-        }
-
         fun parse(file: File): SbaArchiveInfo? = attempt("parse SBA1 archive", silent = true) {
             RandomAccessFile(file, "r").use { raf ->
                 val header = parseHeader(raf) ?: return@attempt null

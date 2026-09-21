@@ -34,14 +34,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import io.github.s1ddhants1.swiftbackupprem.BuildConfig
 import io.github.s1ddhants1.swiftbackupprem.R
-import io.github.s1ddhants1.swiftbackupprem.ui.theme.AppSpacing
+
 
 private data class Contributor(
     @DrawableRes val avatarRes: Int,
     val name: String,
     val role: String,
-    val githubUrl: String? = null,
-    val telegramUrl: String? = null
+    val githubUrl: String? = null
 )
 
 private val CONTRIBUTORS = listOf(
@@ -49,8 +48,7 @@ private val CONTRIBUTORS = listOf(
         avatarRes = R.drawable.ic_avatar_s1ddhants1,
         name = "s1ddhants1",
         role = "Maintainer",
-        githubUrl = "https://github.com/s1ddhants1",
-        telegramUrl = "https://t.me/s1ddhants1"
+        githubUrl = "https://github.com/s1ddhants1"
     ),
     Contributor(
         avatarRes = R.drawable.ic_avatar_juby210,
@@ -67,18 +65,18 @@ fun AboutScreen() {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = AppSpacing.md)
+            .padding(horizontal = 16.dp)
             .verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.md)
+        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Spacer(Modifier.height(AppSpacing.xxs))
+        Spacer(Modifier.height(4.dp))
 
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = AppSpacing.sm),
+                .padding(vertical = 12.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(AppSpacing.sm)
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Icon(
                 painter = painterResource(id = R.drawable.ic_logo),
@@ -103,7 +101,7 @@ fun AboutScreen() {
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.padding(horizontal = AppSpacing.sm, vertical = AppSpacing.xxs)
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
                 )
             }
         }
@@ -112,19 +110,18 @@ fun AboutScreen() {
             CONTRIBUTORS.forEachIndexed { index, contributor ->
                 if (index > 0) {
                     HorizontalDivider(
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
-                        modifier = Modifier.padding(vertical = AppSpacing.xs)
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
                     )
                 }
                 ContributorItemRow(contributor = contributor, onOpenUrl = { uriHandler.openUri(it) })
             }
         }
 
-        Spacer(Modifier.height(AppSpacing.xs))
+        Spacer(Modifier.height(8.dp))
 
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(AppSpacing.md, Alignment.CenterHorizontally),
+            horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
             verticalAlignment = Alignment.CenterVertically
         ) {
             FilledTonalIconButton(
@@ -160,12 +157,9 @@ fun AboutScreen() {
             }
         }
 
-        Spacer(Modifier.height(AppSpacing.md))
+        Spacer(Modifier.height(16.dp))
     }
 }
-
-@Composable
-fun AboutSettingsPage() = AboutScreen()
 
 @Composable
 private fun ContributorItemRow(
@@ -179,7 +173,7 @@ private fun ContributorItemRow(
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(AppSpacing.sm),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
             modifier = Modifier.weight(1f)
         ) {
             Image(
@@ -217,19 +211,6 @@ private fun ContributorItemRow(
                     Icon(
                         painter = painterResource(id = R.drawable.ic_github_logo),
                         contentDescription = "GitHub",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-            }
-            contributor.telegramUrl?.let { url ->
-                IconButton(
-                    onClick = { onOpenUrl(url) },
-                    modifier = Modifier.size(36.dp)
-                ) {
-                    Icon(
-                        painter = painterResource(id = R.drawable.ic_telegram_logo),
-                        contentDescription = "Telegram",
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(18.dp)
                     )
