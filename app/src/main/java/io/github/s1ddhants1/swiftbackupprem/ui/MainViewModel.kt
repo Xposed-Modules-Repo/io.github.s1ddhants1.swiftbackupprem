@@ -27,7 +27,8 @@ data class MainUiState(
     val titleRes: Int = R.string.framework_inactive_title,
     val titleArgs: List<String> = emptyList(),
     val descRes: Int = R.string.framework_inactive_desc,
-    val descArgs: List<String> = emptyList()
+    val descArgs: List<String> = emptyList(),
+    val isIntegrated: Boolean = false
 )
 
 sealed interface MainUiEvent {
@@ -55,7 +56,8 @@ class MainViewModel(
                 titleRes = evaluation.titleRes,
                 titleArgs = evaluation.titleArgs,
                 descRes = evaluation.descRes,
-                descArgs = evaluation.descArgs
+                descArgs = evaluation.descArgs,
+                isIntegrated = evaluation.isIntegrated
             )
         }
     }
@@ -66,7 +68,8 @@ class MainViewModel(
                 isFrameworkConnected = true,
                 frameworkName = name,
                 frameworkVersion = version,
-                isInjectable = true
+                isInjectable = true,
+                isIntegrated = false
             )
         }
     }
@@ -77,7 +80,8 @@ class MainViewModel(
                 isFrameworkConnected = false,
                 isInjectable = false,
                 frameworkName = "",
-                frameworkVersion = ""
+                frameworkVersion = "",
+                isIntegrated = false
             )
         }
     }

@@ -1,4 +1,4 @@
-package io.github.s1ddhants1.swiftbackupprem.hook.experimental
+package io.github.s1ddhants1.swiftbackupprem.hook
 
 import org.json.JSONObject
 import org.junit.Assert.*

@@ -1,11 +1,11 @@
-package io.github.s1ddhants1.swiftbackupprem.hook.experimental.cloudproviders
+package io.github.s1ddhants1.swiftbackupprem.hook.cloudproviders
 
 import android.content.Context
 import android.content.SharedPreferences
 import android.util.Log
 import androidx.annotation.Keep
 import io.github.s1ddhants1.swiftbackupprem.Consts
-import io.github.s1ddhants1.swiftbackupprem.hook.experimental.cloudproviders.CloudHttpHelper.findFirstString
+import io.github.s1ddhants1.swiftbackupprem.hook.cloudproviders.CloudHttpHelper.findFirstString
 import io.github.s1ddhants1.swiftbackupprem.util.attempt
 import org.json.JSONObject
 import java.nio.charset.StandardCharsets

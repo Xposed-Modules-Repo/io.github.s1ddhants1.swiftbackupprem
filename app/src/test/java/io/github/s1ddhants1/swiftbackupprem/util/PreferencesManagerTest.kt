@@ -264,6 +264,31 @@ class PreferencesManagerTest {
         override fun getExternalFilesDir(type: String?): java.io.File? = externalDir
     }
 
+    @Test
+    fun applyConfigReconcilesMutualExclusivityBetweenUnlockLocalCloudAndCustomFirebase() {
+        val prefs = PreferencesManager(null)
+
+        // Case 1: Both true with valid projectId -> favors customFirebaseApp
+        val configWithProject = io.github.s1ddhants1.swiftbackupprem.model.SbpConfig(
+            customFirebaseApp = true,
+            unlockLocalCloudFeatures = true,
+            projectId = "my-firebase-project"
+        )
+        prefs.applyConfig(configWithProject)
+        assertTrue(prefs.customFirebaseApp)
+        assertFalse(prefs.unlockLocalCloudFeatures)
+
+        // Case 2: Both true without projectId -> favors unlockLocalCloudFeatures
+        val configWithoutProject = io.github.s1ddhants1.swiftbackupprem.model.SbpConfig(
+            customFirebaseApp = true,
+            unlockLocalCloudFeatures = true,
+            projectId = ""
+        )
+        prefs.applyConfig(configWithoutProject)
+        assertFalse(prefs.customFirebaseApp)
+        assertTrue(prefs.unlockLocalCloudFeatures)
+    }
+
     private class FakeSharedPreferences : android.content.SharedPreferences {
         val map = mutableMapOf<String, Any?>()
 

@@ -37,7 +37,7 @@ import io.github.s1ddhants1.swiftbackupprem.util.BackupMigratorEngine
 import io.github.s1ddhants1.swiftbackupprem.util.PreferencesManager
 import java.io.File
 
-enum class ExperimentalHubTab {
+enum class MigratorTab {
     LOCAL_MIGRATION,
     CLOUD_DISCOVERY
 }
@@ -48,7 +48,7 @@ fun BackupMigratorScreen(
     viewModel: BackupMigratorViewModel,
     prefs: PreferencesManager,
     modifier: Modifier = Modifier,
-    initialTab: ExperimentalHubTab = ExperimentalHubTab.LOCAL_MIGRATION
+    initialTab: MigratorTab = MigratorTab.LOCAL_MIGRATION
 ) {
     var selectedTab by remember { mutableStateOf(initialTab) }
 
@@ -59,14 +59,14 @@ fun BackupMigratorScreen(
             contentColor = MaterialTheme.colorScheme.primary
         ) {
             Tab(
-                selected = selectedTab == ExperimentalHubTab.LOCAL_MIGRATION,
-                onClick = { selectedTab = ExperimentalHubTab.LOCAL_MIGRATION },
+                selected = selectedTab == MigratorTab.LOCAL_MIGRATION,
+                onClick = { selectedTab = MigratorTab.LOCAL_MIGRATION },
                 text = { Text(stringResource(R.string.tab_local_migrator), fontWeight = FontWeight.SemiBold) },
                 icon = { Icon(Icons.Default.FolderZip, contentDescription = null) }
             )
             Tab(
-                selected = selectedTab == ExperimentalHubTab.CLOUD_DISCOVERY,
-                onClick = { selectedTab = ExperimentalHubTab.CLOUD_DISCOVERY },
+                selected = selectedTab == MigratorTab.CLOUD_DISCOVERY,
+                onClick = { selectedTab = MigratorTab.CLOUD_DISCOVERY },
                 text = { Text(stringResource(R.string.tab_cloud_discovery), fontWeight = FontWeight.SemiBold) },
                 icon = { Icon(Icons.Default.CloudSync, contentDescription = null) }
             )
@@ -74,8 +74,8 @@ fun BackupMigratorScreen(
 
         AnimatedContent(targetState = selectedTab, label = "TabTransition") { tab ->
             when (tab) {
-                ExperimentalHubTab.LOCAL_MIGRATION -> LocalMigrationTabContent(viewModel = viewModel, prefs = prefs)
-                ExperimentalHubTab.CLOUD_DISCOVERY -> CloudDiscoveryTabContent(viewModel = viewModel, prefs = prefs)
+                MigratorTab.LOCAL_MIGRATION -> LocalMigrationTabContent(viewModel = viewModel, prefs = prefs)
+                MigratorTab.CLOUD_DISCOVERY -> CloudDiscoveryTabContent(viewModel = viewModel, prefs = prefs)
             }
         }
     }

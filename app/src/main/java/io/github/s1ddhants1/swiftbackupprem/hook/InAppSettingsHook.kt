@@ -11,6 +11,7 @@ import android.widget.Toast
 import androidx.annotation.Keep
 import io.github.libxposed.api.XposedInterface
 import io.github.libxposed.api.XposedModule
+import io.github.s1ddhants1.swiftbackupprem.BuildConfig
 import io.github.s1ddhants1.swiftbackupprem.Consts
 import io.github.s1ddhants1.swiftbackupprem.util.GoogleServicesJson
 import io.github.s1ddhants1.swiftbackupprem.util.LSPatchHelper
@@ -29,6 +30,7 @@ object InAppSettingsHook : HookHandler {
     const val SBP_CATEGORY_ID = 999
     const val PREF_KEY_SBP = "swiftbackupprem_settings"
     const val PREF_KEY_IMPORT_JSON = "pref_import_google_services"
+    const val PREF_KEY_VERSION = "pref_sbp_version"
     const val REQUEST_CODE_PICK_JSON = 48701
 
     @Volatile
@@ -45,6 +47,41 @@ object InAppSettingsHook : HookHandler {
         set(value) {
             activeImportPrefRef = value?.let { WeakReference(it) }
         }
+
+    @Volatile
+    private var activeFragmentRef: WeakReference<Any>? = null
+
+    var activeFragment: Any?
+        get() = activeFragmentRef?.get()
+        set(value) {
+            activeFragmentRef = value?.let { WeakReference(it) }
+        }
+
+    private fun findPreferenceChangeMethod(fragmentClass: Class<*>, prefClass: Class<*>): Method? {
+        for (iface in fragmentClass.interfaces) {
+            val m = iface.declaredMethods.firstOrNull {
+                it.parameterCount == 2 &&
+                    it.parameterTypes[0].isAssignableFrom(prefClass) &&
+                    (it.returnType == java.lang.Boolean.TYPE || it.returnType == Boolean::class.javaObjectType)
+            }
+            if (m != null) {
+                return try {
+                    fragmentClass.getDeclaredMethod(m.name, m.parameterTypes[0], m.parameterTypes[1])
+                } catch (_: Throwable) { null }
+            }
+        }
+        var curr: Class<*>? = fragmentClass
+        while (curr != null && curr != Any::class.java) {
+            val m = curr.declaredMethods.firstOrNull {
+                it.parameterCount == 2 &&
+                    it.parameterTypes[0].isAssignableFrom(prefClass) &&
+                    (it.returnType == java.lang.Boolean.TYPE || it.returnType == Boolean::class.javaObjectType)
+            }
+            if (m != null) return m
+            curr = curr.superclass
+        }
+        return null
+    }
 
     private fun findCreatePreferencesMethod(fragmentClass: Class<*>): Method? {
         var curr: Class<*>? = fragmentClass
@@ -188,6 +225,7 @@ object InAppSettingsHook : HookHandler {
                 val result = chain.proceed()
                 val fragment = chain.thisObject
                 if (fragment != null) {
+                    activeFragment = fragment
                     attempt("populate SBP native settings page from detail fragment") {
                         val activity = fragment.javaClass.getMethod("getActivity").invoke(fragment) as? Activity
                         val category = activity?.intent?.getIntExtra("category", 0) ?: 0
@@ -229,10 +267,38 @@ object InAppSettingsHook : HookHandler {
                 val activity = fragment.javaClass.getMethod("getActivity").invoke(fragment) as? Activity
                 val category = activity?.intent?.getIntExtra("category", 0) ?: 0
                 if (activity != null && category == SBP_CATEGORY_ID) {
+                    activeFragment = fragment
                     val pref = chain.args[0]
                     val key = helper.getKey(pref)
-                    val handled = handleSbpClick(pref, key, activity, helper)
+                    val handled = handleSbpClick(pref, key, activity, helper, fragment)
                     if (handled) return@intercept true
+                }
+                chain.proceed()
+            }
+        }
+
+        attempt("hook SettingsDetail fragment change for SBP items", silent = true) {
+            val sdfc = settingsDetailFragmentClass ?: return@attempt
+            val cMethod = findPreferenceChangeMethod(sdfc, prefClass) ?: return@attempt
+
+            module.hookTracked(
+                cMethod,
+                idPrefix = "sbp-settings-detail-change",
+                priority = XposedInterface.PRIORITY_HIGHEST,
+                deoptimize = true
+            ).intercept { chain ->
+                val fragment = chain.thisObject
+                val activity = fragment.javaClass.getMethod("getActivity").invoke(fragment) as? Activity
+                val category = activity?.intent?.getIntExtra("category", 0) ?: 0
+                if (activity != null && category == SBP_CATEGORY_ID) {
+                    activeFragment = fragment
+                    val pref = chain.args[0]
+                    val key = helper.getKey(pref)
+                    val newValue = chain.args[1] as? Boolean
+                    if (key != null && newValue != null) {
+                        handleTogglePreference(pref, key, newValue, activity, helper, fragment)
+                        return@intercept true
+                    }
                 }
                 chain.proceed()
             }
@@ -360,25 +426,97 @@ object InAppSettingsHook : HookHandler {
         }
     }
 
-    private fun handleSbpClick(pref: Any, key: String?, activity: Activity, helper: HostPreferenceHelper): Boolean {
+    private fun handleTogglePreference(
+        pref: Any,
+        key: String,
+        newChecked: Boolean,
+        activity: Activity,
+        helper: HostPreferenceHelper,
+        fragment: Any? = null
+    ) {
         val p = activePrefs ?: PreferencesManager().also { activePrefs = it }
 
+        when (key) {
+            "enable_premium" -> {
+                p.enablePremium = newChecked
+                activeTargets?.let { targets ->
+                    PremiumFeatureHook.updateVpField(targets, newChecked)
+                }
+            }
+            "disable_telemetry" -> p.disableTelemetry = newChecked
+            "unlock_local_cloud_features" -> {
+                p.unlockLocalCloudFeatures = newChecked
+                if (newChecked) {
+                    p.customFirebaseApp = false
+                    updateCloudPreferencesUi(
+                        fragment = fragment,
+                        pref = pref,
+                        activity = activity,
+                        helper = helper,
+                        customFirebaseChecked = false,
+                        unlockLocalCloudChecked = true
+                    )
+                }
+            }
+            "custom_firebase_app" -> {
+                p.customFirebaseApp = newChecked
+                if (newChecked) {
+                    p.unlockLocalCloudFeatures = false
+                    updateCloudPreferencesUi(
+                        fragment = fragment,
+                        pref = pref,
+                        activity = activity,
+                        helper = helper,
+                        customFirebaseChecked = true,
+                        unlockLocalCloudChecked = false
+                    )
+                }
+            }
+        }
+        p.saveToFallbackStorage(activity)
+        Log.i(Consts.TAG, "Toggled $key -> $newChecked and saved (unlockLocal=${p.unlockLocalCloudFeatures}, customFirebase=${p.customFirebaseApp})")
+    }
+
+    private fun updateCloudPreferencesUi(
+        fragment: Any?,
+        pref: Any? = null,
+        activity: Activity,
+        helper: HostPreferenceHelper,
+        customFirebaseChecked: Boolean,
+        unlockLocalCloudChecked: Boolean
+    ) {
+        val currentFragment = fragment ?: activeFragment
+        val screen = (currentFragment?.let { getPreferenceScreen(it) })
+            ?: (pref?.let { helper.getPreferenceScreenFromPref(it) })
+            ?: return
+
+        val customFbPref = helper.findPreference(screen, "custom_firebase_app")
+        if (customFbPref != null) {
+            helper.setChecked(customFbPref, customFirebaseChecked)
+        }
+
+        val localCloudPref = helper.findPreference(screen, "unlock_local_cloud_features")
+        if (localCloudPref != null) {
+            helper.setChecked(localCloudPref, unlockLocalCloudChecked)
+        }
+
+        if (currentFragment != null) {
+            activity.runOnUiThread {
+                refreshRecyclerAdapter(currentFragment)
+            }
+        }
+    }
+
+    private fun handleSbpClick(
+        pref: Any,
+        key: String?,
+        activity: Activity,
+        helper: HostPreferenceHelper,
+        fragment: Any? = null
+    ): Boolean {
         if (helper.isTwoStatePreference(pref) && key != null) {
             val newChecked = helper.isChecked(pref)
-
-            when (key) {
-                "enable_premium" -> {
-                    p.enablePremium = newChecked
-                    activeTargets?.let { targets ->
-                        PremiumFeatureHook.updateVpField(targets, newChecked)
-                    }
-                }
-                "disable_telemetry" -> p.disableTelemetry = newChecked
-                "unlock_local_cloud_features" -> p.unlockLocalCloudFeatures = newChecked
-                "custom_firebase_app" -> p.customFirebaseApp = newChecked
-            }
-            p.saveToFallbackStorage(activity)
-            Log.i(Consts.TAG, "Toggled $key -> $newChecked and saved")
+            handleTogglePreference(pref, key, newChecked, activity, helper, fragment)
             return true
         }
 
@@ -402,6 +540,16 @@ object InAppSettingsHook : HookHandler {
                         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     }
                     activity.startActivity(intent)
+                }
+                return true
+            }
+            PREF_KEY_VERSION -> {
+                attempt("copy version to clipboard", silent = true) {
+                    val versionText = "SwiftBackupPrem v${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})"
+                    val clipboard = activity.getSystemService(Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager
+                    val clip = android.content.ClipData.newPlainText("SwiftBackupPrem Version", versionText)
+                    clipboard?.setPrimaryClip(clip)
+                    Toast.makeText(activity, "$versionText (Copied)", Toast.LENGTH_SHORT).show()
                 }
                 return true
             }
@@ -465,13 +613,35 @@ object InAppSettingsHook : HookHandler {
                 prefs.firebaseDatabaseUrl = "https://${prefs.projectId}-default-rtdb.firebaseio.com"
             }
             prefs.customFirebaseApp = true
+            prefs.unlockLocalCloudFeatures = false
             prefs.saveToFallbackStorage(activity)
 
             val newSummary = "Configured: ${prefs.projectId} (Tap to update)"
+            val helper = HostPreferenceHelper(activity.classLoader, activity)
             if (targetPref != null) {
-                val helper = HostPreferenceHelper(activity.classLoader, activity)
                 helper.setSummary(targetPref, newSummary)
+            } else {
+                val currentFragment = activeFragment
+                if (currentFragment != null) {
+                    val screen = getPreferenceScreen(currentFragment)
+                    if (screen != null) {
+                        val importItem = helper.findPreference(screen, PREF_KEY_IMPORT_JSON)
+                        if (importItem != null) {
+                            helper.setSummary(importItem, newSummary)
+                        }
+                    }
+                }
             }
+
+            updateCloudPreferencesUi(
+                fragment = activeFragment,
+                pref = targetPref,
+                activity = activity,
+                helper = helper,
+                customFirebaseChecked = true,
+                unlockLocalCloudChecked = false
+            )
+
             Toast.makeText(
                 activity,
                 "Imported Firebase config for project:\n${prefs.projectId}",
@@ -719,6 +889,30 @@ object InAppSettingsHook : HookHandler {
             } catch (_: Throwable) {}
             findFieldInHierarchy(switchPref.javaClass, "f0")?.set(switchPref, checked)
             findFieldInHierarchy(switchPref.javaClass, "i0")?.set(switchPref, true)
+            notifyChanged(switchPref)
+        }
+
+        fun notifyChanged(pref: Any) {
+            try {
+                val m = pref.javaClass.methods.firstOrNull { it.name == "notifyChanged" && it.parameterCount == 0 }
+                if (m != null) {
+                    m.isAccessible = true
+                    m.invoke(pref)
+                    return
+                }
+            } catch (_: Throwable) {}
+            var curr: Class<*>? = pref.javaClass
+            while (curr != null && curr != Any::class.java) {
+                val m = curr.declaredMethods.firstOrNull { it.name == "notifyChanged" && it.parameterCount == 0 }
+                if (m != null) {
+                    try {
+                        m.isAccessible = true
+                        m.invoke(pref)
+                        return
+                    } catch (_: Throwable) {}
+                }
+                curr = curr.superclass
+            }
         }
 
         fun isChecked(switchPref: Any): Boolean {
@@ -733,6 +927,27 @@ object InAppSettingsHook : HookHandler {
             return false
         }
 
+        fun findPreferenceManager(target: Any): Any? {
+            for (f in target.javaClass.declaredFields) {
+                if (f.type.name.contains("PreferenceManager")) {
+                    f.isAccessible = true
+                    return f.get(target)
+                }
+            }
+            return findFieldInHierarchy(target.javaClass, "b")?.get(target)
+        }
+
+        fun getPreferenceScreenFromPref(pref: Any): Any? {
+            val pm = findPreferenceManager(pref) ?: return null
+            try {
+                val m = pm.javaClass.getMethod("getPreferenceScreen")
+                val res = m.invoke(pm)
+                if (res != null) return res
+            } catch (_: Throwable) {}
+            val gField = findFieldInHierarchy(pm.javaClass, "g")
+            return gField?.get(pm)
+        }
+
         fun setClickListener(pref: Any, listener: Any) {
             try {
                 val m = pref.javaClass.declaredMethods.firstOrNull {
@@ -744,6 +959,19 @@ object InAppSettingsHook : HookHandler {
                 }
             } catch (_: Throwable) {}
             findFieldInHierarchy(pref.javaClass, "f")?.set(pref, listener)
+        }
+
+        fun setChangeListener(pref: Any, listener: Any) {
+            try {
+                val m = pref.javaClass.methods.firstOrNull {
+                    it.name == "setOnPreferenceChangeListener" && it.parameterCount == 1 &&
+                        it.parameterTypes[0].isInstance(listener)
+                }
+                if (m != null) {
+                    m.invoke(pref, listener)
+                    return
+                }
+            } catch (_: Throwable) {}
         }
 
         @Suppress("UNCHECKED_CAST")
@@ -832,6 +1060,7 @@ object InAppSettingsHook : HookHandler {
                     bindClickListeners(item, listener)
                 } else {
                     setClickListener(item, listener)
+                    setChangeListener(item, listener)
                 }
             }
         }
@@ -982,20 +1211,25 @@ object InAppSettingsHook : HookHandler {
             fragment: Any,
             prefs: PreferencesManager
         ) {
+            activeFragment = fragment
+
+            if (prefs.unlockLocalCloudFeatures && prefs.customFirebaseApp) {
+                if (prefs.projectId.isNotBlank()) {
+                    prefs.unlockLocalCloudFeatures = false
+                } else {
+                    prefs.customFirebaseApp = false
+                }
+                prefs.saveToFallbackStorage(activity)
+                Log.w(
+                    Consts.TAG,
+                    "Resolved mutually exclusive cloud prefs: unlockLocal=${prefs.unlockLocalCloudFeatures}, customFirebase=${prefs.customFirebaseApp}"
+                )
+            }
+
             val res = ctx.resources
             val pkg = ctx.packageName
 
             var idCounter = 100000L
-
-            fun findPreferenceManager(target: Any): Any? {
-                for (f in target.javaClass.declaredFields) {
-                    if (f.type.name.contains("PreferenceManager")) {
-                        f.isAccessible = true
-                        return f.get(target)
-                    }
-                }
-                return findFieldInHierarchy(target.javaClass, "b")?.get(target)
-            }
 
             fun setPreferenceManager(pref: Any, pm: Any) {
                 for (f in pref.javaClass.declaredFields) {
@@ -1129,6 +1363,21 @@ object InAppSettingsHook : HookHandler {
             }
             setIntent(githubItem, githubIntent)
             add(catLinks, githubItem)
+
+            val catAbout = add(screen, createCategory("About", 400))
+
+            val infoIcon = res.getIdentifier("ic_settings_info_filled", "drawable", pkg)
+                .takeIf { it != 0 }
+                ?: res.getIdentifier("ic_information", "drawable", pkg)
+
+            val versionItem = createItem(
+                PREF_KEY_VERSION,
+                "Version",
+                "v${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
+                infoIcon,
+                401
+            )
+            add(catAbout, versionItem)
 
             bindClickListeners(screen, fragment)
 

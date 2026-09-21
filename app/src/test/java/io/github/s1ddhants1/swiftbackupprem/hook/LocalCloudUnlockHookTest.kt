@@ -152,7 +152,7 @@ class LocalCloudUnlockHookTest {
     @Test
     fun testPurchaseVerificationLeafPathReturnsBoolean() {
         val leafPath = "https://swift-backup-31751.firebaseio.com/purchase_verifications/d58b0944415a4889d7f11aa95fbeca50/AQK8OqW4gtD36Xte/DRxZA4zBTU1sr0y0N5jq+IeqAxKIILVpxc="
-        val segments = io.github.s1ddhants1.swiftbackupprem.hook.experimental.CloudDatabaseManager.extractPathSegments(leafPath)
+        val segments = CloudDatabaseManager.extractPathSegments(leafPath)
         val pvIndex = segments.indexOf("purchase_verifications")
         assertTrue(pvIndex != -1)
         assertTrue(segments.size >= pvIndex + 3)
@@ -169,13 +169,13 @@ class LocalCloudUnlockHookTest {
             })
         }
         val segmentsLeaf = listOf("purchase_verifications", "test_uid", "validity")
-        val nodeLeaf = io.github.s1ddhants1.swiftbackupprem.hook.experimental.CloudDatabaseManager.resolvePathInJson(root, segmentsLeaf)
+        val nodeLeaf = CloudDatabaseManager.resolvePathInJson(root, segmentsLeaf)
         assertEquals(true, nodeLeaf)
 
         val segmentsParent = listOf("purchase_verifications", "test_uid")
-        val nodeParent = io.github.s1ddhants1.swiftbackupprem.hook.experimental.CloudDatabaseManager.resolvePathInJson(root, segmentsParent)
+        val nodeParent = CloudDatabaseManager.resolvePathInJson(root, segmentsParent)
         assertTrue(nodeParent is org.json.JSONObject)
-        val convertedParent = io.github.s1ddhants1.swiftbackupprem.hook.experimental.CloudDatabaseManager.jsonToValue(nodeParent)
+        val convertedParent = CloudDatabaseManager.jsonToValue(nodeParent)
         assertTrue(convertedParent is Map<*, *>)
         assertEquals(true, (convertedParent as Map<*, *>)["validity"])
     }
@@ -274,7 +274,7 @@ class LocalCloudUnlockHookTest {
     @Test
     fun testAnyToJsonDeepSerializationOfLabelsData() {
         val dummyData = DummyLabelsData()
-        val json = io.github.s1ddhants1.swiftbackupprem.hook.experimental.CloudDatabaseManager.anyToJson(dummyData)
+        val json = CloudDatabaseManager.anyToJson(dummyData)
         assertTrue(json is JSONObject)
         val jsonObject = json as JSONObject
 
@@ -314,7 +314,7 @@ class LocalCloudUnlockHookTest {
         """.trimIndent())
 
         val prefs = PreferencesManager(null)
-        val changed = io.github.s1ddhants1.swiftbackupprem.hook.experimental.CloudDatabaseManager.reconcileDatabaseNodes(db, prefs)
+        val changed = CloudDatabaseManager.reconcileDatabaseNodes(db, prefs)
         assertTrue(changed)
 
         val userObj = db.getJSONObject("users").getJSONObject("test_uid")
@@ -352,10 +352,10 @@ class LocalCloudUnlockHookTest {
         }
         """.trimIndent())
 
-        val segments = io.github.s1ddhants1.swiftbackupprem.hook.experimental.CloudDatabaseManager.extractPathSegments("users/test_uid/labelsData")
-        val node = io.github.s1ddhants1.swiftbackupprem.hook.experimental.CloudDatabaseManager.resolvePathInJson(testDb, segments)
+        val segments = CloudDatabaseManager.extractPathSegments("users/test_uid/labelsData")
+        val node = CloudDatabaseManager.resolvePathInJson(testDb, segments)
         assertNotNull(node)
-        val value = io.github.s1ddhants1.swiftbackupprem.hook.experimental.CloudDatabaseManager.jsonToValue(node)
+        val value = CloudDatabaseManager.jsonToValue(node)
         assertTrue(value is Map<*, *>)
         val map = value as Map<*, *>
         assertTrue(map["labelParamsMap"] is Map<*, *>)

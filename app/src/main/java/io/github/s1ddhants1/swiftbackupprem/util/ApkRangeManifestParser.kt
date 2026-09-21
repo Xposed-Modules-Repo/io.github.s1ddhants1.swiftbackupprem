@@ -5,8 +5,8 @@ import android.content.SharedPreferences
 import android.util.Log
 import androidx.annotation.Keep
 import io.github.s1ddhants1.swiftbackupprem.Consts
-import io.github.s1ddhants1.swiftbackupprem.hook.experimental.cloudproviders.CloudFileItem
-import io.github.s1ddhants1.swiftbackupprem.hook.experimental.cloudproviders.CloudScanner
+import io.github.s1ddhants1.swiftbackupprem.hook.cloudproviders.CloudFileItem
+import io.github.s1ddhants1.swiftbackupprem.hook.cloudproviders.CloudScanner
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.charset.StandardCharsets

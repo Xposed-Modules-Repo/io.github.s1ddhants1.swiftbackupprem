@@ -45,12 +45,14 @@ class MainViewModelTest {
             titleRes = io.github.s1ddhants1.swiftbackupprem.R.string.framework_active_title_dynamic,
             titleArgs = listOf("LSPatch"),
             descRes = io.github.s1ddhants1.swiftbackupprem.R.string.framework_active_desc,
-            descArgs = listOf("LSPatch", "0.6")
+            descArgs = listOf("LSPatch", "0.6"),
+            isIntegrated = true
         )
         viewModel.updateFrameworkEvaluation(evaluation)
         val state = viewModel.uiState.value
         assertTrue(state.isFrameworkConnected)
         assertTrue(state.isInjectable)
+        assertTrue(state.isIntegrated)
         assertEquals("LSPatch", state.frameworkName)
         assertEquals("0.6", state.frameworkVersion)
         assertEquals(io.github.s1ddhants1.swiftbackupprem.R.string.framework_active_title_dynamic, state.titleRes)

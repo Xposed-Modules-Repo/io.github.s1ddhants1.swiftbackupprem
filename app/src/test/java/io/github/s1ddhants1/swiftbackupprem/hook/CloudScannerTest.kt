@@ -1,6 +1,6 @@
-package io.github.s1ddhants1.swiftbackupprem.hook.experimental
+package io.github.s1ddhants1.swiftbackupprem.hook
 
-import io.github.s1ddhants1.swiftbackupprem.hook.experimental.cloudproviders.*
+import io.github.s1ddhants1.swiftbackupprem.hook.cloudproviders.*
 import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Test

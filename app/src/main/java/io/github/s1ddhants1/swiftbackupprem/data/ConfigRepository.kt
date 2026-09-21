@@ -138,6 +138,7 @@ class ConfigRepositoryImpl(
 
         if (isGoogleServices) {
             prefs.customFirebaseApp = true
+            prefs.unlockLocalCloudFeatures = false
             GoogleServicesJson.applyToPrefs(rawJson, prefs)
             prefs.firebaseSetupFinished = prefs.toConfig().isCompleteFirebaseConfig
             return prefs.toConfig()

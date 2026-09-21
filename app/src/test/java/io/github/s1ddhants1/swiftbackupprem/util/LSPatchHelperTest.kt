@@ -90,7 +90,7 @@ class LSPatchHelperTest {
     }
 
     @Test
-    fun lspatchConnected_portableMode_moduleEmbedded_returnsActive() {
+    fun lspatchConnected_portableMode_moduleEmbedded_returnsEmbeddedActive() {
         val result = LSPatchHelper.evaluateFrameworkStatus(
             frameworkName = "LSPatch",
             frameworkVersion = "0.6",
@@ -105,7 +105,8 @@ class LSPatchHelperTest {
         )
         assertTrue(result.isConnected)
         assertTrue(result.isInjectable)
-        assertEquals(R.string.framework_active_title_dynamic, result.titleRes)
+        assertTrue(result.isIntegrated)
+        assertEquals(R.string.framework_lspatch_embedded_active_title, result.titleRes)
     }
 
     @Test
@@ -124,6 +125,7 @@ class LSPatchHelperTest {
         )
         assertTrue(result.isConnected)
         assertTrue(result.isInjectable)
+        assertTrue(result.isIntegrated)
         assertEquals(R.string.framework_lspatch_embedded_active_title, result.titleRes)
     }
 
@@ -142,7 +144,24 @@ class LSPatchHelperTest {
         )
         assertFalse(result.isConnected)
         assertFalse(result.isInjectable)
+        assertFalse(result.isIntegrated)
         assertEquals(R.string.framework_inactive_title, result.titleRes)
+    }
+
+    @Test
+    fun serviceBound_returnsNotIntegrated() {
+        val result = LSPatchHelper.evaluateFrameworkStatus(
+            frameworkName = "LSPosed",
+            frameworkVersion = "1.9.3",
+            scope = listOf(Consts.packageName),
+            isServiceBound = true,
+            targetStatus = LSPatchHelper.TargetStatus(
+                isInstalled = true,
+                isPatched = false,
+                isModuleEmbedded = false
+            )
+        )
+        assertFalse(result.isIntegrated)
     }
 
     @Test

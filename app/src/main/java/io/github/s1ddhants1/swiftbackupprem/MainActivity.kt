@@ -19,8 +19,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.filled.DriveFileMove
 import androidx.compose.material.icons.automirrored.filled.Launch
 import androidx.compose.material.icons.filled.*
+
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -38,8 +41,8 @@ import io.github.s1ddhants1.swiftbackupprem.ui.BackupMigratorViewModel
 import io.github.s1ddhants1.swiftbackupprem.ui.MainUiEvent
 import io.github.s1ddhants1.swiftbackupprem.ui.MainViewModel
 import io.github.s1ddhants1.swiftbackupprem.ui.component.AboutScreen
-import io.github.s1ddhants1.swiftbackupprem.ui.component.AdvancedSettingsCard
 import io.github.s1ddhants1.swiftbackupprem.ui.component.BackupMigratorScreen
+import io.github.s1ddhants1.swiftbackupprem.ui.component.CustomUidInputSection
 import io.github.s1ddhants1.swiftbackupprem.ui.component.FirebaseSetupScreen
 import io.github.s1ddhants1.swiftbackupprem.ui.component.SettingsSwitch
 import io.github.s1ddhants1.swiftbackupprem.ui.theme.Theme
@@ -81,7 +84,7 @@ class MainActivity : ComponentActivity() {
                 App.serviceState.collect { service ->
                     val evaluation = io.github.s1ddhants1.swiftbackupprem.util.LSPatchHelper.evaluateFrameworkStatus(this@MainActivity, service)
                     viewModel.updateFrameworkEvaluation(evaluation)
-                    if (service != null) {
+                    if (service != null && !evaluation.isIntegrated) {
                         attempt("retrieve remote preferences from XposedService") {
                             val remotePrefs = service.getRemotePreferences(Consts.PREFS_SETTINGS)
                             val remoteMgr = PreferencesManager(remotePrefs, backupPrefs = localPrefs)
@@ -182,7 +185,7 @@ class MainActivity : ComponentActivity() {
                                             when (currentScreen) {
                                                 AppScreen.Settings -> R.string.screen_settings
                                                 AppScreen.About -> R.string.screen_about
-                                                AppScreen.BackupMigrator -> R.string.screen_experimental_hub
+                                                AppScreen.BackupMigrator -> R.string.screen_backup_migrator
                                                 AppScreen.FirebaseSetup -> R.string.screen_firebase_setup
                                             }
                                         ),
@@ -329,6 +332,8 @@ private fun SettingsScreenContent(
     onOpenFirebaseSetup: () -> Unit,
     onOpenMigrator: () -> Unit
 ) {
+    val context = LocalContext.current
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -337,70 +342,183 @@ private fun SettingsScreenContent(
     ) {
         FrameworkStatusBanner(uiState = uiState)
 
+        if (uiState.isIntegrated) {
+            OutlinedCard(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+                    .padding(bottom = 6.dp),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.WorkOutline,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Text(
+                        text = stringResource(R.string.integrated_mode_card_desc),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+
+        if (!uiState.isIntegrated) {
+            OutlinedCard(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.surface)
+            ) {
+                SettingsSwitch(
+                    label = stringResource(R.string.pref_enable_premium_title),
+                    secondaryLabel = stringResource(R.string.pref_enable_premium_subtitle),
+                    pref = prefs.enablePremium,
+                    onPrefChange = { prefs.enablePremium = it }
+                )
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                SettingsSwitch(
+                    label = stringResource(R.string.pref_disable_telemetry_title),
+                    secondaryLabel = stringResource(R.string.pref_disable_telemetry_subtitle),
+                    pref = prefs.disableTelemetry,
+                    onPrefChange = { prefs.disableTelemetry = it }
+                )
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+                val firebaseConfigured = prefs.toConfig().isCompleteFirebaseConfig
+                SettingsSwitch(
+                    label = stringResource(R.string.pref_custom_firebase_title),
+                    secondaryLabel = if (prefs.customFirebaseApp) {
+                        if (firebaseConfigured) stringResource(R.string.wizard_credentials_complete)
+                        else stringResource(R.string.wizard_credentials_incomplete_desc)
+                    } else {
+                        stringResource(R.string.pref_custom_firebase_subtitle)
+                    },
+                    pref = prefs.customFirebaseApp,
+                    onPrefChange = {
+                        prefs.customFirebaseApp = it
+                        if (it) {
+                            prefs.unlockLocalCloudFeatures = false
+                        } else {
+                            prefs.enableCloudDiscovery = false
+                            prefs.enableGoogleDriveScope = false
+                            prefs.enableSnapshotInjection = false
+                            prefs.enableBackupRebuilder = false
+                            prefs.syncMetadataToFirebase = false
+                        }
+                    },
+                    onLabelClick = onOpenFirebaseSetup,
+                    thumbContent = if (prefs.customFirebaseApp) {
+                        {
+                            Icon(
+                                imageVector = if (firebaseConfigured) Icons.Default.Check else Icons.Default.Close,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                                tint = if (firebaseConfigured) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.error
+                            )
+                        }
+                    } else null
+                )
+                }
+        }
+
+        if (!uiState.isIntegrated) {
+            OutlinedCard(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.surface)
+            ) {
+                SettingsSwitch(
+                    label = stringResource(R.string.pref_unlock_local_cloud_features_title),
+                    secondaryLabel = stringResource(R.string.pref_unlock_local_cloud_features_desc),
+                    pref = prefs.unlockLocalCloudFeatures,
+                    enabled = true,
+                    onPrefChange = {
+                        prefs.unlockLocalCloudFeatures = it
+                        if (it) {
+                            prefs.customFirebaseApp = false
+                            prefs.enableSnapshotInjection = true
+                        }
+                    }
+                )
+
+                AnimatedVisibility(
+                    visible = prefs.unlockLocalCloudFeatures,
+                    enter = expandVertically() + fadeIn(),
+                    exit = shrinkVertically() + fadeOut()
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 4.dp)
+                    ) {
+                        CustomUidInputSection(
+                            uid = prefs.localAccountCustomUid,
+                            onUidChange = { prefs.localAccountCustomUid = it.trim() },
+                            label = stringResource(R.string.pref_local_account_custom_uid_title),
+                            keyModeTitle = stringResource(R.string.pref_encryption_key_mode_title),
+                            anonymousUidValue = "",
+                            anonymousChipLabel = stringResource(R.string.pref_key_mode_anonymous),
+                            customChipLabel = stringResource(R.string.pref_key_mode_custom),
+                            prefs = prefs
+                        )
+                    }
+                }
+            }
+        }
+
         OutlinedCard(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
             shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.surface)
+            colors = CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.surface),
+            onClick = onOpenMigrator
         ) {
-            SettingsSwitch(
-                label = stringResource(R.string.pref_enable_premium_title),
-                secondaryLabel = stringResource(R.string.pref_enable_premium_subtitle),
-                pref = prefs.enablePremium,
-                onPrefChange = { prefs.enablePremium = it }
-            )
-            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-            SettingsSwitch(
-                label = stringResource(R.string.pref_disable_telemetry_title),
-                secondaryLabel = stringResource(R.string.pref_disable_telemetry_subtitle),
-                pref = prefs.disableTelemetry,
-                onPrefChange = { prefs.disableTelemetry = it }
-            )
-            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-
-            val firebaseConfigured = prefs.toConfig().isCompleteFirebaseConfig
-            SettingsSwitch(
-                label = stringResource(R.string.pref_custom_firebase_title),
-                secondaryLabel = if (prefs.customFirebaseApp) {
-                    if (firebaseConfigured) stringResource(R.string.wizard_credentials_complete)
-                    else stringResource(R.string.wizard_credentials_incomplete_desc)
-                } else {
-                    stringResource(R.string.pref_custom_firebase_subtitle)
-                },
-                pref = prefs.customFirebaseApp,
-                onPrefChange = {
-                    prefs.customFirebaseApp = it
-                    if (!it) {
-                        prefs.enableCloudDiscovery = false
-                        prefs.enableGoogleDriveScope = false
-                        prefs.enableSnapshotInjection = false
-                        prefs.enableBackupRebuilder = false
-                        prefs.syncMetadataToFirebase = false
-                    }
-                },
-                onLabelClick = onOpenFirebaseSetup,
-                thumbContent = if (prefs.customFirebaseApp) {
-                    {
-                        Icon(
-                            imageVector = if (firebaseConfigured) Icons.Default.Check else Icons.Default.Close,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp),
-                            tint = if (firebaseConfigured) MaterialTheme.colorScheme.primary
-                            else MaterialTheme.colorScheme.error
-                        )
-                    }
-                } else null
-            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 14.dp)
+                    .tvFocusable(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.DriveFileMove,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(24.dp)
+                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = stringResource(R.string.screen_backup_migrator),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        text = stringResource(R.string.cloud_tab_header_desc),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
-
-        AdvancedSettingsCard(
-            prefs = prefs,
-            isFrameworkConnected = uiState.isFrameworkConnected && uiState.isInjectable,
-            onOpenMigrator = onOpenMigrator
-        )
 
         Spacer(modifier = Modifier.height(64.dp))
     }
 }
+
 
 @Composable
 private fun FrameworkStatusBanner(

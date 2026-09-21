@@ -88,7 +88,8 @@ object LSPatchHelper {
         val titleRes: Int,
         val titleArgs: List<String> = emptyList(),
         val descRes: Int,
-        val descArgs: List<String> = emptyList()
+        val descArgs: List<String> = emptyList(),
+        val isIntegrated: Boolean = false
     )
 
     fun inspectTargetApp(context: Context): TargetStatus {
@@ -224,7 +225,7 @@ object LSPatchHelper {
         return attempt("resolve origin APK from classloader dex elements", silent = true) {
             var cl: ClassLoader? = classLoader
             while (cl != null) {
-                val currentCl = cl ?: continue
+                val currentCl = cl
                 val pathList = attempt("get pathList from ${currentCl.javaClass.name}", silent = true) {
                     val field = currentCl.javaClass.superclass?.getDeclaredField("pathList")
                         ?: currentCl.javaClass.getDeclaredField("pathList")
@@ -345,6 +346,18 @@ object LSPatchHelper {
         isServiceBound: Boolean,
         targetStatus: TargetStatus
     ): BannerEvaluation {
+        if (targetStatus.isInstalled && targetStatus.isPatched && (targetStatus.isModuleEmbedded || targetStatus.useManager == false)) {
+            return BannerEvaluation(
+                isConnected = true,
+                isInjectable = true,
+                frameworkName = "LSPatch",
+                frameworkVersion = "(Embedded)",
+                titleRes = R.string.framework_lspatch_embedded_active_title,
+                descRes = R.string.framework_lspatch_embedded_active_desc,
+                isIntegrated = true
+            )
+        }
+
         if (isServiceBound) {
             val name = frameworkName ?: "Xposed"
             val version = frameworkVersion ?: ""
@@ -358,7 +371,8 @@ object LSPatchHelper {
                         frameworkName = name,
                         frameworkVersion = version,
                         titleRes = R.string.framework_sb_not_installed_title,
-                        descRes = R.string.framework_sb_not_installed_desc
+                        descRes = R.string.framework_sb_not_installed_desc,
+                        isIntegrated = false
                     )
                 }
                 if (!targetStatus.isPatched) {
@@ -368,26 +382,23 @@ object LSPatchHelper {
                         frameworkName = name,
                         frameworkVersion = version,
                         titleRes = R.string.framework_inactive_title,
-                        descRes = R.string.framework_inactive_desc
+                        descRes = R.string.framework_inactive_desc,
+                        isIntegrated = false
                     )
                 }
 
                 val currentScope = scope ?: emptyList()
                 val isInScope = currentScope.contains(Consts.packageName)
-                val isInjectable = if (targetStatus.useManager == false) {
-                    targetStatus.isModuleEmbedded || isInScope
-                } else {
-                    isInScope
-                }
 
-                if (!isInjectable) {
+                if (!isInScope) {
                     return BannerEvaluation(
                         isConnected = true,
                         isInjectable = false,
                         frameworkName = name,
                         frameworkVersion = version,
                         titleRes = R.string.framework_sb_not_in_scope_title,
-                        descRes = R.string.framework_sb_not_in_scope_desc
+                        descRes = R.string.framework_sb_not_in_scope_desc,
+                        isIntegrated = false
                     )
                 }
 
@@ -399,7 +410,8 @@ object LSPatchHelper {
                     titleRes = R.string.framework_active_title_dynamic,
                     titleArgs = listOf(name),
                     descRes = R.string.framework_active_desc,
-                    descArgs = listOf(name, version)
+                    descArgs = listOf(name, version),
+                    isIntegrated = false
                 )
             } else {
                 val currentScope = scope ?: emptyList()
@@ -417,7 +429,8 @@ object LSPatchHelper {
                         frameworkName = name,
                         frameworkVersion = version,
                         titleRes = if (isLSPosed) R.string.framework_lsposed_not_in_scope_title else R.string.framework_sb_not_in_scope_title,
-                        descRes = if (isLSPosed) R.string.framework_lsposed_not_in_scope_desc else R.string.framework_sb_not_in_scope_desc
+                        descRes = if (isLSPosed) R.string.framework_lsposed_not_in_scope_desc else R.string.framework_sb_not_in_scope_desc,
+                        isIntegrated = false
                     )
                 }
 
@@ -429,28 +442,19 @@ object LSPatchHelper {
                     titleRes = R.string.framework_active_title_dynamic,
                     titleArgs = listOf(name),
                     descRes = R.string.framework_active_desc,
-                    descArgs = listOf(name, version)
+                    descArgs = listOf(name, version),
+                    isIntegrated = false
                 )
             }
         } else {
-            if (targetStatus.isInstalled && targetStatus.isPatched && targetStatus.isModuleEmbedded) {
-                return BannerEvaluation(
-                    isConnected = true,
-                    isInjectable = true,
-                    frameworkName = "LSPatch",
-                    frameworkVersion = "(Embedded)",
-                    titleRes = R.string.framework_lspatch_embedded_active_title,
-                    descRes = R.string.framework_lspatch_embedded_active_desc
-                )
-            }
-
             return BannerEvaluation(
                 isConnected = false,
                 isInjectable = false,
                 frameworkName = "",
                 frameworkVersion = "",
                 titleRes = R.string.framework_inactive_title,
-                descRes = R.string.framework_inactive_desc
+                descRes = R.string.framework_inactive_desc,
+                isIntegrated = false
             )
         }
     }

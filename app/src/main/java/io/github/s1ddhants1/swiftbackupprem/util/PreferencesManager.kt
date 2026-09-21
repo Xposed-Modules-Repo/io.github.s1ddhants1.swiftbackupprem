@@ -149,8 +149,18 @@ class PreferencesManager(
     fun applyConfig(config: SbpConfig) {
         enablePremium = config.enablePremium
         disableTelemetry = config.disableTelemetry
-        unlockLocalCloudFeatures = config.unlockLocalCloudFeatures
-        customFirebaseApp = config.customFirebaseApp
+        if (config.customFirebaseApp && config.unlockLocalCloudFeatures) {
+            if (config.projectId.isNotBlank()) {
+                unlockLocalCloudFeatures = false
+                customFirebaseApp = true
+            } else {
+                unlockLocalCloudFeatures = true
+                customFirebaseApp = false
+            }
+        } else {
+            unlockLocalCloudFeatures = config.unlockLocalCloudFeatures
+            customFirebaseApp = config.customFirebaseApp
+        }
         localAccountCustomUid = config.localAccountCustomUid
         val canUseCloud = config.customFirebaseApp || config.unlockLocalCloudFeatures
         enableCloudDiscovery = if (canUseCloud) config.enableCloudDiscovery else false

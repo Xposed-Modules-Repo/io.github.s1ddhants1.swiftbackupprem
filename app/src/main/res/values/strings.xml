@@ -42,7 +42,7 @@
     <string name="framework_lsposed_not_in_scope_desc">Add Swift Backup to module scope in LSPosed Manager</string>
     <string name="framework_sb_not_in_scope_title">Module Disabled in LSPatch</string>
     <string name="framework_sb_not_in_scope_desc">Enable SwiftBackupPrem for Swift Backup in LSPatch Manager</string>
-    <string name="framework_lspatch_embedded_active_title">LSPatch Embedded Module Active</string>
+    <string name="framework_lspatch_embedded_active_title">LSPatch Integrated Mode Active</string>
     <string name="framework_lspatch_embedded_active_desc">Hooks integrated directly into Swift Backup</string>
 
     <string name="pref_enable_premium_title">Premium Features</string>
@@ -52,8 +52,8 @@
     <string name="pref_custom_firebase_title">Custom Firebase App</string>
     <string name="pref_custom_firebase_subtitle">Use personal Firebase database and credentials</string>
 
-    <string name="section_advanced_features">Experimental Features</string>
-    <string name="section_advanced_features_subtitle">Preview features and advanced tweaks</string>
+
+    <string name="integrated_mode_card_desc">Manage module settings inside Swift Backup under Settings → SwiftBackupPrem</string>
     <string name="pref_enable_drive_discovery_requires_custom_firebase">Requires Custom Firebase App</string>
 
     <string name="firebase_tools_title">Setup Tools &amp; Consoles</string>
@@ -133,8 +133,7 @@
     <string name="migrator_result_output_format">Output: %1$s</string>
     <string name="migrator_logs_title">Execution Logs</string>
 
-    <string name="screen_experimental_hub">Backup Migration</string>
-    <string name="btn_open_migrator">Open Migrator</string>
+    <string name="screen_backup_migrator">Backup Migration</string>
     <string name="tab_local_migrator">Local Migration</string>
     <string name="tab_cloud_discovery">Cloud Discovery &amp; Injection</string>
 

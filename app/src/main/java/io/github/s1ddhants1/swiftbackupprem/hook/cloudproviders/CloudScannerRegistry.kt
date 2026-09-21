@@ -1,4 +1,4 @@
-package io.github.s1ddhants1.swiftbackupprem.hook.experimental.cloudproviders
+package io.github.s1ddhants1.swiftbackupprem.hook.cloudproviders
 
 import android.annotation.SuppressLint
 import android.content.Context
