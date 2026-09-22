@@ -70,4 +70,60 @@ class GoogleServicesJsonTest {
         assertEquals("example", projectInfo.getString("project_id"))
         assertEquals("oauth-client", json.getString("oauth_client_id"))
     }
+
+    @Test
+    fun applyToPrefsWithOAuthClientArrayParsesAndroidClientId() {
+        val prefs = PreferencesManager(null)
+        val json = JSONObject(
+            """
+            {
+              "project_info": {
+                "project_number": "123456789012",
+                "firebase_url": "https://dummy-firebase-project-default-rtdb.firebaseio.com",
+                "project_id": "dummy-firebase-project",
+                "storage_bucket": "dummy-firebase-project.firebasestorage.app"
+              },
+              "client": [
+                {
+                  "client_info": {
+                    "mobilesdk_app_id": "1:123456789012:android:abcdef0123456789",
+                    "android_client_info": {
+                      "package_name": "org.swiftapps.swiftbackup"
+                    }
+                  },
+                  "oauth_client": [
+                    {
+                      "client_id": "123456789012-androidclient1234567890abcdef.apps.googleusercontent.com",
+                      "client_type": 1,
+                      "android_info": {
+                        "package_name": "org.swiftapps.swiftbackup",
+                        "certificate_hash": "0123456789abcdef0123456789abcdef01234567"
+                      }
+                    },
+                    {
+                      "client_id": "123456789012-webclient1234567890abcdefghijk.apps.googleusercontent.com",
+                      "client_type": 3
+                    }
+                  ],
+                  "api_key": [
+                    {
+                      "current_key": "AIzaSyD_FakeApiKeyForTestingPurposes123"
+                    }
+                  ]
+                }
+              ]
+            }
+            """.trimIndent()
+        )
+
+        GoogleServicesJson.applyToPrefs(json, prefs)
+
+        assertEquals("dummy-firebase-project", prefs.projectId)
+        assertEquals("https://dummy-firebase-project-default-rtdb.firebaseio.com", prefs.firebaseDatabaseUrl)
+        assertEquals("1:123456789012:android:abcdef0123456789", prefs.googleAppId)
+        assertEquals("AIzaSyD_FakeApiKeyForTestingPurposes123", prefs.googleApiKey)
+        assertEquals("123456789012", prefs.gcmDefaultSenderId)
+        assertEquals("123456789012-androidclient1234567890abcdef.apps.googleusercontent.com", prefs.clientId)
+        assertEquals("dummy-firebase-project.firebasestorage.app", prefs.googleStorageBucket)
+    }
 }

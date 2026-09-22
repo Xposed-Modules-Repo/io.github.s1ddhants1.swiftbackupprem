@@ -4,7 +4,7 @@ import android.content.Context
 import android.os.Environment
 import android.util.Log
 import io.github.s1ddhants1.swiftbackupprem.Consts
-import io.github.s1ddhants1.swiftbackupprem.hook.experimental.cloudproviders.CloudScannerRegistry
+import io.github.s1ddhants1.swiftbackupprem.hook.cloudproviders.CloudScannerRegistry
 import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.File
@@ -15,10 +15,6 @@ import java.net.URL
 import java.nio.charset.StandardCharsets
 import java.util.regex.Pattern
 
-/**
- * Engine to sync reconstructed and cloud discovered backup metadata directly
- * to a Custom Firebase Realtime Database instance.
- */
 object FirebaseSyncEngine {
 
     private const val TAG = Consts.TAG
@@ -44,14 +40,9 @@ object FirebaseSyncEngine {
         return url
     }
 
-    /**
-     * Resolves authenticated Firebase credentials (UID and Firebase ID Token JWT)
-     * by inspecting Swift Backup's OAuth state and exchanging tokens via Firebase Auth REST API.
-     */
     fun resolveAuthCredentials(context: Context?, prefs: PreferencesManager): AuthCredentials? {
         val apiKey = prefs.googleApiKey.trim().takeIf { it.isNotBlank() }
 
-        // 1. Try reading Swift Backup preferences
         val prefsContent = readSwiftBackupPreferences(context)
         Log.d(TAG, "[FirebaseSync] readSwiftBackupPreferences content length: ${prefsContent?.length ?: 0}, apiKey present: ${apiKey != null}, clientId: ${prefs.clientId.isNotBlank()}")
         if (!prefsContent.isNullOrBlank()) {
@@ -59,7 +50,6 @@ object FirebaseSyncEngine {
             if (creds != null) return creds
         }
 
-        // 2. Fallback: resolve candidate UID without token if rules allow unauthenticated writes
         val fallbackUids = BackupCrypto.resolveCandidateUids(context, ClassLoader.getSystemClassLoader())
         val selectedUid = fallbackUids.firstOrNull { it != BackupMigratorEngine.SWIFT_BACKUP_ANONYMOUS_UID }
             ?: fallbackUids.firstOrNull()
@@ -92,7 +82,6 @@ object FirebaseSyncEngine {
             }
         }
 
-        // Try reading via root shell if direct read fails
         val suBins = listOf("su", "/system/bin/su", "/data/adb/ksu/bin/su", "/data/adb/ap/bin/su", "/data/adb/magisk/su")
         for (su in suBins) {
             try {
@@ -145,7 +134,6 @@ object FirebaseSyncEngine {
             }
             rawGoogleIdToken = jsonObj.optJSONObject("mLastTokenResponse")?.optString("id_token")?.takeIf { it.isNotBlank() }
 
-            // Try extracting email from id_token claims if present
             rawGoogleIdToken?.let { tok ->
                 try {
                     val parts = tok.split(".")
@@ -159,13 +147,11 @@ object FirebaseSyncEngine {
             Log.d(TAG, "[FirebaseSync] Parsed auth state: refreshToken present: ${!refreshToken.isNullOrBlank()}, clientId: $clientId, rawGoogleIdToken: ${!rawGoogleIdToken.isNullOrBlank()}, email: $userEmail")
         }
 
-        // If refreshToken and apiKey and clientId are available, exchange for fresh Firebase Auth token
         if (!refreshToken.isNullOrBlank() && !clientId.isNullOrBlank() && !apiKey.isNullOrBlank()) {
             val freshTokens = exchangeGoogleRefreshTokenForFirebaseToken(refreshToken, clientId, apiKey, userEmail)
             if (freshTokens != null) return freshTokens
         }
 
-        // If we have a Google ID token and apiKey, try signInWithIdp
         if (!rawGoogleIdToken.isNullOrBlank() && !apiKey.isNullOrBlank()) {
             val fbTokens = exchangeGoogleIdTokenForFirebaseToken(rawGoogleIdToken, apiKey, userEmail)
             if (fbTokens != null) return fbTokens
@@ -180,7 +166,6 @@ object FirebaseSyncEngine {
         apiKey: String,
         fallbackEmail: String? = null
     ): AuthCredentials? = attempt("exchange refresh token for Firebase ID token", silent = false) {
-        // 1. Refresh Google OAuth Token
         val oauthEndpoint = "https://oauth2.googleapis.com/token"
         val postBody = "client_id=" + java.net.URLEncoder.encode(clientId, "UTF-8") +
                 "&refresh_token=" + java.net.URLEncoder.encode(refreshToken, "UTF-8") +
@@ -210,7 +195,6 @@ object FirebaseSyncEngine {
             return@attempt null
         }
 
-        // 2. Exchange with Firebase Identity Toolkit
         exchangeGoogleIdTokenForFirebaseToken(googleIdToken, apiKey, fallbackEmail)
     }
 
@@ -257,9 +241,6 @@ object FirebaseSyncEngine {
         }
     }
 
-    /**
-     * Fetches existing cloud_v1 tree from /users/<uid>/cloud_v1.json.
-     */
     fun fetchCloudV1Tree(firebaseDbUrl: String, uid: String, idToken: String? = null): JSONObject? {
         return attempt("fetch cloud_v1 tree from RTDB", silent = true) {
             val base = cleanDbUrl(firebaseDbUrl)
@@ -290,9 +271,6 @@ object FirebaseSyncEngine {
         }
     }
 
-    /**
-     * Deletes the legacy /users/<uid>/backups node if present to ensure single canonical tree.
-     */
     fun deleteLegacyBackupsNode(firebaseDbUrl: String, uid: String, idToken: String? = null): Boolean {
         return attempt("delete legacy backups node from RTDB", silent = true) {
             val base = cleanDbUrl(firebaseDbUrl)
@@ -317,14 +295,28 @@ object FirebaseSyncEngine {
         } ?: false
     }
 
-    /**
-     * Pushes a single app's backup metadata to /users/<uid>/cloud_v1/<cloudDir>/tags/<tag>/apps/<sanitizedAppId>/<backupId>.json
-     */
+    private fun executePut(endpoint: String, payload: String): Boolean {
+        val conn = (URL(endpoint).openConnection() as HttpURLConnection).apply {
+            requestMethod = "PUT"
+            doOutput = true
+            connectTimeout = 10000
+            readTimeout = 10000
+            setRequestProperty("Content-Type", "application/json; charset=UTF-8")
+        }
+        OutputStreamWriter(conn.outputStream, StandardCharsets.UTF_8).use { writer ->
+            writer.write(payload)
+            writer.flush()
+        }
+        val code = conn.responseCode
+        conn.disconnect()
+        return code in 200..299
+    }
+
     fun syncAppMetadata(
         firebaseDbUrl: String,
         uid: String,
         cloudDir: String = "local",
-        tag: String = android.os.Build.MODEL,
+        tag: String = BackupTagHelper.getDefaultTag(),
         pkgName: String,
         backupId: String,
         metadataJson: JSONObject,
@@ -332,80 +324,42 @@ object FirebaseSyncEngine {
     ): Boolean = attempt("sync $pkgName ($backupId) metadata to Firebase Realtime Database", silent = true) {
         val base = cleanDbUrl(firebaseDbUrl)
         val sanitizedAppId = pkgName.replace(".", "")
-        val resolvedTag = if (tag.isNotBlank()) tag else metadataJson.optString("backupTag", android.os.Build.MODEL)
+        val resolvedTag = if (tag.isNotBlank()) tag else metadataJson.optString("backupTag", BackupTagHelper.getDefaultTag())
         val authParam = if (!idToken.isNullOrBlank()) "?auth=$idToken" else ""
         val endpoint = "$base/users/$uid/cloud_v1/$cloudDir/tags/$resolvedTag/apps/$sanitizedAppId/$backupId.json$authParam"
 
-        val url = URL(endpoint)
-        val conn = (url.openConnection() as HttpURLConnection).apply {
-            requestMethod = "PUT"
-            doOutput = true
-            connectTimeout = 10000
-            readTimeout = 10000
-            setRequestProperty("Content-Type", "application/json; charset=UTF-8")
-        }
-
-        OutputStreamWriter(conn.outputStream, StandardCharsets.UTF_8).use { writer ->
-            writer.write(metadataJson.toString())
-            writer.flush()
-        }
-
-        val responseCode = conn.responseCode
-        conn.disconnect()
-        if (responseCode in 200..299) {
+        val ok = executePut(endpoint, metadataJson.toString())
+        if (ok) {
             Log.d(TAG, "[FirebaseSync] Successfully synced metadata for $pkgName ($backupId) to $endpoint")
-            true
         } else {
-            Log.w(TAG, "[FirebaseSync] Failed to sync $pkgName ($backupId): HTTP $responseCode")
-            false
+            Log.w(TAG, "[FirebaseSync] Failed to sync $pkgName ($backupId)")
         }
+        ok
     } ?: false
 
-    /**
-     * Pushes a single folder's backup metadata to /users/<uid>/cloud_v1/<cloudDir>/tags/<tag>/folders/<folderId>.json
-     */
     fun syncFolderMetadata(
         firebaseDbUrl: String,
         uid: String,
         cloudDir: String = "local",
-        tag: String = android.os.Build.MODEL,
+        tag: String = BackupTagHelper.getDefaultTag(),
         folderId: String,
         metadataJson: JSONObject,
         idToken: String? = null
     ): Boolean = attempt("sync folder $folderId metadata to Firebase Realtime Database", silent = true) {
         val base = cleanDbUrl(firebaseDbUrl)
-        val resolvedTag = if (tag.isNotBlank()) tag else metadataJson.optString("backupTag", android.os.Build.MODEL)
+        val resolvedTag = if (tag.isNotBlank()) tag else metadataJson.optString("backupTag", BackupTagHelper.getDefaultTag())
         val authParam = if (!idToken.isNullOrBlank()) "?auth=$idToken" else ""
         val endpoint = "$base/users/$uid/cloud_v1/$cloudDir/tags/$resolvedTag/folders/$folderId.json$authParam"
 
-        val url = URL(endpoint)
-        val conn = (url.openConnection() as HttpURLConnection).apply {
-            requestMethod = "PUT"
-            doOutput = true
-            connectTimeout = 10000
-            readTimeout = 10000
-            setRequestProperty("Content-Type", "application/json; charset=UTF-8")
-        }
-
-        OutputStreamWriter(conn.outputStream, StandardCharsets.UTF_8).use { writer ->
-            writer.write(metadataJson.toString())
-            writer.flush()
-        }
-
-        val responseCode = conn.responseCode
-        conn.disconnect()
-        if (responseCode in 200..299) {
+        val ok = executePut(endpoint, metadataJson.toString())
+        if (ok) {
             Log.d(TAG, "[FirebaseSync] Successfully synced folder metadata for $folderId to $endpoint")
-            true
         } else {
-            Log.w(TAG, "[FirebaseSync] Failed to sync folder $folderId: HTTP $responseCode")
-            false
+            Log.w(TAG, "[FirebaseSync] Failed to sync folder $folderId")
         }
+        ok
     } ?: false
 
-    /**
-     * Resolves the cloud_v1 directory name for a given provider and user email.
-     */
     fun resolveCloudDir(provider: String, email: String?, existingCloudV1: JSONObject?): String {
         val normalizedProvider = when (provider.lowercase().replace(" ", "").replace("_", "")) {
             "googledrive" -> "google_drive"
@@ -421,7 +375,6 @@ object FirebaseSyncEngine {
             else -> provider.lowercase().replace(" ", "_")
         }
 
-        // 1. Try matching against an existing cloud_v1 key
         if (existingCloudV1 != null) {
             for (key in existingCloudV1.keys()) {
                 val keyNorm = key.lowercase()
@@ -431,7 +384,6 @@ object FirebaseSyncEngine {
             }
         }
 
-        // 2. Build standard key "<provider> (<sanitizedEmail>)"
         if (!email.isNullOrBlank()) {
             val sanitizedEmail = email.replace(Regex("[/.#$\\[\\]]"), "")
             return "$normalizedProvider ($sanitizedEmail)"
@@ -440,9 +392,6 @@ object FirebaseSyncEngine {
         return normalizedProvider
     }
 
-    /**
-     * Reads cloud discovery cache JSON from disk.
-     */
     fun readCloudDiscoveryCache(context: Context?): JSONObject? {
         val canonicalFile = File(Environment.getExternalStorageDirectory(), "SwiftBackup/cloud_discovered_cache.json")
         if (canonicalFile.exists() && canonicalFile.canRead()) {
@@ -457,7 +406,6 @@ object FirebaseSyncEngine {
             }
         }
 
-        // Secondary fallback in case storage path alias differs
         val fallbackFile = File("/sdcard/SwiftBackup/cloud_discovered_cache.json")
         if (fallbackFile.exists() && fallbackFile.canRead()) {
             try {
@@ -472,9 +420,6 @@ object FirebaseSyncEngine {
         return null
     }
 
-    /**
-     * Performs a full sync of Cloud Discovered Cache to Swift Backup's native cloud_v1 hierarchy in RTDB.
-     */
     fun syncAll(context: Context, prefs: PreferencesManager): SyncResult {
         val errors = mutableListOf<String>()
         var totalSynced = 0
@@ -500,10 +445,8 @@ object FirebaseSyncEngine {
         val userEmail = creds.email
         Log.i(TAG, "[FirebaseSync] Starting sync for Firebase UID: $uid (Token attached: ${idToken != null}, email: $userEmail)")
 
-        // 1. Fetch existing cloud_v1 tree to detect already existing records
         val existingCloudV1 = fetchCloudV1Tree(dbUrl, uid, idToken)
 
-        // 2. Sync Cloud Discovered Backups into cloud_v1
         val cacheJson = readCloudDiscoveryCache(context)
         if (cacheJson != null) {
             val appsObj = cacheJson.optJSONObject("apps")
@@ -511,57 +454,34 @@ object FirebaseSyncEngine {
                 appsObj.keys().forEach { pkg ->
                     val sanitizedAppId = pkg.replace(".", "")
                     val appArray = appsObj.optJSONArray(pkg)
-
-                    if (appArray != null) {
-                        for (i in 0 until appArray.length()) {
-                            val item = appArray.optJSONObject(i) ?: continue
-                            val backupId = item.optString("backupId").takeIf { it.isNotBlank() } ?: "default"
-                            val tag = item.optString("backupTag").takeIf { it.isNotBlank() } ?: android.os.Build.MODEL
-                            val provider = item.optString("provider", "OneDrive")
-                            val cloudDir = resolveCloudDir(provider, userEmail, existingCloudV1)
-
-                            val existingApp = existingCloudV1?.optJSONObject(cloudDir)
-                                ?.optJSONObject("tags")
-                                ?.optJSONObject(tag)
-                                ?.optJSONObject("apps")
-                                ?.optJSONObject(sanitizedAppId)
-
-                            if (existingApp?.has(backupId) == true) {
-                                totalAlreadyExisting++
-                                continue
-                            }
-
-                            val rtdbPayload = formatDiscoveredAppForRtdb(pkg, item)
-                            val ok = syncAppMetadata(dbUrl, uid, cloudDir, tag, pkg, backupId, rtdbPayload, idToken)
-                            if (ok) totalSynced++ else {
-                                totalFailed++
-                                errors.add("Failed to sync cloud backup $pkg ($backupId)")
-                            }
-                        }
+                    val items = if (appArray != null) {
+                        (0 until appArray.length()).mapNotNull { appArray.optJSONObject(it) }
                     } else {
-                        val item = appsObj.optJSONObject(pkg)
-                        if (item != null) {
-                            val backupId = item.optString("backupId").takeIf { it.isNotBlank() } ?: "default"
-                            val tag = item.optString("backupTag").takeIf { it.isNotBlank() } ?: android.os.Build.MODEL
-                            val provider = item.optString("provider", "OneDrive")
-                            val cloudDir = resolveCloudDir(provider, userEmail, existingCloudV1)
+                        listOfNotNull(appsObj.optJSONObject(pkg))
+                    }
 
-                            val existingApp = existingCloudV1?.optJSONObject(cloudDir)
-                                ?.optJSONObject("tags")
-                                ?.optJSONObject(tag)
-                                ?.optJSONObject("apps")
-                                ?.optJSONObject(sanitizedAppId)
+                    for (item in items) {
+                        val backupId = item.optString("backupId").takeIf { it.isNotBlank() } ?: continue
+                        val tag = item.optString("backupTag").takeIf { it.isNotBlank() } ?: BackupTagHelper.getDefaultTag()
+                        val provider = item.optString("provider", "OneDrive")
+                        val cloudDir = resolveCloudDir(provider, userEmail, existingCloudV1)
 
-                            if (existingApp?.has(backupId) == true) {
-                                totalAlreadyExisting++
-                            } else {
-                                val rtdbPayload = formatDiscoveredAppForRtdb(pkg, item)
-                                val ok = syncAppMetadata(dbUrl, uid, cloudDir, tag, pkg, backupId, rtdbPayload, idToken)
-                                if (ok) totalSynced++ else {
-                                    totalFailed++
-                                    errors.add("Failed to sync cloud backup $pkg ($backupId)")
-                                }
-                            }
+                        val existingApp = existingCloudV1?.optJSONObject(cloudDir)
+                            ?.optJSONObject("tags")
+                            ?.optJSONObject(tag)
+                            ?.optJSONObject("apps")
+                            ?.optJSONObject(sanitizedAppId)
+
+                        if (existingApp?.has(backupId) == true) {
+                            totalAlreadyExisting++
+                            continue
+                        }
+
+                        val rtdbPayload = formatDiscoveredAppForRtdb(pkg, item)
+                        val ok = syncAppMetadata(dbUrl, uid, cloudDir, tag, pkg, backupId, rtdbPayload, idToken)
+                        if (ok) totalSynced++ else {
+                            totalFailed++
+                            errors.add("Failed to sync cloud backup $pkg ($backupId)")
                         }
                     }
                 }
@@ -572,7 +492,7 @@ object FirebaseSyncEngine {
                 foldersObj.keys().forEach { fid ->
                     val fItem = foldersObj.optJSONObject(fid) ?: return@forEach
                     val folderId = fItem.optString("id", fid)
-                    val tag = fItem.optString("backupTag").takeIf { it.isNotBlank() } ?: android.os.Build.MODEL
+                    val tag = fItem.optString("backupTag").takeIf { it.isNotBlank() } ?: BackupTagHelper.getDefaultTag()
                     val provider = fItem.optString("provider", "OneDrive")
                     val cloudDir = resolveCloudDir(provider, userEmail, existingCloudV1)
 
@@ -594,7 +514,6 @@ object FirebaseSyncEngine {
             }
         }
 
-        // 3. Clean up legacy /users/<uid>/backups node if present
         deleteLegacyBackupsNode(dbUrl, uid, idToken)
 
         Log.i(TAG, "[FirebaseSync] Finished sync: $totalSynced newly synced, $totalAlreadyExisting already existing, $totalFailed failed")
@@ -606,7 +525,7 @@ object FirebaseSyncEngine {
         )
     }
 
-    private fun formatDiscoveredAppForRtdb(pkgName: String, json: JSONObject, fallbackBackupId: String = "default"): JSONObject {
+    private fun formatDiscoveredAppForRtdb(pkgName: String, json: JSONObject, fallbackBackupId: String = ""): JSONObject {
         val sanitized = pkgName.replace(".", "")
         val backupId = json.optString("backupId", fallbackBackupId)
         val now = System.currentTimeMillis()
@@ -619,7 +538,7 @@ object FirebaseSyncEngine {
             put("versionCode", json.optLong("versionCode", 1L))
             put("versionName", json.optString("versionName", "1.0"))
             put("dateBackup", dateBackup)
-            put("backupTag", json.optString("backupTag", "DEFAULT"))
+            put("backupTag", json.optString("backupTag", BackupTagHelper.getDefaultTag()))
             put("minSBVersionCodeRequired", 580L)
             put("keyVersion", 1)
 
@@ -648,7 +567,6 @@ object FirebaseSyncEngine {
             json.optString("permissionStatesCsv").takeIf { it.isNotBlank() }?.let { put("permissionStatesCsv", it) }
             json.optString("notificationPolicyXml").takeIf { it.isNotBlank() }?.let { put("notificationPolicyXml", it) }
 
-            // Encryption attributes if present
             if (json.optBoolean("dataEncrypted", false)) {
                 put("dataEncrypted", true)
                 json.optString("dataEncryptionMethod").takeIf { it.isNotBlank() }?.let { put("dataEncryptionMethod", it) }
@@ -664,10 +582,6 @@ object FirebaseSyncEngine {
         }
     }
 
-    /**
-     * Pushes app backup metadata directly to configured cloud providers (WebDAV, Nextcloud, S3, etc.)
-     * without writing to Firebase RTDB.
-     */
     fun syncAppMetadataToCloudProviders(
         context: Context,
         pkgName: String,
@@ -675,40 +589,39 @@ object FirebaseSyncEngine {
         metadataJson: JSONObject,
         uid: String = BackupMigratorEngine.SWIFT_BACKUP_ANONYMOUS_UID
     ): Boolean = attempt("sync $pkgName ($backupId) metadata to cloud storage providers", silent = true) {
-        val tag = metadataJson.optString("backupTag").takeIf { it.isNotBlank() && it != "DEFAULT" }
+        val tag = metadataJson.optString("backupTag").takeIf { it.isNotBlank() }
             ?: run {
                 val sp = context.getSharedPreferences("org.swiftapps.swiftbackup_preferences", Context.MODE_PRIVATE)
                 val connectedCloud = sp.getString("connected_cloud_type", null)
                 (if (connectedCloud != null) sp.getString("${connectedCloud}_cloud_backup_tag", null) else null)
                     ?: sp.getString("google_drive_cloud_backup_tag", null)
                     ?: sp.getString("cloud_backup_tag", null)
-                    ?: "DEFAULT"
+                    ?: BackupTagHelper.getDefaultTag()
             }
         metadataJson.put("backupTag", tag)
 
         val accountHash = BackupMigratorEngine.computeAccountHash(uid)
 
-        // 1. Direct index record JSON for instant cloud discovery without reconstruction
         val rawJson = metadataJson.toString(2)
-        val metaPath = "$pkgName.meta ($tag) (id-$backupId)"
-        val jsonPath = "$pkgName.json ($tag) (id-$backupId)"
-        val structuredJsonPath = "SwiftBackup/accounts/$accountHash/backups/apps/local/$pkgName/$backupId/$pkgName.json"
+        listOf(
+            "$pkgName.meta ($tag) (id-$backupId)",
+            "$pkgName.json ($tag) (id-$backupId)",
+            "SwiftBackup/accounts/$accountHash/backups/apps/local/$pkgName/$backupId/$pkgName.json"
+        ).forEach { path ->
+            CloudScannerRegistry.uploadTextToActiveProviders(context, path, rawJson)
+        }
 
-        CloudScannerRegistry.uploadTextToActiveProviders(context, metaPath, rawJson)
-        CloudScannerRegistry.uploadTextToActiveProviders(context, jsonPath, rawJson)
-        CloudScannerRegistry.uploadTextToActiveProviders(context, structuredJsonPath, rawJson)
-
-        // 2. Encrypted XML metadata for parity and multi-device migration
         val key = BackupCrypto.deriveConcealKey(uid)
         val encUid = BackupCrypto.concealEncrypt(uid, key)
         val encMeta = BackupCrypto.concealEncrypt(metadataJson.toString(), key)
         val xmlContent = "v1:::$encUid:::$encMeta"
 
-        val path1 = "SwiftBackup/accounts/$accountHash/backups/apps/local/$pkgName/$backupId/$pkgName.xml"
-        val path2 = "$pkgName.xml ($tag) (id-$backupId)"
-
-        CloudScannerRegistry.uploadTextToActiveProviders(context, path1, xmlContent)
-        CloudScannerRegistry.uploadTextToActiveProviders(context, path2, xmlContent)
+        listOf(
+            "SwiftBackup/accounts/$accountHash/backups/apps/local/$pkgName/$backupId/$pkgName.xml",
+            "$pkgName.xml ($tag) (id-$backupId)"
+        ).forEach { path ->
+            CloudScannerRegistry.uploadTextToActiveProviders(context, path, xmlContent)
+        }
 
         true
     } ?: false

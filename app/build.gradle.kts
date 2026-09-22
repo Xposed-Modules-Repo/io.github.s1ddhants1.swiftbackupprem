@@ -2,6 +2,26 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.lsplugin.apksign)
+}
+
+import java.util.Properties
+
+run {
+    val secretsFile: java.io.File = rootProject.file("keystore.properties")
+    if (secretsFile.isFile) {
+        val secrets = Properties()
+        secretsFile.inputStream().use { stream -> secrets.load(stream) }
+        val names: List<String> = listOf("KEYSTORE_FILE", "KEYSTORE_PASSWORD", "KEY_ALIAS", "KEY_PASSWORD")
+        for (name: String in names) {
+            if (!project.hasProperty(name)) {
+                val value: String? = secrets.getProperty(name)
+                if (!value.isNullOrBlank()) {
+                    project.extra.set(name, value)
+                }
+            }
+        }
+    }
 }
 
 fun getGitCommitHash(): String = try {
@@ -50,6 +70,14 @@ val channel = getVersionChannel()
 val gitHash = getGitCommitHash()
 val appVersionName = if (channel == "-testing") "testing${getCommitCount()}-$gitHash" else "3.1.0$channel"
 
+apksign {
+    storeFileProperty = "KEYSTORE_FILE"
+    storePasswordProperty = "KEYSTORE_PASSWORD"
+    keyAliasProperty = "KEY_ALIAS"
+    keyPasswordProperty = "KEY_PASSWORD"
+}
+
+
 android {
     namespace = "io.github.s1ddhants1.swiftbackupprem"
     compileSdk = 37
@@ -65,7 +93,6 @@ android {
 
     buildTypes {
         release {
-            signingConfig = signingConfigs.getByName("debug")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(
@@ -88,6 +115,10 @@ android {
         buildConfig = true
         compose = true
         resValues = false
+        aidl = true
+    }
+    testOptions {
+        unitTests.isReturnDefaultValues = true
     }
     packaging {
         resources {
@@ -103,8 +134,17 @@ androidComponents {
     }
 }
 
+androidComponents {
+    onVariants(selector().all()) { variant ->
+        variant.outputs.forEach { output ->
+            output.outputFileName.set("SwiftBackupPrem_${appVersionName}-${variant.name}.apk")
+        }
+    }
+}
+
 dependencies {
     compileOnly(libs.libxposed.api)
+    compileOnly(libs.androidx.preference)
     implementation(libs.libxposed.service)
     implementation(libs.dexkit)
     implementation(libs.kotlinx.serialization.json)

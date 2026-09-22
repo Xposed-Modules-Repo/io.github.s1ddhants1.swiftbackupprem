@@ -262,7 +262,7 @@ Connecting your own personal Firebase project gives you complete isolation, ensu
 
 #### 2. Configure OAuth 2.0 Client in Google Cloud Console
 
-1. Open the [Google Cloud API Credentials Console](https://console.cloud.google.com/apis/credentials) (or click **View in Google Cloud** on the Firebase Project Settings page).
+1. Open the Google Cloud API Credentials Console by clicking **View in Google Cloud** on the Firebase Project Settings page.
 2. Ensure your Firebase / Google Cloud project is selected in the top project dropdown.
 3. In the sidebar, navigate to **APIs & Services > Credentials**.
 4. Under **OAuth 2.0 Client IDs**, edit the auto-generated **Android client for org.swiftapps.swiftbackup**
@@ -563,7 +563,7 @@ While Snapshot Injection dynamically provides in-memory restore entries, you can
 
 ### Prerequisites
 
-- JDK 17 or higher
+- Adoptium Eclipse Temurin 25 (or JDK 17+)
 - Android SDK with Platform 37 (`compileSdk 37`)
 - Android NDK (`25.1.8937393` or higher) & CMake `3.22.1+`
 

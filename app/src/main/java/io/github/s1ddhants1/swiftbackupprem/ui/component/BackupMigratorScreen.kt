@@ -7,7 +7,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -22,23 +21,23 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.s1ddhants1.swiftbackupprem.R
 import io.github.s1ddhants1.swiftbackupprem.ui.BackupMigratorUiEvent
 import io.github.s1ddhants1.swiftbackupprem.ui.BackupMigratorViewModel
 import io.github.s1ddhants1.swiftbackupprem.ui.TargetModeSelection
+import io.github.s1ddhants1.swiftbackupprem.util.AppUtils
 import io.github.s1ddhants1.swiftbackupprem.util.BackupMigratorEngine
 import io.github.s1ddhants1.swiftbackupprem.util.PreferencesManager
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import java.io.File
 
-enum class ExperimentalHubTab {
+enum class MigratorTab {
     LOCAL_MIGRATION,
     CLOUD_DISCOVERY
 }
@@ -49,7 +48,7 @@ fun BackupMigratorScreen(
     viewModel: BackupMigratorViewModel,
     prefs: PreferencesManager,
     modifier: Modifier = Modifier,
-    initialTab: ExperimentalHubTab = ExperimentalHubTab.LOCAL_MIGRATION
+    initialTab: MigratorTab = MigratorTab.LOCAL_MIGRATION
 ) {
     var selectedTab by remember { mutableStateOf(initialTab) }
 
@@ -60,14 +59,14 @@ fun BackupMigratorScreen(
             contentColor = MaterialTheme.colorScheme.primary
         ) {
             Tab(
-                selected = selectedTab == ExperimentalHubTab.LOCAL_MIGRATION,
-                onClick = { selectedTab = ExperimentalHubTab.LOCAL_MIGRATION },
+                selected = selectedTab == MigratorTab.LOCAL_MIGRATION,
+                onClick = { selectedTab = MigratorTab.LOCAL_MIGRATION },
                 text = { Text(stringResource(R.string.tab_local_migrator), fontWeight = FontWeight.SemiBold) },
                 icon = { Icon(Icons.Default.FolderZip, contentDescription = null) }
             )
             Tab(
-                selected = selectedTab == ExperimentalHubTab.CLOUD_DISCOVERY,
-                onClick = { selectedTab = ExperimentalHubTab.CLOUD_DISCOVERY },
+                selected = selectedTab == MigratorTab.CLOUD_DISCOVERY,
+                onClick = { selectedTab = MigratorTab.CLOUD_DISCOVERY },
                 text = { Text(stringResource(R.string.tab_cloud_discovery), fontWeight = FontWeight.SemiBold) },
                 icon = { Icon(Icons.Default.CloudSync, contentDescription = null) }
             )
@@ -75,8 +74,8 @@ fun BackupMigratorScreen(
 
         AnimatedContent(targetState = selectedTab, label = "TabTransition") { tab ->
             when (tab) {
-                ExperimentalHubTab.LOCAL_MIGRATION -> LocalMigrationTabContent(viewModel = viewModel, prefs = prefs)
-                ExperimentalHubTab.CLOUD_DISCOVERY -> CloudDiscoveryTabContent(viewModel = viewModel, prefs = prefs)
+                MigratorTab.LOCAL_MIGRATION -> LocalMigrationTabContent(viewModel = viewModel, prefs = prefs)
+                MigratorTab.CLOUD_DISCOVERY -> CloudDiscoveryTabContent(viewModel = viewModel, prefs = prefs)
             }
         }
     }
@@ -89,7 +88,6 @@ private fun LocalMigrationTabContent(
     prefs: PreferencesManager
 ) {
     val context = LocalContext.current
-    val clipboardManager = LocalClipboardManager.current
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val scrollState = rememberScrollState()
 
@@ -97,49 +95,20 @@ private fun LocalMigrationTabContent(
         viewModel.autoDetectSourceUids(context)
     }
 
-    fun resolvePathFromTreeUri(uri: android.net.Uri): String {
-        return try {
-            val docId = android.provider.DocumentsContract.getTreeDocumentId(uri)
-            val split = docId.split(":")
-            val type = split[0]
-            val relPath = if (split.size > 1) split[1] else ""
-            if ("primary".equals(type, ignoreCase = true)) {
-                if (relPath.isNotBlank()) "/storage/emulated/0/$relPath" else "/storage/emulated/0"
-            } else {
-                "/storage/$type/$relPath"
-            }
-        } catch (_: Exception) {
-            val raw = uri.path ?: uri.toString()
-            val decoded = android.net.Uri.decode(raw)
-            if (decoded.contains(":")) {
-                val rel = decoded.substringAfter(":")
-                if (decoded.contains("primary")) {
-                    "/storage/emulated/0/$rel"
-                } else {
-                    "/storage/$rel"
-                }
-            } else decoded
-        }
-    }
-
     val dirPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree()
     ) { uri ->
-        if (uri != null) {
-            viewModel.setSourcePath(resolvePathFromTreeUri(uri))
-        }
+        if (uri != null) viewModel.setSourcePath(AppUtils.resolvePathFromTreeUri(uri))
     }
 
     val targetDirPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree()
     ) { uri ->
-        if (uri != null) {
-            viewModel.setTargetPath(resolvePathFromTreeUri(uri))
-        }
+        if (uri != null) viewModel.setTargetPath(AppUtils.resolvePathFromTreeUri(uri))
     }
 
     val hasStoragePermission = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
-        android.os.Environment.isExternalStorageManager()
+        Environment.isExternalStorageManager()
     } else {
         true
     }
@@ -151,23 +120,19 @@ private fun LocalMigrationTabContent(
             .padding(vertical = 8.dp)
     ) {
         if (!hasStoragePermission) {
-            OutlinedCard(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
-                colors = CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
-                shape = RoundedCornerShape(16.dp)
-            ) {
+            MigratorCard(containerColor = MaterialTheme.colorScheme.errorContainer) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Icon(Icons.Default.FolderSpecial, contentDescription = null, tint = MaterialTheme.colorScheme.error)
                         Text(
-                            text = "Storage Permission Required",
+                            text = stringResource(R.string.migrator_permission_required_title),
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onErrorContainer
                         )
                     }
                     Text(
-                        text = "All Files Access is required to scan and migrate backup folders on device storage.",
+                        text = stringResource(R.string.migrator_permission_required_desc),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onErrorContainer
                     )
@@ -185,7 +150,7 @@ private fun LocalMigrationTabContent(
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
                     ) {
-                        Text("Grant All Files Access")
+                        Text(stringResource(R.string.btn_grant_storage_permission))
                     }
                 }
             }
@@ -193,11 +158,7 @@ private fun LocalMigrationTabContent(
 
         AnimatedVisibility(visible = state.errorMessage != null) {
             state.errorMessage?.let { err ->
-                OutlinedCard(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
-                    colors = CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
-                    shape = RoundedCornerShape(16.dp)
-                ) {
+                MigratorCard(containerColor = MaterialTheme.colorScheme.errorContainer) {
                     Row(
                         modifier = Modifier.padding(12.dp),
                         verticalAlignment = Alignment.CenterVertically,
@@ -210,294 +171,144 @@ private fun LocalMigrationTabContent(
             }
         }
 
-        OutlinedCard(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
-            colors = CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.surface),
-            shape = RoundedCornerShape(16.dp)
-        ) {
-            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(
-                    text = stringResource(R.string.migrator_step1_title),
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.primary
-                )
+        MigratorSectionCard(title = stringResource(R.string.migrator_step1_title)) {
+            OutlinedTextField(
+                value = state.sourcePath,
+                onValueChange = { viewModel.setSourcePath(it) },
+                label = { Text(stringResource(R.string.migrator_source_path_label)) },
+                placeholder = { Text(stringResource(R.string.migrator_source_path_placeholder)) },
+                trailingIcon = {
+                    IconButton(onClick = { dirPickerLauncher.launch(null) }) {
+                        Icon(Icons.Default.FolderOpen, contentDescription = stringResource(R.string.cd_pick_directory))
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                singleLine = true
+            )
+        }
 
+        MigratorSectionCard(
+            title = stringResource(R.string.migrator_step2_title),
+            action = {
+                IconButton(
+                    onClick = { viewModel.autoDetectSourceUids(context) },
+                    modifier = Modifier.size(24.dp)
+                ) {
+                    Icon(
+                        Icons.Default.Refresh,
+                        contentDescription = stringResource(R.string.cd_detect_uids),
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
+        ) {
+            CustomUidInputSection(
+                uid = state.sourceUid,
+                onUidChange = { viewModel.setSourceUid(it) },
+                detectedUids = state.detectedUids,
+                onRefreshUids = { viewModel.autoDetectSourceUids(context) },
+                anonymousUidValue = BackupMigratorEngine.SWIFT_BACKUP_ANONYMOUS_UID,
+                anonymousChipLabel = stringResource(R.string.migrator_chip_anon_key),
+                customChipLabel = stringResource(R.string.pref_key_mode_custom)
+            )
+        }
+
+        MigratorSectionCard(title = stringResource(R.string.migrator_step3_title)) {
+            ModeSelectionItem(
+                title = stringResource(R.string.migrator_mode_anon_title),
+                subtitle = stringResource(R.string.migrator_mode_anon_desc),
+                selected = state.targetMode == TargetModeSelection.ANONYMOUS,
+                onClick = { viewModel.setTargetMode(TargetModeSelection.ANONYMOUS) }
+            )
+
+            ModeSelectionItem(
+                title = stringResource(R.string.migrator_mode_custom_title),
+                subtitle = stringResource(R.string.migrator_mode_custom_desc),
+                selected = state.targetMode == TargetModeSelection.CUSTOM_UID,
+                onClick = { viewModel.setTargetMode(TargetModeSelection.CUSTOM_UID) }
+            )
+
+            if (state.targetMode == TargetModeSelection.CUSTOM_UID) {
                 OutlinedTextField(
-                    value = state.sourcePath,
-                    onValueChange = { viewModel.setSourcePath(it) },
-                    label = { Text(stringResource(R.string.migrator_source_path_label)) },
-                    placeholder = { Text("/sdcard/Download/SwiftBackup") },
-                    trailingIcon = {
-                        IconButton(onClick = { dirPickerLauncher.launch(null) }) {
-                            Icon(Icons.Default.FolderOpen, contentDescription = "Pick Directory")
-                        }
-                    },
+                    value = state.customTargetUid,
+                    onValueChange = { viewModel.setCustomTargetUid(it) },
+                    label = { Text(stringResource(R.string.migrator_target_uid_label)) },
+                    placeholder = { Text(stringResource(R.string.migrator_target_uid_placeholder)) },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp),
                     singleLine = true
                 )
             }
-        }
 
-        OutlinedCard(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
-            colors = CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.surface),
-            shape = RoundedCornerShape(16.dp)
-        ) {
-            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(
-                    text = stringResource(R.string.migrator_step2_title),
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.primary
-                )
+            ModeSelectionItem(
+                title = stringResource(R.string.migrator_mode_unencrypted_title),
+                subtitle = stringResource(R.string.migrator_mode_unencrypted_desc),
+                selected = state.targetMode == TargetModeSelection.UNENCRYPTED,
+                onClick = { viewModel.setTargetMode(TargetModeSelection.UNENCRYPTED) }
+            )
 
-                OutlinedTextField(
-                    value = state.sourceUid,
-                    onValueChange = { viewModel.setSourceUid(it) },
-                    label = { Text(stringResource(R.string.migrator_source_uid_label)) },
-                    placeholder = { Text("Source UID") },
-                    trailingIcon = {
-                        Row {
-                            IconButton(onClick = {
-                                clipboardManager.getText()?.text?.let { viewModel.setSourceUid(it) }
-                            }) {
-                                Icon(Icons.Default.ContentPaste, contentDescription = "Paste UID")
-                            }
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth(),
+            AnimatedVisibility(
+                visible = state.targetMode == TargetModeSelection.UNENCRYPTED,
+                enter = expandVertically() + fadeIn(),
+                exit = shrinkVertically() + fadeOut()
+            ) {
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 8.dp, top = 2.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable { viewModel.setExportPortableFormats(!state.exportPortableFormats) },
                     shape = RoundedCornerShape(12.dp),
-                    singleLine = true
-                )
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    color = if (state.exportPortableFormats) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
+                    else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)
                 ) {
-                    Text(
-                        text = stringResource(R.string.migrator_detected_uids),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    IconButton(
-                        onClick = { viewModel.autoDetectSourceUids(context) },
-                        modifier = Modifier.size(24.dp)
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Icon(
-                            Icons.Default.Refresh,
-                            contentDescription = "Detect UIDs",
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(16.dp)
+                        Checkbox(
+                            checked = state.exportPortableFormats,
+                            onCheckedChange = { viewModel.setExportPortableFormats(it) }
                         )
-                    }
-                }
-                Row(
-                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    val isAnonSelected = state.sourceUid == BackupMigratorEngine.SWIFT_BACKUP_ANONYMOUS_UID
-                    FilterChip(
-                        selected = isAnonSelected,
-                        onClick = {
-                            if (isAnonSelected) {
-                                viewModel.setSourceUid("")
-                            } else {
-                                viewModel.setSourceUid(BackupMigratorEngine.SWIFT_BACKUP_ANONYMOUS_UID)
-                            }
-                        },
-                        label = {
+                        Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = stringResource(R.string.migrator_chip_anon_key),
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = if (isAnonSelected) FontWeight.Bold else FontWeight.Normal
+                                text = stringResource(R.string.migrator_mode_portable_checkbox),
+                                fontWeight = FontWeight.SemiBold,
+                                style = MaterialTheme.typography.bodyMedium
                             )
-                        },
-                        leadingIcon = {
-                            Icon(
-                                Icons.Default.Key,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp)
+                            Text(
+                                text = stringResource(R.string.migrator_mode_portable_checkbox_desc),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
-                        },
-                        shape = RoundedCornerShape(8.dp),
-                        colors = FilterChipDefaults.filterChipColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
-                            labelColor = MaterialTheme.colorScheme.onSurface,
-                            iconColor = MaterialTheme.colorScheme.primary,
-                            selectedContainerColor = MaterialTheme.colorScheme.primary,
-                            selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
-                            selectedLeadingIconColor = MaterialTheme.colorScheme.onPrimary
-                        )
-                    )
-
-                    state.detectedUids.filter { it != BackupMigratorEngine.SWIFT_BACKUP_ANONYMOUS_UID }.forEach { uid ->
-                        val isUidSelected = state.sourceUid == uid
-                        FilterChip(
-                            selected = isUidSelected,
-                            onClick = {
-                                if (isUidSelected) {
-                                    viewModel.setSourceUid("")
-                                } else {
-                                    viewModel.setSourceUid(uid)
-                                }
-                            },
-                            label = {
-                                Text(
-                                    text = if (uid.length > 14) uid.take(12) + "..." else uid,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontWeight = if (isUidSelected) FontWeight.Bold else FontWeight.Normal
-                                )
-                            },
-                            leadingIcon = {
-                                Icon(
-                                    Icons.Default.Key,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                            },
-                            shape = RoundedCornerShape(8.dp),
-                            colors = FilterChipDefaults.filterChipColors(
-                                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
-                                labelColor = MaterialTheme.colorScheme.onSurface,
-                                iconColor = MaterialTheme.colorScheme.primary,
-                                selectedContainerColor = MaterialTheme.colorScheme.primary,
-                                selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
-                                selectedLeadingIconColor = MaterialTheme.colorScheme.onPrimary
-                            )
-                        )
-                    }
-                }
-            }
-        }
-
-        OutlinedCard(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
-            colors = CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.surface),
-            shape = RoundedCornerShape(16.dp)
-        ) {
-            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(
-                    text = stringResource(R.string.migrator_step3_title),
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.primary
-                )
-
-                ModeSelectionItem(
-                    title = stringResource(R.string.migrator_mode_anon_title),
-                    subtitle = stringResource(R.string.migrator_mode_anon_desc),
-                    selected = state.targetMode == TargetModeSelection.ANONYMOUS,
-                    onClick = { viewModel.setTargetMode(TargetModeSelection.ANONYMOUS) }
-                )
-
-                ModeSelectionItem(
-                    title = stringResource(R.string.migrator_mode_custom_title),
-                    subtitle = stringResource(R.string.migrator_mode_custom_desc),
-                    selected = state.targetMode == TargetModeSelection.CUSTOM_UID,
-                    onClick = { viewModel.setTargetMode(TargetModeSelection.CUSTOM_UID) }
-                )
-
-                if (state.targetMode == TargetModeSelection.CUSTOM_UID) {
-                    OutlinedTextField(
-                        value = state.customTargetUid,
-                        onValueChange = { viewModel.setCustomTargetUid(it) },
-                        label = { Text(stringResource(R.string.migrator_target_uid_label)) },
-                        placeholder = { Text("Enter destination Firebase UID") },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp),
-                        singleLine = true
-                    )
-                }
-
-                // Option C: Unencrypted Backups
-                ModeSelectionItem(
-                    title = stringResource(R.string.migrator_mode_unencrypted_title),
-                    subtitle = stringResource(R.string.migrator_mode_unencrypted_desc),
-                    selected = state.targetMode == TargetModeSelection.UNENCRYPTED,
-                    onClick = { viewModel.setTargetMode(TargetModeSelection.UNENCRYPTED) }
-                )
-
-                AnimatedVisibility(
-                    visible = state.targetMode == TargetModeSelection.UNENCRYPTED,
-                    enter = expandVertically() + fadeIn(),
-                    exit = shrinkVertically() + fadeOut()
-                ) {
-                    Surface(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(start = 8.dp, top = 2.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .clickable { viewModel.setExportPortableFormats(!state.exportPortableFormats) },
-                        shape = RoundedCornerShape(12.dp),
-                        color = if (state.exportPortableFormats) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
-                        else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            Checkbox(
-                                checked = state.exportPortableFormats,
-                                onCheckedChange = { viewModel.setExportPortableFormats(it) }
-                            )
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = stringResource(R.string.migrator_mode_portable_checkbox),
-                                    fontWeight = FontWeight.SemiBold,
-                                    style = MaterialTheme.typography.bodyMedium
-                                )
-                                Text(
-                                    text = stringResource(R.string.migrator_mode_portable_checkbox_desc),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
                         }
                     }
                 }
             }
         }
 
-        OutlinedCard(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
-            colors = CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.surface),
-            shape = RoundedCornerShape(16.dp)
-        ) {
-            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(
-                    text = stringResource(R.string.migrator_step4_title),
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.primary
-                )
-
-                OutlinedTextField(
-                    value = state.targetPath,
-                    onValueChange = { viewModel.setTargetPath(it) },
-                    label = { Text(stringResource(R.string.migrator_output_path_label)) },
-                    placeholder = { Text("/storage/emulated/0/SwiftBackup") },
-                    trailingIcon = {
-                        IconButton(onClick = { targetDirPickerLauncher.launch(null) }) {
-                            Icon(Icons.Default.FolderOpen, contentDescription = "Pick Output Directory")
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    singleLine = true
-                )
-            }
+        MigratorSectionCard(title = stringResource(R.string.migrator_step4_title)) {
+            OutlinedTextField(
+                value = state.targetPath,
+                onValueChange = { viewModel.setTargetPath(it) },
+                label = { Text(stringResource(R.string.migrator_output_path_label)) },
+                placeholder = { Text(stringResource(R.string.migrator_output_path_placeholder)) },
+                trailingIcon = {
+                    IconButton(onClick = { targetDirPickerLauncher.launch(null) }) {
+                        Icon(Icons.Default.FolderOpen, contentDescription = stringResource(R.string.cd_pick_output_directory))
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                singleLine = true
+            )
         }
 
         if (state.isMigrating) {
-            OutlinedCard(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
-                colors = CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.surface),
-                shape = RoundedCornerShape(16.dp)
-            ) {
+            MigratorCard {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -505,7 +316,7 @@ private fun LocalMigrationTabContent(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = state.currentStep.ifBlank { "Processing..." },
+                            text = state.currentStep.ifBlank { stringResource(R.string.migrator_status_processing) },
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.Bold
                         )
@@ -551,11 +362,7 @@ private fun LocalMigrationTabContent(
         }
 
         state.migrationResult?.let { result ->
-            OutlinedCard(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
-                colors = CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.surface),
-                shape = RoundedCornerShape(16.dp)
-            ) {
+            MigratorCard {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Icon(
@@ -577,12 +384,12 @@ private fun LocalMigrationTabContent(
                             result.totalAppsMigrated,
                             result.totalFoldersMigrated,
                             result.targetAccountHash ?: "N/A"
-                        ) + if (result.totalSyncedToFirebase > 0) "\nSynced to Firebase: ${result.totalSyncedToFirebase}" else "",
+                        ) + if (result.totalSyncedToFirebase > 0) stringResource(R.string.migrator_result_synced_format, result.totalSyncedToFirebase) else "",
                         style = MaterialTheme.typography.bodyMedium
                     )
 
                     Text(
-                        text = "Output: ${result.outputDirectory.absolutePath}",
+                        text = stringResource(R.string.migrator_result_output_format, result.outputDirectory.absolutePath),
                         style = MaterialTheme.typography.bodySmall,
                         fontFamily = FontFamily.Monospace
                     )
@@ -591,11 +398,7 @@ private fun LocalMigrationTabContent(
         }
 
         if (state.logs.isNotEmpty()) {
-            OutlinedCard(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
-                colors = CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.surface),
-                shape = RoundedCornerShape(16.dp)
-            ) {
+            MigratorCard {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(
                         text = stringResource(R.string.migrator_logs_title),
@@ -650,7 +453,7 @@ private fun CloudDiscoveryTabContent(
                     val msg = if (event.totalSynced > 0) {
                         appContext.getString(R.string.msg_sync_firebase_success, event.totalSynced)
                     } else if (event.error != null) {
-                        "Sync failed: " + event.error
+                        appContext.getString(R.string.msg_sync_firebase_failed, event.error)
                     } else {
                         appContext.getString(R.string.msg_sync_firebase_no_new)
                     }
@@ -668,11 +471,7 @@ private fun CloudDiscoveryTabContent(
             .verticalScroll(scrollState)
             .padding(vertical = 8.dp)
     ) {
-        OutlinedCard(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
-            colors = CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.surface),
-            shape = RoundedCornerShape(16.dp)
-        ) {
+        MigratorCard {
             Column(modifier = Modifier.padding(vertical = 4.dp)) {
                 SettingsSwitch(
                     label = stringResource(R.string.pref_drive_oauth_scope_title),
@@ -708,25 +507,23 @@ private fun CloudDiscoveryTabContent(
                 HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
                 val isCloudDiscoveryEnabled = isCloudCapable && prefs.enableCloudDiscovery
+                val isSnapshotLocked = prefs.unlockLocalCloudFeatures
                 SettingsSwitch(
                     label = stringResource(R.string.pref_snapshot_injection_title),
                     secondaryLabel = when {
+                        isSnapshotLocked -> stringResource(R.string.pref_snapshot_injection_locked_local_cloud)
                         !isCloudCapable -> stringResource(R.string.pref_enable_drive_discovery_requires_custom_firebase)
                         !prefs.enableCloudDiscovery -> stringResource(R.string.pref_snapshot_injection_requires_discovery)
                         else -> stringResource(R.string.pref_snapshot_injection_desc)
                     },
-                    pref = if (isCloudDiscoveryEnabled) prefs.enableSnapshotInjection else false,
-                    enabled = isCloudDiscoveryEnabled,
-                    onPrefChange = { prefs.enableSnapshotInjection = it }
+                    pref = if (isSnapshotLocked) true else if (isCloudDiscoveryEnabled) prefs.enableSnapshotInjection else false,
+                    enabled = !isSnapshotLocked && isCloudDiscoveryEnabled,
+                    onPrefChange = { if (!isSnapshotLocked) prefs.enableSnapshotInjection = it }
                 )
             }
         }
 
-        OutlinedCard(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
-            colors = CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.surface),
-            shape = RoundedCornerShape(16.dp)
-        ) {
+        MigratorCard {
             Column(modifier = Modifier.padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
@@ -736,7 +533,7 @@ private fun CloudDiscoveryTabContent(
                     Icon(Icons.Default.CloudUpload, contentDescription = null, tint = if (isSyncEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "Firebase RTDB",
+                            text = stringResource(R.string.label_firebase_rtdb),
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.Bold
                         )
@@ -777,7 +574,7 @@ private fun CloudDiscoveryTabContent(
                         if (state.isSyncingFirebase) {
                             CircularProgressIndicator(modifier = Modifier.size(18.dp), color = MaterialTheme.colorScheme.onPrimary, strokeWidth = 2.dp)
                             Spacer(Modifier.width(8.dp))
-                            Text("Syncing...")
+                            Text(stringResource(R.string.btn_syncing))
                         } else {
                             Icon(Icons.Default.Sync, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(Modifier.width(8.dp))
@@ -788,11 +585,7 @@ private fun CloudDiscoveryTabContent(
             }
         }
 
-        OutlinedCard(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
-            colors = CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.surface),
-            shape = RoundedCornerShape(16.dp)
-        ) {
+        MigratorCard {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Icon(Icons.Default.Storage, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
@@ -858,6 +651,47 @@ private fun ModeSelectionItem(
                 Text(title, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
                 Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
+        }
+    }
+}
+
+@Composable
+private fun MigratorCard(
+    modifier: Modifier = Modifier,
+    containerColor: Color = MaterialTheme.colorScheme.surface,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    OutlinedCard(
+        modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+        colors = CardDefaults.outlinedCardColors(containerColor = containerColor),
+        shape = RoundedCornerShape(16.dp),
+        content = content
+    )
+}
+
+@Composable
+private fun MigratorSectionCard(
+    title: String,
+    modifier: Modifier = Modifier,
+    action: (@Composable () -> Unit)? = null,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    MigratorCard(modifier = modifier) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                action?.invoke()
+            }
+            content()
         }
     }
 }

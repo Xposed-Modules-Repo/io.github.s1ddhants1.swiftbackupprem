@@ -30,33 +30,44 @@ class SbpConfigTest {
         assertEquals("", config.googleStorageBucket)
         assertEquals("", config.projectId)
         assertEquals("", config.clientId)
+        assertEquals("", config.localAccountCustomUid)
         assertFalse(config.isCompleteFirebaseConfig)
     }
 
     @Test
     fun isCompleteFirebaseConfigReturnsTrueWhenAllRequiredFieldsPresent() {
         val config = SbpConfig(
-            googleAppId = "1:123:android:456",
-            googleApiKey = "key",
-            firebaseDatabaseUrl = "https://test.firebaseio.com",
-            gcmDefaultSenderId = "123",
-            projectId = "test-project",
-            clientId = "test-client-id"
+            googleAppId = "1:123456789012:android:abcdef0123456789",
+            googleApiKey = "AIzaSyD_FakeApiKeyForTestingPurposes123",
+            firebaseDatabaseUrl = "https://dummy-firebase-project-default-rtdb.firebaseio.com",
+            gcmDefaultSenderId = "123456789012",
+            projectId = "dummy-firebase-project",
+            clientId = "123456789012-androidclient1234567890abcdef.apps.googleusercontent.com"
         )
         assertTrue(config.isCompleteFirebaseConfig)
     }
 
     @Test
-    fun isCompleteFirebaseConfigReturnsFalseWhenAnyRequiredFieldIsBlank() {
-        val config = SbpConfig(
-            googleAppId = "1:123:android:456",
+    fun isCompleteFirebaseConfigReturnsFalseWhenAnyRequiredFieldIsBlankOrInvalid() {
+        val configBlank = SbpConfig(
+            googleAppId = "1:123456789012:android:abcdef0123456789",
             googleApiKey = "",
-            firebaseDatabaseUrl = "https://test.firebaseio.com",
-            gcmDefaultSenderId = "123",
-            projectId = "test-project",
-            clientId = "test-client-id"
+            firebaseDatabaseUrl = "https://dummy-firebase-project-default-rtdb.firebaseio.com",
+            gcmDefaultSenderId = "123456789012",
+            projectId = "dummy-firebase-project",
+            clientId = "123456789012-androidclient1234567890abcdef.apps.googleusercontent.com"
         )
-        assertFalse(config.isCompleteFirebaseConfig)
+        assertFalse(configBlank.isCompleteFirebaseConfig)
+
+        val configInvalid = SbpConfig(
+            googleAppId = "1:123456789012:android:abcdef0123456789",
+            googleApiKey = "invalid-key",
+            firebaseDatabaseUrl = "https://dummy-firebase-project-default-rtdb.firebaseio.com",
+            gcmDefaultSenderId = "123456789012",
+            projectId = "dummy-firebase-project",
+            clientId = "123456789012-androidclient1234567890abcdef.apps.googleusercontent.com"
+        )
+        assertFalse(configInvalid.isCompleteFirebaseConfig)
     }
 
     @Test

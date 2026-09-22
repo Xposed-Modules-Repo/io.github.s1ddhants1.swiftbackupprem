@@ -2,9 +2,13 @@ package io.github.s1ddhants1.swiftbackupprem.data
 
 import android.content.ContentResolver
 import android.net.Uri
+import android.provider.DocumentsContract
+import android.util.Log
+import io.github.s1ddhants1.swiftbackupprem.Consts
 import io.github.s1ddhants1.swiftbackupprem.model.SbpConfig
 import io.github.s1ddhants1.swiftbackupprem.util.GoogleServicesJson
 import io.github.s1ddhants1.swiftbackupprem.util.PreferencesManager
+import java.io.File
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -45,11 +49,61 @@ class ConfigRepositoryImpl(
         prefs: PreferencesManager
     ): Result<SbpConfig> = withContext(ioDispatcher) {
         runCatching {
-            val jsonStr = contentResolver.openInputStream(uri)?.use { inputStream ->
-                inputStream.bufferedReader().use { it.readText() }
-            } ?: error("Could not open selected import file")
-
+            val jsonStr = readTextFromUri(contentResolver, uri)
             parseConfig(jsonStr, prefs)
+        }
+    }
+
+    private fun readTextFromUri(contentResolver: ContentResolver, uri: Uri): String {
+        try {
+            contentResolver.openInputStream(uri)?.use { inputStream ->
+                return inputStream.bufferedReader().use { it.readText() }
+            }
+        } catch (t: Throwable) {
+            Log.w(Consts.TAG, "Failed to read URI via ContentResolver, attempting path fallback", t)
+        }
+
+        val resolvedPath = resolvePathFromDocumentUri(uri)
+        if (!resolvedPath.isNullOrBlank()) {
+            val file = File(resolvedPath)
+            if (file.exists() && file.canRead()) {
+                try {
+                    return file.readText()
+                } catch (t: Throwable) {
+                    Log.w(Consts.TAG, "Failed to read direct file: $resolvedPath", t)
+                }
+            }
+            try {
+                val process = Runtime.getRuntime().exec(arrayOf("su", "-c", "cat '$resolvedPath'"))
+                val text = process.inputStream.bufferedReader().use { it.readText() }
+                process.waitFor()
+                if (text.isNotBlank()) {
+                    return text
+                }
+            } catch (t: Throwable) {
+                Log.w(Consts.TAG, "Failed to read file via su: $resolvedPath", t)
+            }
+        }
+
+        error("Could not open selected import file")
+    }
+
+    private fun resolvePathFromDocumentUri(uri: Uri): String? {
+        return try {
+            if ("file".equals(uri.scheme, ignoreCase = true)) {
+                return uri.path
+            }
+            if ("com.android.externalstorage.documents".equals(uri.authority, ignoreCase = true)) {
+                val docId = DocumentsContract.getDocumentId(uri)
+                if (docId.startsWith("primary:", ignoreCase = true)) {
+                    return "/storage/emulated/0/" + docId.substringAfter(":")
+                } else if (docId.contains(":")) {
+                    return "/storage/" + docId.substringBefore(":") + "/" + docId.substringAfter(":")
+                }
+            }
+            uri.path
+        } catch (_: Throwable) {
+            uri.path
         }
     }
 
@@ -74,7 +128,8 @@ class ConfigRepositoryImpl(
             "gcmDefaultSenderId",
             "googleStorageBucket",
             "projectId",
-            "clientId"
+            "clientId",
+            "localAccountCustomUid"
         ).any { rawJson.has(it) }
 
         if (!isGoogleServices && !hasSbpKeys) {
@@ -83,7 +138,9 @@ class ConfigRepositoryImpl(
 
         if (isGoogleServices) {
             prefs.customFirebaseApp = true
+            prefs.unlockLocalCloudFeatures = false
             GoogleServicesJson.applyToPrefs(rawJson, prefs)
+            prefs.firebaseSetupFinished = prefs.toConfig().isCompleteFirebaseConfig
             return prefs.toConfig()
         }
 
@@ -114,7 +171,8 @@ class ConfigRepositoryImpl(
             enableSnapshotInjection = if (rawJson.has("enableSnapshotInjection")) rawJson.optBoolean("enableSnapshotInjection", decoded.enableSnapshotInjection) else decoded.enableSnapshotInjection,
             enableBackupRebuilder = if (rawJson.has("enableBackupRebuilder")) rawJson.optBoolean("enableBackupRebuilder", decoded.enableBackupRebuilder) else decoded.enableBackupRebuilder,
             syncMetadataToFirebase = if (rawJson.has("syncMetadataToFirebase")) rawJson.optBoolean("syncMetadataToFirebase", decoded.syncMetadataToFirebase) else decoded.syncMetadataToFirebase,
-            unlockLocalCloudFeatures = if (rawJson.has("unlockLocalCloudFeatures")) rawJson.optBoolean("unlockLocalCloudFeatures", decoded.unlockLocalCloudFeatures) else decoded.unlockLocalCloudFeatures
+            unlockLocalCloudFeatures = if (rawJson.has("unlockLocalCloudFeatures")) rawJson.optBoolean("unlockLocalCloudFeatures", decoded.unlockLocalCloudFeatures) else decoded.unlockLocalCloudFeatures,
+            localAccountCustomUid = if (rawJson.has("localAccountCustomUid")) rawJson.optString("localAccountCustomUid", decoded.localAccountCustomUid) else decoded.localAccountCustomUid
         )
 
         prefs.applyConfig(finalConfig)

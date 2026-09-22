@@ -8,10 +8,8 @@ import io.github.libxposed.api.XposedInterface
 import io.github.libxposed.api.XposedModule
 import io.github.libxposed.api.XposedModuleInterface
 import io.github.s1ddhants1.swiftbackupprem.hook.*
-import io.github.s1ddhants1.swiftbackupprem.hook.experimental.BackupRebuilderHook
-import io.github.s1ddhants1.swiftbackupprem.hook.experimental.CloudDiscoveryHook
-import io.github.s1ddhants1.swiftbackupprem.hook.experimental.GoogleDriveScopeHook
 import io.github.s1ddhants1.swiftbackupprem.util.BackupCrypto
+import io.github.s1ddhants1.swiftbackupprem.util.LSPatchHelper
 import io.github.s1ddhants1.swiftbackupprem.util.PreferencesManager
 import io.github.s1ddhants1.swiftbackupprem.util.attempt
 import java.util.concurrent.ConcurrentHashMap
@@ -104,7 +102,13 @@ class Module : XposedModule() {
 
     private fun applyHooks(ctx: Context, cl: ClassLoader, sourceDir: String, swiftAppInstance: Any? = null): Pair<ResolvedTargets, PreferencesManager>? {
         val remotePrefs = attempt("get remote preferences") { getRemotePreferences(Consts.PREFS_SETTINGS) }
+        val hasRemotePrefs = remotePrefs != null && remotePrefs.all.isNotEmpty()
+        val isIntegrated = LSPatchHelper.isIntegratedMode(ctx, remotePrefsAvailable = hasRemotePrefs)
+        Log.i(Consts.TAG, "applyHooks: isIntegrated=$isIntegrated, hasRemotePrefs=$hasRemotePrefs")
         val prefs = PreferencesManager(remotePrefs, isDynamic = true)
+        if (isIntegrated || remotePrefs == null || remotePrefs.all.isEmpty()) {
+            prefs.loadFromFallbackStorage(ctx)
+        }
 
         var targets = ResolvedTargets()
         attempt("find obfuscated classes with DexKit") {
@@ -112,10 +116,15 @@ class Module : XposedModule() {
         }
 
         ExitProtectionHook.apply(this, ctx, cl, targets, prefs)
+
+        if (LSPatchHelper.isLSPatched(ctx)) {
+            RootServiceFixHook.apply(this, ctx, cl, targets, prefs)
+        }
+
         FirebaseInitHook.apply(this, ctx, cl, targets, prefs)
         PremiumFeatureHook.apply(this, ctx, cl, targets, prefs)
         if (swiftAppInstance != null) {
-            PremiumFeatureHook.hookSwiftAppPremium(this, swiftAppInstance, prefs.enablePremium)
+            PremiumFeatureHook.hookSwiftAppPremium(this, swiftAppInstance, prefs)
         }
         AuthBypassHook.apply(this, ctx, cl, targets, prefs)
         GoogleDriveScopeHook.apply(this, ctx, cl, targets, prefs)
@@ -123,8 +132,10 @@ class Module : XposedModule() {
         BackupRebuilderHook.apply(this, ctx, cl, targets, prefs)
         CloudDiscoveryHook.apply(this, ctx, cl, targets, prefs)
         LocalCloudUnlockHook.apply(this, ctx, cl, targets, prefs)
+        if (isIntegrated) {
+            InAppSettingsHook.apply(this, ctx, cl, targets, prefs)
+        }
 
-        // Export detected UIDs and auth state to shared storage for Manager app / Migrator UI
         attempt("export detected UIDs and auth state to storage", silent = true) {
             val uids = BackupCrypto.resolveCandidateUids(ctx, cl, targets)
             BackupCrypto.syncDetectedUids(ctx, uids)
