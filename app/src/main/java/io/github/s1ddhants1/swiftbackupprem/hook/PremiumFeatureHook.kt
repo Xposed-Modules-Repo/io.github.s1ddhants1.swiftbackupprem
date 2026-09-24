@@ -2,10 +2,12 @@ package io.github.s1ddhants1.swiftbackupprem.hook
 
 import android.content.Context
 import android.util.Log
+import androidx.annotation.Keep
 import io.github.s1ddhants1.swiftbackupprem.Consts
 import io.github.s1ddhants1.swiftbackupprem.util.PreferencesManager
 import io.github.s1ddhants1.swiftbackupprem.util.attempt
 
+@Keep
 object PremiumFeatureHook : HookHandler {
 
     override fun apply(
@@ -15,15 +17,22 @@ object PremiumFeatureHook : HookHandler {
         targets: ResolvedTargets,
         prefs: PreferencesManager
     ) {
-        val isPremium = prefs.enablePremium
-        Log.d(Consts.TAG, "Applying premium state: $isPremium")
+        Log.d(Consts.TAG, "Applying premium state: ${prefs.enablePremium}")
 
-        targets.vClass?.let { hookVClass(module, it, isPremium) }
-        targets.homeViewModelClass?.let { hookHomeViewModelClass(module, it, isPremium) }
-        hookKnownClasses(module, classLoader, isPremium, targets.vClass)
+        targets.vClass?.let { hookVClass(module, it, prefs) }
+        targets.homeViewModelClass?.let { hookHomeViewModelClass(module, it, prefs) }
+        hookKnownClasses(module, classLoader, prefs, targets.vClass)
     }
 
-    fun hookSwiftAppPremium(module: HookContext, swiftApp: Any?, isPremium: Boolean) {
+    fun updateVpField(targets: ResolvedTargets, isPremium: Boolean) {
+        targets.vClass?.let { targetClass ->
+            attempt("update V.vp field", silent = true) {
+                targetClass.getDeclaredField("vp").apply { isAccessible = true }.set(null, isPremium)
+            }
+        }
+    }
+
+    fun hookSwiftAppPremium(module: HookContext, swiftApp: Any?, prefs: PreferencesManager) {
         if (swiftApp == null) return
         attempt("hook SwiftApp premium LiveData") {
             for (field in swiftApp.javaClass.declaredFields) {
@@ -31,16 +40,21 @@ object PremiumFeatureHook : HookHandler {
                 val liveDataObj = attempt("read field ${field.name}", silent = true) { field.get(swiftApp) } ?: continue
                 val ldClass = liveDataObj.javaClass
 
-                val isTarget = field.name == "a" || field.name == "mutablePremium"
+                val isTarget = field.name == "mutablePremium" ||
+                    (ldClass.name.contains("LiveData") && attempt("check LiveData value type", silent = true) {
+                        ldClass.methods.firstOrNull { m -> m.parameterCount == 0 && m.returnType == Any::class.java }?.invoke(liveDataObj) is Boolean
+                    } == true)
 
                 if (isTarget) {
                     for (m in ldClass.methods) {
-                        if (m.parameterCount == 1 && m.name in listOf("k", "setValue", "postValue")) {
-                            attempt("invoke LiveData setter ${m.name}", silent = true) { m.invoke(liveDataObj, isPremium) }
+                        if (m.parameterCount == 1 && (m.name in listOf("setValue", "postValue") ||
+                            (m.parameterTypes[0] == Any::class.java && (m.returnType == Void.TYPE || m.returnType == java.lang.Void::class.java)))) {
+                            attempt("invoke LiveData setter ${m.name}", silent = true) { m.invoke(liveDataObj, prefs.enablePremium) }
                         }
                     }
                     for (m in ldClass.declaredMethods) {
-                        if (m.parameterCount == 1 && m.name in listOf("k", "setValue", "postValue")) {
+                        if (m.parameterCount == 1 && (m.name in listOf("setValue", "postValue") ||
+                            (m.parameterTypes[0] == Any::class.java && (m.returnType == Void.TYPE || m.returnType == java.lang.Void::class.java)))) {
                             attempt("hook LiveData setter ${m.name}") {
                                 module.hookTracked(
                                     m,
@@ -48,18 +62,18 @@ object PremiumFeatureHook : HookHandler {
                                     deoptimize = true
                                 ).intercept { chain ->
                                     if (chain.thisObject === liveDataObj && (chain.getArg(0) is Boolean || chain.getArg(0) == null)) {
-                                        chain.proceed(arrayOf(isPremium))
+                                        chain.proceed(arrayOf(prefs.enablePremium))
                                     } else chain.proceed()
                                 }
                             }
-                        } else if (m.parameterCount == 0 && (m.name == "getValue" || m.name == "d")) {
+                        } else if (m.parameterCount == 0 && (m.name == "getValue" || m.returnType == Any::class.java)) {
                             attempt("hook LiveData getter ${m.name}") {
                                 module.hookTracked(
                                     m,
                                     idPrefix = "premium-livedata-get-${m.name}",
                                     deoptimize = true
                                 ).intercept { chain ->
-                                    if (chain.thisObject === liveDataObj) isPremium else chain.proceed()
+                                    if (chain.thisObject === liveDataObj) prefs.enablePremium else chain.proceed()
                                 }
                             }
                         }
@@ -69,10 +83,10 @@ object PremiumFeatureHook : HookHandler {
         }
     }
 
-    private fun hookKnownClasses(module: HookContext, cl: ClassLoader, isPremium: Boolean, resolvedVClass: Class<*>?) {
+    private fun hookKnownClasses(module: HookContext, cl: ClassLoader, prefs: PreferencesManager, resolvedVClass: Class<*>?) {
         if (resolvedVClass?.name != "org.swiftapps.swiftbackup.common.V") {
             attempt("load and hook known V class fallback", silent = true) {
-                hookVClass(module, cl.loadClass("org.swiftapps.swiftbackup.common.V"), isPremium)
+                hookVClass(module, cl.loadClass("org.swiftapps.swiftbackup.common.V"), prefs)
             }
         }
         attempt("load and hook known V\$a class", silent = true) {
@@ -83,34 +97,43 @@ object PremiumFeatureHook : HookHandler {
                         m,
                         idPrefix = "premium-v-lambda-invoke",
                         deoptimize = true
-                    ).intercept { isPremium }
+                    ).intercept { prefs.enablePremium }
                     break
                 }
             }
         }
     }
 
-    private fun hookVClass(module: HookContext, targetClass: Class<*>, isPremium: Boolean) {
-        Log.d(Consts.TAG, "Hooking V class: ${targetClass.name} (isPremium=$isPremium)")
+    private fun hookVClass(module: HookContext, targetClass: Class<*>, prefs: PreferencesManager) {
+        Log.d(Consts.TAG, "Hooking V class: ${targetClass.name} (isPremium=${prefs.enablePremium})")
         attempt("set V.vp field") {
-            targetClass.getDeclaredField("vp").apply { isAccessible = true }.set(null, isPremium)
+            targetClass.getDeclaredField("vp").apply { isAccessible = true }.set(null, prefs.enablePremium)
         }
 
         for (m in targetClass.declaredMethods) {
+            if (m.name.startsWith("_get_") && (m.returnType == Boolean::class.javaPrimitiveType || m.returnType == Boolean::class.javaObjectType)) {
+                attempt("hook V synthetic lambda ${m.name}") {
+                    module.hookTracked(
+                        m,
+                        idPrefix = "premium-v-lambda-${m.name}",
+                        deoptimize = true
+                    ).intercept { prefs.enablePremium }
+                }
+            }
             when (m.name) {
                 "getA", "getG", "getVp" -> attempt("hook V getter ${m.name}") {
                     module.hookTracked(
                         m,
                         idPrefix = "premium-v-${m.name}",
                         deoptimize = true
-                    ).intercept { isPremium }
+                    ).intercept { prefs.enablePremium }
                 }
                 "setA", "setVp" -> if (m.parameterCount == 1) attempt("hook V setter ${m.name}") {
                     module.hookTracked(
                         m,
                         idPrefix = "premium-v-${m.name}",
                         deoptimize = true
-                    ).intercept { chain -> chain.proceed(arrayOf(isPremium)) }
+                    ).intercept { chain -> chain.proceed(arrayOf(prefs.enablePremium)) }
                 }
                 "getC" -> attempt("hook V.getC") {
                     module.hookTracked(
@@ -130,8 +153,8 @@ object PremiumFeatureHook : HookHandler {
         }
     }
 
-    private fun hookHomeViewModelClass(module: HookContext, targetClass: Class<*>, isPremium: Boolean) {
-        Log.d(Consts.TAG, "Hooking HomeViewModel class: ${targetClass.name} (isPremium=$isPremium)")
+    private fun hookHomeViewModelClass(module: HookContext, targetClass: Class<*>, prefs: PreferencesManager) {
+        Log.d(Consts.TAG, "Hooking HomeViewModel class: ${targetClass.name} (isPremium=${prefs.enablePremium})")
         for (m in targetClass.declaredMethods) {
             if (m.parameterCount == 1 && (m.parameterTypes[0] == Boolean::class.javaPrimitiveType || m.parameterTypes[0] == Boolean::class.javaObjectType)) {
                 attempt("hook HomeViewModel setter ${m.name}") {
@@ -139,7 +162,7 @@ object PremiumFeatureHook : HookHandler {
                         m,
                         idPrefix = "premium-homevm-set-${m.name}",
                         deoptimize = true
-                    ).intercept { chain -> chain.proceed(arrayOf(isPremium)) }
+                    ).intercept { chain -> chain.proceed(arrayOf(prefs.enablePremium)) }
                 }
             } else if (m.parameterCount == 0 && (m.returnType == Boolean::class.javaPrimitiveType || m.returnType == Boolean::class.javaObjectType)) {
                 attempt("hook HomeViewModel getter ${m.name}") {
@@ -147,7 +170,7 @@ object PremiumFeatureHook : HookHandler {
                         m,
                         idPrefix = "premium-homevm-get-${m.name}",
                         deoptimize = true
-                    ).intercept { isPremium }
+                    ).intercept { prefs.enablePremium }
                 }
             }
         }

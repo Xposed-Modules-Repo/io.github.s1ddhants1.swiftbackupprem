@@ -102,4 +102,264 @@ class LocalCloudUnlockHookTest {
         assertEquals("CPH2573", jsonMatcher.group(3))
         assertEquals("20260908-194213-IR", jsonMatcher.group(4))
     }
+
+    @Test
+    fun testResolvedTargetsIncludesFirebaseWatcherClass() {
+        val targets = ResolvedTargets(firebaseWatcherClass = String::class.java)
+        assertNotNull(targets.firebaseWatcherClass)
+        assertEquals(String::class.java, targets.firebaseWatcherClass)
+    }
+
+    @Test
+    fun testShouldSkipIsAnonymousSpoofNormalCaller() {
+        assertFalse(LocalCloudUnlockHook.shouldSkipIsAnonymousSpoof("com.dummy.WatcherClass"))
+    }
+
+    abstract class DummyResult(val success: Boolean)
+    class DummySuccess : DummyResult(true) {
+        override fun toString(): String = "Success"
+    }
+    class DummyError(val error: Throwable) : DummyResult(false) {
+        override fun toString(): String = "Error(failure)"
+    }
+
+    class DummyDatabaseError(val code: Int, val message: String)
+    class DummyObfuscatedError(val err: DummyDatabaseError) : DummyResult(false) {
+        override fun toString(): String = "Error(error=$err)"
+    }
+    class DummyObfuscatedSuccess : DummyResult(true) {
+        override fun toString(): String = "Success"
+    }
+
+    @Test
+    fun testSuccessClassAndInstanceValidation() {
+        assertTrue(LocalCloudUnlockHook.isSuccessClass(DummySuccess::class.java, DummyResult::class.java))
+        assertFalse(LocalCloudUnlockHook.isSuccessClass(DummyError::class.java, DummyResult::class.java))
+        assertFalse(LocalCloudUnlockHook.isSuccessClass(DummyObfuscatedError::class.java, DummyResult::class.java))
+        assertTrue(LocalCloudUnlockHook.isSuccessClass(DummyObfuscatedSuccess::class.java, DummyResult::class.java))
+
+        val successInst = DummySuccess()
+        val errorInst = DummyError(RuntimeException("test"))
+        val obfErrorInst = DummyObfuscatedError(DummyDatabaseError(-11, "Anonymous user not allowed"))
+        val obfSuccessInst = DummyObfuscatedSuccess()
+
+        assertTrue(LocalCloudUnlockHook.isSuccessInstance(successInst))
+        assertFalse(LocalCloudUnlockHook.isSuccessInstance(errorInst))
+        assertFalse(LocalCloudUnlockHook.isSuccessInstance(obfErrorInst))
+        assertTrue(LocalCloudUnlockHook.isSuccessInstance(obfSuccessInst))
+    }
+
+    @Test
+    fun testPurchaseVerificationLeafPathReturnsBoolean() {
+        val leafPath = "https://swift-backup-31751.firebaseio.com/purchase_verifications/d58b0944415a4889d7f11aa95fbeca50/AQK8OqW4gtD36Xte/DRxZA4zBTU1sr0y0N5jq+IeqAxKIILVpxc="
+        val segments = CloudDatabaseManager.extractPathSegments(leafPath)
+        val pvIndex = segments.indexOf("purchase_verifications")
+        assertTrue(pvIndex != -1)
+        assertTrue(segments.size >= pvIndex + 3)
+    }
+
+    @Test
+    fun testNaturalPurchaseVerificationJsonResolution() {
+        val root = org.json.JSONObject().apply {
+            put("purchase_verifications", org.json.JSONObject().apply {
+                put("test_uid", org.json.JSONObject().apply {
+                    put("validity", true)
+                    put("encrypted_key", true)
+                })
+            })
+        }
+        val segmentsLeaf = listOf("purchase_verifications", "test_uid", "validity")
+        val nodeLeaf = CloudDatabaseManager.resolvePathInJson(root, segmentsLeaf)
+        assertEquals(true, nodeLeaf)
+
+        val segmentsParent = listOf("purchase_verifications", "test_uid")
+        val nodeParent = CloudDatabaseManager.resolvePathInJson(root, segmentsParent)
+        assertTrue(nodeParent is org.json.JSONObject)
+        val convertedParent = CloudDatabaseManager.jsonToValue(nodeParent)
+        assertTrue(convertedParent is Map<*, *>)
+        assertEquals(true, (convertedParent as Map<*, *>)["validity"])
+    }
+
+    abstract class DummyParentResult {
+        class DummyParentSuccess(val ok: Boolean) : DummyParentResult() {
+            companion object {
+                @JvmField
+                val INSTANCE = DummyParentSuccess(true)
+            }
+            override fun toString(): String = "Success"
+        }
+        class DummyParentError(val t: Throwable) : DummyParentResult() {
+            companion object {
+                @JvmField
+                val ERROR_INSTANCE = DummyParentError(RuntimeException("Anonymous user not allowed"))
+            }
+            override fun toString(): String = "Error"
+        }
+    }
+
+    @Test
+    fun testAuthenticSuccessInstanceDoesNotReturnError() {
+        val inst = LocalCloudUnlockHook.getAuthenticSuccessInstance(DummyParentResult::class.java)
+        assertNotNull(inst)
+        assertTrue(inst is DummyParentResult.DummyParentSuccess)
+        assertFalse(inst is DummyParentResult.DummyParentError)
+    }
+
+    class DummyAnonUser(
+        val email: String = "anonymous@swiftbackup.app",
+        val providerId: String = "anonymous",
+        val isAnonymous: Boolean = true,
+        val uid: String = "d58b0944415a4889d7f11aa95fbeca50"
+    )
+
+    class DummyGoogleUser(
+        val email: String = "user@gmail.com",
+        val providerId: String = "google.com",
+        val isAnonymous: Boolean = false,
+        val uid: String = "real_google_uid_12345"
+    )
+
+    @Test
+    fun testIsAnonymousUserInstanceDetection() {
+        assertTrue(LocalCloudUnlockHook.isAnonymousUserInstance(DummyAnonUser()))
+        assertFalse(LocalCloudUnlockHook.isAnonymousUserInstance(DummyGoogleUser()))
+        assertFalse(LocalCloudUnlockHook.isAnonymousUserInstance(null))
+    }
+
+    @Test
+    fun testShouldEnforceLocalCloudWhenFeatureDisabled() {
+        val prefs = PreferencesManager(null)
+        prefs.unlockLocalCloudFeatures = false
+        prefs.customFirebaseApp = false
+        assertFalse(LocalCloudUnlockHook.shouldEnforceLocalCloud(prefs, null))
+
+        prefs.customFirebaseApp = true
+        assertFalse(LocalCloudUnlockHook.shouldEnforceLocalCloud(prefs, null))
+    }
+
+    @Test
+    fun testShouldEnforceLocalCloudWhenCustomFirebaseDisabled() {
+        val prefs = PreferencesManager(null)
+        prefs.unlockLocalCloudFeatures = true
+        prefs.customFirebaseApp = false
+        assertTrue(LocalCloudUnlockHook.shouldEnforceLocalCloud(prefs, null))
+    }
+
+    @Test
+    fun testShouldEnforceLocalCloudWhenCustomFirebaseEnabledWithoutSignIn() {
+        val prefs = PreferencesManager(null)
+        prefs.unlockLocalCloudFeatures = true
+        prefs.customFirebaseApp = true
+        LocalCloudUnlockHook.clearAuthCache()
+        assertTrue(LocalCloudUnlockHook.shouldEnforceLocalCloud(prefs, null))
+    }
+
+    data class DummyLabelParams(
+        val id: String = "game",
+        val name: String = "Games",
+        val color: String = "#ff0000"
+    )
+
+    data class DummyLabelledApp(
+        val packageName: String = "com.rovio.baba",
+        val name: String = "Angry Birds",
+        val labelIds: List<String> = listOf("game")
+    )
+
+    data class DummyLabelsData(
+        val labelParamsMap: Map<String, DummyLabelParams> = mapOf("game" to DummyLabelParams()),
+        val labelledAppsMap: Map<String, DummyLabelledApp> = mapOf("com.rovio.baba" to DummyLabelledApp())
+    )
+
+    @Test
+    fun testAnyToJsonDeepSerializationOfLabelsData() {
+        val dummyData = DummyLabelsData()
+        val json = CloudDatabaseManager.anyToJson(dummyData)
+        assertTrue(json is JSONObject)
+        val jsonObject = json as JSONObject
+
+        val labelParamsObj = jsonObject.optJSONObject("labelParamsMap")
+        assertNotNull("labelParamsMap must be a JSONObject, not a String", labelParamsObj)
+        val gameObj = labelParamsObj!!.optJSONObject("game")
+        assertNotNull("game item must be a JSONObject", gameObj)
+        assertEquals("game", gameObj!!.optString("id"))
+        assertEquals("Games", gameObj.optString("name"))
+        assertEquals("#ff0000", gameObj.optString("color"))
+
+        val labelledAppsObj = jsonObject.optJSONObject("labelledAppsMap")
+        assertNotNull("labelledAppsMap must be a JSONObject, not a String", labelledAppsObj)
+        val appObj = labelledAppsObj!!.optJSONObject("com.rovio.baba")
+        assertNotNull("app item must be a JSONObject", appObj)
+        assertEquals("com.rovio.baba", appObj!!.optString("packageName"))
+        assertEquals("Angry Birds", appObj.optString("name"))
+        val labelIdsArr = appObj.optJSONArray("labelIds")
+        assertNotNull("labelIds must be a JSONArray", labelIdsArr)
+        assertEquals(1, labelIdsArr!!.length())
+        assertEquals("game", labelIdsArr.getString(0))
+    }
+
+    @Test
+    fun testReconcileDatabaseNodesHealsCorruptedLabelsDataString() {
+        val db = JSONObject("""
+        {
+          "users": {
+            "test_uid": {
+              "labelsData": {
+                "labelParamsMap": "{game=org.swiftapps.swiftbackup.appslist.ui.labels.LabelParams@e96035c}",
+                "labelledAppsMap": "{com.rovio.baba=org.swiftapps.swiftbackup.appslist.ui.labels.LabelledApp@9a35e45}"
+              }
+            }
+          }
+        }
+        """.trimIndent())
+
+        val prefs = PreferencesManager(null)
+        val changed = CloudDatabaseManager.reconcileDatabaseNodes(db, prefs)
+        assertTrue(changed)
+
+        val userObj = db.getJSONObject("users").getJSONObject("test_uid")
+        val labelsData = userObj.getJSONObject("labelsData")
+        assertNotNull(labelsData.optJSONObject("labelParamsMap"))
+        assertNotNull(labelsData.optJSONObject("labelledAppsMap"))
+        assertFalse(labelsData.opt("labelParamsMap") is String)
+        assertFalse(labelsData.opt("labelledAppsMap") is String)
+    }
+
+    @Test
+    fun testGetSnapshotDataForPathSanitizesLabelsDataSubmaps() {
+        val testDb = JSONObject("""
+        {
+          "users": {
+            "test_uid": {
+              "labelsData": {
+                "labelParamsMap": {
+                  "work": {
+                    "id": "work",
+                    "name": "Work",
+                    "color": "#00ff00"
+                  }
+                },
+                "labelledAppsMap": {
+                  "com.slack": {
+                    "packageName": "com.slack",
+                    "name": "Slack",
+                    "labelIds": ["work"]
+                  }
+                }
+              }
+            }
+          }
+        }
+        """.trimIndent())
+
+        val segments = CloudDatabaseManager.extractPathSegments("users/test_uid/labelsData")
+        val node = CloudDatabaseManager.resolvePathInJson(testDb, segments)
+        assertNotNull(node)
+        val value = CloudDatabaseManager.jsonToValue(node)
+        assertTrue(value is Map<*, *>)
+        val map = value as Map<*, *>
+        assertTrue(map["labelParamsMap"] is Map<*, *>)
+        assertTrue(map["labelledAppsMap"] is Map<*, *>)
+    }
 }
+

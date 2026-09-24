@@ -9,16 +9,13 @@ import de.robv.android.xposed.XSharedPreferences
 import de.robv.android.xposed.XposedBridge
 import de.robv.android.xposed.callbacks.XC_LoadPackage
 import io.github.s1ddhants1.swiftbackupprem.hook.*
-import io.github.s1ddhants1.swiftbackupprem.hook.experimental.BackupRebuilderHook
-import io.github.s1ddhants1.swiftbackupprem.hook.experimental.CloudDiscoveryHook
-import io.github.s1ddhants1.swiftbackupprem.hook.experimental.GoogleDriveScopeHook
 import io.github.s1ddhants1.swiftbackupprem.util.BackupCrypto
+import io.github.s1ddhants1.swiftbackupprem.util.LSPatchHelper
 import io.github.s1ddhants1.swiftbackupprem.util.PreferencesManager
 import io.github.s1ddhants1.swiftbackupprem.util.attempt
 import java.lang.reflect.Constructor
 import java.lang.reflect.Executable
 import java.lang.reflect.Member
-import java.lang.reflect.Method
 
 @Keep
 class Module : IXposedHookLoadPackage, HookContext {
@@ -71,6 +68,7 @@ class Module : IXposedHookLoadPackage, HookContext {
                 xPrefs.reload()
                 val ctx = param.thisObject as? Context ?: return
                 val prefs = PreferencesManager(xPrefs, isDynamic = true)
+                prefs.loadFromFallbackStorage(ctx)
                 var targets = ResolvedTargets()
                 attempt("find obfuscated classes with DexKit for post-create clientId injection") {
                     targets = TargetClassResolver.resolve(ctx, cl, lpparam.appInfo?.sourceDir ?: "")
@@ -88,6 +86,11 @@ class Module : IXposedHookLoadPackage, HookContext {
         swiftAppInstance: Any? = null
     ): Pair<ResolvedTargets, PreferencesManager> {
         val prefs = PreferencesManager(xPrefs, isDynamic = true)
+        val hasPrefs = xPrefs.all.isNotEmpty()
+        val isIntegrated = LSPatchHelper.isIntegratedMode(ctx, remotePrefsAvailable = hasPrefs)
+        if (isIntegrated || !hasPrefs) {
+            prefs.loadFromFallbackStorage(ctx)
+        }
 
         var targets = ResolvedTargets()
         attempt("find obfuscated classes with DexKit") {
@@ -95,11 +98,16 @@ class Module : IXposedHookLoadPackage, HookContext {
         }
 
         ExitProtectionHook.apply(this, ctx, cl, targets, prefs)
+
+        if (LSPatchHelper.isLSPatched(ctx)) {
+            RootServiceFixHook.apply(this, ctx, cl, targets, prefs)
+        }
+
         FirebaseInitHook.apply(this, ctx, cl, targets, prefs)
         FirebaseInitHook.applyStaticClientId(targets, prefs)
         PremiumFeatureHook.apply(this, ctx, cl, targets, prefs)
         if (swiftAppInstance != null) {
-            PremiumFeatureHook.hookSwiftAppPremium(this, swiftAppInstance, prefs.enablePremium)
+            PremiumFeatureHook.hookSwiftAppPremium(this, swiftAppInstance, prefs)
         }
         AuthBypassHook.apply(this, ctx, cl, targets, prefs)
         GoogleDriveScopeHook.apply(this, ctx, cl, targets, prefs)
@@ -107,14 +115,13 @@ class Module : IXposedHookLoadPackage, HookContext {
         BackupRebuilderHook.apply(this, ctx, cl, targets, prefs)
         CloudDiscoveryHook.apply(this, ctx, cl, targets, prefs)
         LocalCloudUnlockHook.apply(this, ctx, cl, targets, prefs)
-
-        if (swiftAppInstance != null) {
-            PremiumFeatureHook.hookSwiftAppPremium(this, swiftAppInstance, prefs.enablePremium)
+        if (isIntegrated) {
+            InAppSettingsHook.apply(this, ctx, cl, targets, prefs)
         }
 
         // Export detected UIDs and auth state to shared storage for Manager app / Migrator UI
         attempt("export detected UIDs and auth state to storage", silent = true) {
-            val uids = BackupCrypto.resolveCandidateUids(ctx, cl, targets)
+            val uids = BackupCrypto.resolveCandidateUids(ctx, cl, targets, prefs)
             BackupCrypto.syncDetectedUids(ctx, uids)
 
             val exportDirs = listOf(

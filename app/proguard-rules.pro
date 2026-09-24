@@ -16,6 +16,14 @@
 -adaptresourcefilecontents assets/xposed_init
 -adaptresourcefilecontents assets/native_init
 
+# AndroidX Preference (compileOnly provided by target app)
+-dontwarn androidx.preference.**
+-keep class io.github.s1ddhants1.swiftbackupprem.ui.settings.** { *; }
+-keep class io.github.s1ddhants1.swiftbackupprem.hook.InAppSettingsHook* { *; }
+-keepclassmembers class io.github.s1ddhants1.swiftbackupprem.hook.InAppSettingsHook* { *; }
+-keep class io.github.s1ddhants1.swiftbackupprem.util.LSPatchHelper* { *; }
+-keepclassmembers class io.github.s1ddhants1.swiftbackupprem.util.LSPatchHelper* { *; }
+
 # Keep DexKit bridge classes used by native C++ (libdexkit.so) JNI reflection
 -keep class org.luckypray.dexkit.** { *; }
 -keepclassmembers class org.luckypray.dexkit.** { *; }

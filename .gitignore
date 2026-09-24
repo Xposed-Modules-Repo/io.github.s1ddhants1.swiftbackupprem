@@ -9,15 +9,17 @@ build
 .cxx
 local.properties
 release
-release.keystore
 *.keystore
 keystore.properties
 *.jks
 *.p12
 *.mobileprovision
 .kotlin
+*.apk
 
 # Documentation
 /docs/
 /AGENTS.md
 /agents.md
+__pycache__/
+*.pyc

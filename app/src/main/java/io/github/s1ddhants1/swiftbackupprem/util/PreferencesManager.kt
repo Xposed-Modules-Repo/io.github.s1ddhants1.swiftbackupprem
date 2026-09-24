@@ -1,6 +1,8 @@
 package io.github.s1ddhants1.swiftbackupprem.util
 
+import android.content.Context
 import android.content.SharedPreferences
+import android.util.Log
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -10,11 +12,13 @@ import io.github.s1ddhants1.swiftbackupprem.BuildConfig
 import io.github.s1ddhants1.swiftbackupprem.Consts
 import io.github.s1ddhants1.swiftbackupprem.model.SbpConfig
 import java.io.File
+import java.nio.charset.StandardCharsets
 import kotlin.reflect.KProperty
+import kotlinx.serialization.json.Json
 
 @Stable
 class PreferencesManager(
-    private val prefs: SharedPreferences? = null,
+    val prefs: SharedPreferences? = null,
     private val isDynamic: Boolean = false,
     private val backupPrefs: SharedPreferences? = null
 ) {
@@ -23,13 +27,14 @@ class PreferencesManager(
         private val key: String,
         private val defaultValue: T,
         private val getter: (key: String, defaultValue: T) -> T,
-        private val setter: (key: String, newValue: T) -> Unit
+        private val setter: (key: String, newValue: T) -> Unit,
+        private val hasRemoteKey: (key: String) -> Boolean = { false }
     ) {
         var value by mutableStateOf(getter(key, defaultValue))
             private set
 
         operator fun getValue(thisRef: Any?, property: KProperty<*>): T =
-            if (isDynamic) getter(key, defaultValue) else value
+            if (isDynamic && hasRemoteKey(key)) getter(key, defaultValue) else value
 
         operator fun setValue(thisRef: Any?, property: KProperty<*>, newValue: T) {
             value = newValue
@@ -40,18 +45,54 @@ class PreferencesManager(
     private fun getString(key: String, defaultValue: String) = prefs?.getString(key, defaultValue) ?: defaultValue
     private fun getBoolean(key: String, defaultValue: Boolean) = prefs?.getBoolean(key, defaultValue) ?: defaultValue
 
+    var onPreferenceChanged: (() -> Unit)? = null
+
+    fun clearOnPreferenceChanged() {
+        onPreferenceChanged = null
+    }
+
+    private var rawUpdatedAt: Long = prefs?.getLong("updated_at", 0L) ?: 0L
+
+    var updatedAt: Long
+        get() = prefs?.getLong("updated_at", rawUpdatedAt) ?: rawUpdatedAt
+        set(value) {
+            rawUpdatedAt = value
+            attempt("save preference long updated_at", silent = true) {
+                prefs?.edit(commit = true) { putLong("updated_at", value) }
+                backupPrefs?.edit(commit = true) { putLong("updated_at", value) }
+            }
+        }
+
     private fun putString(key: String, value: String?) {
         attempt("save preference string $key", silent = true) {
-            prefs?.edit(commit = true) { putString(key, value) }
-            backupPrefs?.edit(commit = true) { putString(key, value) }
+            val now = System.currentTimeMillis()
+            prefs?.edit(commit = true) {
+                putString(key, value)
+                putLong("updated_at", now)
+            }
+            backupPrefs?.edit(commit = true) {
+                putString(key, value)
+                putLong("updated_at", now)
+            }
+            rawUpdatedAt = now
+            onPreferenceChanged?.invoke()
         }
         makeWorldReadable()
     }
 
     private fun putBoolean(key: String, value: Boolean) {
         attempt("save preference boolean $key", silent = true) {
-            prefs?.edit(commit = true) { putBoolean(key, value) }
-            backupPrefs?.edit(commit = true) { putBoolean(key, value) }
+            val now = System.currentTimeMillis()
+            prefs?.edit(commit = true) {
+                putBoolean(key, value)
+                putLong("updated_at", now)
+            }
+            backupPrefs?.edit(commit = true) {
+                putBoolean(key, value)
+                putLong("updated_at", now)
+            }
+            rawUpdatedAt = now
+            onPreferenceChanged?.invoke()
         }
         makeWorldReadable()
     }
@@ -77,10 +118,10 @@ class PreferencesManager(
     }
 
     private fun stringPreference(key: String) =
-        Preference(isDynamic, key, "", ::getString, ::putString)
+        Preference(isDynamic, key, "", ::getString, ::putString) { prefs?.contains(it) == true }
 
     private fun booleanPreference(key: String, defaultValue: Boolean = false) =
-        Preference(isDynamic, key, defaultValue, ::getBoolean, ::putBoolean)
+        Preference(isDynamic, key, defaultValue, ::getBoolean, ::putBoolean) { prefs?.contains(it) == true }
 
     var googleAppId by stringPreference(Consts.googleAppId)
     var googleApiKey by stringPreference(Consts.googleApiKey)
@@ -94,11 +135,18 @@ class PreferencesManager(
     var disableTelemetry by booleanPreference("disable_telemetry", true)
     var enableCloudDiscovery by booleanPreference("enable_cloud_discovery", false)
     var enableGoogleDriveScope by booleanPreference("enable_google_drive_scope", false)
-    var enableSnapshotInjection by booleanPreference("enable_snapshot_injection", false)
+    private var rawEnableSnapshotInjection by booleanPreference("enable_snapshot_injection", false)
+    var enableSnapshotInjection: Boolean
+        get() = if (unlockLocalCloudFeatures) true else rawEnableSnapshotInjection
+        set(value) {
+            rawEnableSnapshotInjection = value
+        }
     var enableBackupRebuilder by booleanPreference("enable_backup_rebuilder", false)
     var syncMetadataToFirebase by booleanPreference("sync_metadata_to_firebase", false)
     var unlockLocalCloudFeatures by booleanPreference("unlock_local_cloud_features", false)
     var customFirebaseApp by booleanPreference("custom_firebase_app")
+    var firebaseSetupFinished by booleanPreference("firebase_setup_finished", false)
+    var localAccountCustomUid by stringPreference(Consts.localAccountCustomUid)
 
     fun toConfig(): SbpConfig = SbpConfig(
         enablePremium = enablePremium,
@@ -116,18 +164,31 @@ class PreferencesManager(
         gcmDefaultSenderId = gcmDefaultSenderId,
         googleStorageBucket = googleStorageBucket,
         projectId = projectId,
-        clientId = clientId
+        clientId = clientId,
+        localAccountCustomUid = localAccountCustomUid,
+        updatedAt = if (updatedAt != 0L) updatedAt else System.currentTimeMillis()
     )
 
     fun applyConfig(config: SbpConfig) {
         enablePremium = config.enablePremium
         disableTelemetry = config.disableTelemetry
-        unlockLocalCloudFeatures = config.unlockLocalCloudFeatures
-        customFirebaseApp = config.customFirebaseApp
+        if (config.customFirebaseApp && config.unlockLocalCloudFeatures) {
+            if (config.projectId.isNotBlank()) {
+                unlockLocalCloudFeatures = false
+                customFirebaseApp = true
+            } else {
+                unlockLocalCloudFeatures = true
+                customFirebaseApp = false
+            }
+        } else {
+            unlockLocalCloudFeatures = config.unlockLocalCloudFeatures
+            customFirebaseApp = config.customFirebaseApp
+        }
+        localAccountCustomUid = config.localAccountCustomUid
         val canUseCloud = config.customFirebaseApp || config.unlockLocalCloudFeatures
         enableCloudDiscovery = if (canUseCloud) config.enableCloudDiscovery else false
         enableGoogleDriveScope = if (config.customFirebaseApp) config.enableGoogleDriveScope else false
-        enableSnapshotInjection = if (canUseCloud && config.enableCloudDiscovery) config.enableSnapshotInjection else false
+        enableSnapshotInjection = if (config.unlockLocalCloudFeatures) true else if (canUseCloud) (config.enableCloudDiscovery && config.enableSnapshotInjection) else false
         enableBackupRebuilder = if (canUseCloud) config.enableBackupRebuilder else false
         syncMetadataToFirebase = if (canUseCloud) config.syncMetadataToFirebase else false
         googleAppId = config.googleAppId
@@ -137,5 +198,97 @@ class PreferencesManager(
         googleStorageBucket = config.googleStorageBucket
         projectId = config.projectId
         clientId = config.clientId
+        updatedAt = config.updatedAt
+    }
+
+    companion object {
+        private val fallbackLock = Any()
+        private val fallbackWriteExecutor = java.util.concurrent.Executors.newSingleThreadExecutor { runnable ->
+            Thread(runnable, "sbp-fallback-io").apply { isDaemon = true }
+        }
+    }
+
+    private fun getCandidateDirs(context: Context?): List<File> {
+        val list = mutableListOf<File>()
+        try {
+            list.add(File("/storage/emulated/0/SwiftBackup"))
+            val envDir = android.os.Environment.getExternalStorageDirectory()
+            if (envDir != null && envDir.isAbsolute && envDir.path.startsWith("/")) {
+                list.add(File(envDir, "SwiftBackup"))
+            }
+        } catch (_: Throwable) {}
+
+        context?.getExternalFilesDir(null)?.let { list.add(it) }
+
+        try {
+            list.add(File("/storage/emulated/0/Android/data/${Consts.packageName}/files"))
+            list.add(File("/storage/emulated/0/Android/data/io.github.s1ddhants1.swiftbackupprem/files"))
+        } catch (_: Throwable) {}
+
+        return list.distinctBy { it.canonicalPath }
+    }
+
+    fun loadFromFallbackStorage(context: Context?, force: Boolean = false): Boolean {
+        return attempt("load config from fallback storage", silent = true) {
+            val candidateDirs = getCandidateDirs(context)
+            var newestConfig: SbpConfig? = null
+            var newestTimestamp = if (force) -1L else this.updatedAt
+
+            val json = Json { ignoreUnknownKeys = true }
+            for (dir in candidateDirs) {
+                val file = File(dir, "sbp_config.json")
+                if (file.exists() && file.canRead()) {
+                    try {
+                        val text = file.readText(StandardCharsets.UTF_8)
+                        if (text.isNotBlank()) {
+                            val config = json.decodeFromString<SbpConfig>(text)
+                            val fileTimestamp = if (config.updatedAt > 0L) config.updatedAt else file.lastModified()
+                            if (fileTimestamp > newestTimestamp) {
+                                newestTimestamp = fileTimestamp
+                                newestConfig = config.copy(updatedAt = fileTimestamp)
+                            }
+                        }
+                    } catch (_: Throwable) {}
+                }
+            }
+
+            if (newestConfig != null) {
+                applyConfig(newestConfig)
+                attempt("log fallback loaded", silent = true) {
+                    Log.i(Consts.TAG, "Loaded fallback configuration with updatedAt=$newestTimestamp")
+                }
+                return@attempt true
+            }
+            false
+        } ?: false
+    }
+
+    fun saveToFallbackStorage(context: Context?): Boolean {
+        return synchronized(fallbackLock) {
+            attempt("save config to fallback storage", silent = true) {
+                val candidateDirs = getCandidateDirs(context)
+                val json = Json { ignoreUnknownKeys = true; prettyPrint = true; encodeDefaults = true }
+                val currentConfig = toConfig()
+                val jsonStr = json.encodeToString(SbpConfig.serializer(), currentConfig)
+                var saved = false
+                for (dir in candidateDirs) {
+                    try {
+                        if (!dir.exists()) dir.mkdirs()
+                        if (dir.exists() && dir.isDirectory) {
+                            val file = File(dir, "sbp_config.json")
+                            file.writeText(jsonStr, StandardCharsets.UTF_8)
+                            saved = true
+                        }
+                    } catch (_: Throwable) {}
+                }
+                saved
+            } ?: false
+        }
+    }
+
+    fun saveToFallbackStorageAsync(context: Context?) {
+        fallbackWriteExecutor.execute {
+            saveToFallbackStorage(context)
+        }
     }
 }

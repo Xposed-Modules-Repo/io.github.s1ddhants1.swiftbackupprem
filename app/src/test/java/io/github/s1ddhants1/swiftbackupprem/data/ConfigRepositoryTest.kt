@@ -1,6 +1,5 @@
 package io.github.s1ddhants1.swiftbackupprem.data
 
-import io.github.s1ddhants1.swiftbackupprem.model.SbpConfig
 import io.github.s1ddhants1.swiftbackupprem.util.PreferencesManager
 import org.junit.Assert.*
 import org.junit.Test
@@ -145,7 +144,6 @@ class ConfigRepositoryTest {
         assertEquals("1:999:android:old", result.googleAppId)
         assertEquals("old-project", result.projectId)
 
-        // Verifies new keys smoothly adopt default values without error
         assertFalse(result.enableGoogleDriveScope)
         assertFalse(result.enableCloudDiscovery)
         assertFalse(result.enableSnapshotInjection)
@@ -172,6 +170,23 @@ class ConfigRepositoryTest {
         assertTrue(result.enableCloudDiscovery)
         assertTrue(prefs.unlockLocalCloudFeatures)
         assertTrue(prefs.enableCloudDiscovery)
+    }
+
+    @Test
+    fun parseConfigParsesLocalAccountCustomUid() {
+        val prefs = PreferencesManager(null)
+        val json = """
+            {
+              "unlockLocalCloudFeatures": true,
+              "localAccountCustomUid": "test-custom-uid-xyz"
+            }
+        """.trimIndent()
+
+        val result = repository.parseConfig(json, prefs)
+
+        assertTrue(result.unlockLocalCloudFeatures)
+        assertEquals("test-custom-uid-xyz", result.localAccountCustomUid)
+        assertEquals("test-custom-uid-xyz", prefs.localAccountCustomUid)
     }
 
     @Test(expected = IllegalArgumentException::class)

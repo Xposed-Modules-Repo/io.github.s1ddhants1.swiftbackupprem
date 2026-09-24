@@ -13,6 +13,8 @@ class DexKitVersionMapTest {
         assertTrue(versionMap.containsKey(569))
         assertTrue(versionMap.containsKey(590))
         assertTrue(versionMap.containsKey(620))
+        assertTrue(versionMap.containsKey(623))
+        assertTrue(versionMap.containsKey(626))
     }
 
     @Test
@@ -40,5 +42,35 @@ class DexKitVersionMapTest {
         assertEquals("defpackage.c64", v620.homeViewModel)
         assertEquals("defpackage.d45", v620.authUser)
         assertEquals("defpackage.b45", v620.anonUser)
+        assertEquals("defpackage.gg3", v620.firebaseWatcher)
+        assertEquals("defpackage.pa7", v620.settingsFragment)
+        assertEquals("org.swiftapps.swiftbackup.settings.a", v620.settingsDetailFragment)
+        assertEquals("defpackage.fm0", v620.baseSettingsFragment)
+
+        val v623 = versionMap[623]
+        assertNotNull(v623)
+        assertEquals("defpackage.gp5", v623!!.clientId)
+        assertEquals("defpackage.p74", v623.homeViewModel)
+        assertEquals("defpackage.n55", v623.authUser)
+        assertEquals("defpackage.l55", v623.anonUser)
+        assertEquals("defpackage.oh3", v623.firebaseWatcher)
+        assertEquals("defpackage.jg3", v623.fireSynchronizer)
+        assertEquals("defpackage.ag3", v623.fireSynchronizerSuccess)
+        assertEquals("defpackage.bd7", v623.settingsFragment)
+        assertEquals("org.swiftapps.swiftbackup.settings.a", v623.settingsDetailFragment)
+        assertEquals("defpackage.qm0", v623.baseSettingsFragment)
+
+        val v626 = versionMap[626]
+        assertNotNull(v626)
+        assertEquals("defpackage.dp5", v626!!.clientId)
+        assertEquals("defpackage.f74", v626.homeViewModel)
+        assertEquals("defpackage.w55", v626.authUser)
+        assertEquals("defpackage.u55", v626.anonUser)
+        assertEquals("defpackage.rh3", v626.firebaseWatcher)
+        assertEquals("defpackage.lg3", v626.fireSynchronizer)
+        assertEquals("defpackage.cg3", v626.fireSynchronizerSuccess)
+        assertEquals("defpackage.re7", v626.settingsFragment)
+        assertEquals("org.swiftapps.swiftbackup.settings.a", v626.settingsDetailFragment)
+        assertEquals("defpackage.qm0", v626.baseSettingsFragment)
     }
 }

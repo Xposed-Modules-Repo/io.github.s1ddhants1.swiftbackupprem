@@ -1,5 +1,6 @@
 package io.github.s1ddhants1.swiftbackupprem.model
 
+import io.github.s1ddhants1.swiftbackupprem.util.FirebaseConfigValidator
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -19,13 +20,18 @@ data class SbpConfig(
     val gcmDefaultSenderId: String = "",
     val googleStorageBucket: String = "",
     val projectId: String = "",
-    val clientId: String = ""
+    val clientId: String = "",
+    val localAccountCustomUid: String = "",
+    val updatedAt: Long = 0L
 ) {
     val isCompleteFirebaseConfig: Boolean
-        get() = googleAppId.isNotBlank() &&
-                googleApiKey.isNotBlank() &&
-                firebaseDatabaseUrl.isNotBlank() &&
-                gcmDefaultSenderId.isNotBlank() &&
-                projectId.isNotBlank() &&
-                clientId.isNotBlank()
+        get() = FirebaseConfigValidator.isValidConfig(
+            projectId = projectId,
+            databaseUrl = firebaseDatabaseUrl,
+            appId = googleAppId,
+            apiKey = googleApiKey,
+            senderId = gcmDefaultSenderId,
+            clientId = clientId,
+            storageBucket = googleStorageBucket
+        )
 }

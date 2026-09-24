@@ -16,10 +16,19 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 
+import io.github.s1ddhants1.swiftbackupprem.R
+import io.github.s1ddhants1.swiftbackupprem.util.LSPatchHelper
+
 data class MainUiState(
     val isFrameworkConnected: Boolean = false,
     val frameworkName: String = "",
-    val frameworkVersion: String = ""
+    val frameworkVersion: String = "",
+    val isInjectable: Boolean = false,
+    val titleRes: Int = R.string.framework_inactive_title,
+    val titleArgs: List<String> = emptyList(),
+    val descRes: Int = R.string.framework_inactive_desc,
+    val descArgs: List<String> = emptyList(),
+    val isIntegrated: Boolean = false
 )
 
 sealed interface MainUiEvent {
@@ -37,14 +46,44 @@ class MainViewModel(
     private val _events = Channel<MainUiEvent>(Channel.BUFFERED)
     val events = _events.receiveAsFlow()
 
+    fun updateFrameworkEvaluation(evaluation: LSPatchHelper.BannerEvaluation) {
+        _uiState.update {
+            it.copy(
+                isFrameworkConnected = evaluation.isConnected,
+                frameworkName = evaluation.frameworkName,
+                frameworkVersion = evaluation.frameworkVersion,
+                isInjectable = evaluation.isInjectable,
+                titleRes = evaluation.titleRes,
+                titleArgs = evaluation.titleArgs,
+                descRes = evaluation.descRes,
+                descArgs = evaluation.descArgs,
+                isIntegrated = evaluation.isIntegrated
+            )
+        }
+    }
+
     fun onFrameworkConnected(name: String, version: String) {
         _uiState.update {
-            it.copy(isFrameworkConnected = true, frameworkName = name, frameworkVersion = version)
+            it.copy(
+                isFrameworkConnected = true,
+                frameworkName = name,
+                frameworkVersion = version,
+                isInjectable = true,
+                isIntegrated = false
+            )
         }
     }
 
     fun onFrameworkDisconnected() {
-        _uiState.update { it.copy(isFrameworkConnected = false) }
+        _uiState.update {
+            it.copy(
+                isFrameworkConnected = false,
+                isInjectable = false,
+                frameworkName = "",
+                frameworkVersion = "",
+                isIntegrated = false
+            )
+        }
     }
 
     fun exportConfig(
