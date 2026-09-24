@@ -90,6 +90,25 @@ android {
         versionName = appVersionName
     }
 
+    androidResources {
+        localeFilters += listOf("en")
+    }
+
+    packaging {
+        resources {
+            excludes += listOf(
+                "/META-INF/{AL2.0,LGPL2.1}",
+                "/META-INF/*.version",
+                "/META-INF/**/LICENSE*",
+                "/META-INF/**/NOTICE*",
+                "/META-INF/INDEX.LIST",
+                "/META-INF/DEPENDENCIES",
+                "/DebugProbesKt.bin",
+                "**/*.kotlin_builtins"
+            )
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
