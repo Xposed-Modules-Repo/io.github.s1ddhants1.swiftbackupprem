@@ -18,6 +18,8 @@ keystore.properties
 *.mobileprovision
 .kotlin
 *.apk
+__pycache__/
+*.py[cod]
 
 # Documentation
 /docs/

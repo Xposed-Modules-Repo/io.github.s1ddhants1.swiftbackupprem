@@ -65,6 +65,31 @@ object TargetClassResolver {
             rootServiceManager = c.rootServiceManager?.let { loadClassFlexible(cl, it) }
         }
 
+        val cachePrefs = attempt("get DexKit cache preferences", silent = true) {
+            ctx.getSharedPreferences("sbp_dexkit_cache", Context.MODE_PRIVATE)
+        }
+
+        if (cachePrefs != null && cachePrefs.getInt("cached_version_code", -1) == ver) {
+            if (clientId == null) clientId = cachePrefs.getString("clientId", null)?.let { loadClassFlexible(cl, it) }
+            if (homeVm == null) homeVm = cachePrefs.getString("homeViewModel", null)?.let { loadClassFlexible(cl, it) }
+            if (authUser == null) authUser = cachePrefs.getString("authUser", null)?.let { loadClassFlexible(cl, it) }
+            if (anonUser == null) anonUser = cachePrefs.getString("anonUser", null)?.let { loadClassFlexible(cl, it) }
+            if (oauthHelper == null) oauthHelper = cachePrefs.getString("oauthHelper", null)?.let { loadClassFlexible(cl, it) }
+            if (authRequestBuilder == null) authRequestBuilder = cachePrefs.getString("authRequestBuilder", null)?.let { loadClassFlexible(cl, it) }
+            if (appBackup == null) appBackup = cachePrefs.getString("appBackup", null)?.let { loadClassFlexible(cl, it) }
+            if (appMetadataXml == null) appMetadataXml = cachePrefs.getString("appMetadataXml", null)?.let { loadClassFlexible(cl, it) }
+            if (firebaseWatcher == null) firebaseWatcher = cachePrefs.getString("firebaseWatcher", null)?.let { loadClassFlexible(cl, it) }
+            if (fireSynchronizer == null) fireSynchronizer = cachePrefs.getString("fireSynchronizer", null)?.let { loadClassFlexible(cl, it) }
+            if (fireSynchronizerSuccess == null) fireSynchronizerSuccess = cachePrefs.getString("fireSynchronizerSuccess", null)?.let { loadClassFlexible(cl, it) }
+            if (fireSynchronizerWriteSuccess == null) fireSynchronizerWriteSuccess = cachePrefs.getString("fireSynchronizerWriteSuccess", null)?.let { loadClassFlexible(cl, it) }
+            if (fireSynchronizerCommitted == null) fireSynchronizerCommitted = cachePrefs.getString("fireSynchronizerCommitted", null)?.let { loadClassFlexible(cl, it) }
+            if (customClassMapper == null) customClassMapper = cachePrefs.getString("customClassMapper", null)?.let { loadClassFlexible(cl, it) }
+            if (settingsFragment == null) settingsFragment = cachePrefs.getString("settingsFragment", null)?.let { loadClassFlexible(cl, it) }
+            if (settingsDetailFragment == null) settingsDetailFragment = cachePrefs.getString("settingsDetailFragment", null)?.let { loadClassFlexible(cl, it) }
+            if (baseSettingsFragment == null) baseSettingsFragment = cachePrefs.getString("baseSettingsFragment", null)?.let { loadClassFlexible(cl, it) }
+            if (rootServiceManager == null) rootServiceManager = cachePrefs.getString("rootServiceManager", null)?.let { loadClassFlexible(cl, it) }
+        }
+
         attempt("load V class fallback", silent = true) {
             v = cl.loadClass("org.swiftapps.swiftbackup.common.V")
         }
@@ -313,6 +338,33 @@ object TargetClassResolver {
 
         if (baseSettingsFragment == null) {
             baseSettingsFragment = settingsFragment?.superclass ?: settingsDetailFragment?.superclass
+        }
+
+        attempt("save DexKit cache", silent = true) {
+            if (cachePrefs != null && clientId != null && homeVm != null && authUser != null) {
+                cachePrefs.edit()
+                    .putInt("cached_version_code", ver)
+                    .putString("clientId", clientId.name)
+                    .putString("homeViewModel", homeVm.name)
+                    .putString("authUser", authUser.name)
+                    .putString("anonUser", anonUser?.name)
+                    .putString("oauthHelper", oauthHelper?.name)
+                    .putString("authRequestBuilder", authRequestBuilder?.name)
+                    .putString("appBackup", appBackup?.name)
+                    .putString("appMetadataXml", appMetadataXml?.name)
+                    .putString("firebaseWatcher", firebaseWatcher?.name)
+                    .putString("fireSynchronizer", fireSynchronizer?.name)
+                    .putString("fireSynchronizerSuccess", fireSynchronizerSuccess?.name)
+                    .putString("fireSynchronizerWriteSuccess", fireSynchronizerWriteSuccess?.name)
+                    .putString("fireSynchronizerCommitted", fireSynchronizerCommitted?.name)
+                    .putString("customClassMapper", customClassMapper?.name)
+                    .putString("settingsFragment", settingsFragment?.name)
+                    .putString("settingsDetailFragment", settingsDetailFragment?.name)
+                    .putString("baseSettingsFragment", baseSettingsFragment?.name)
+                    .putString("rootServiceManager", rootServiceManager?.name)
+                    .apply()
+                Log.d(Consts.TAG, "Saved resolved hook classes to DexKit disk cache for version $ver")
+            }
         }
 
         return ResolvedTargets(

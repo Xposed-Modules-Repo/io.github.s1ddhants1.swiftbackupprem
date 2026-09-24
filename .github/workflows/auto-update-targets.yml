@@ -1,0 +1,143 @@
+name: Check & Update Swift Backup Targets
+
+on:
+  schedule:
+    # Check for new releases twice daily (00:00 and 12:00 UTC)
+    - cron: '0 0,12 * * *'
+  workflow_dispatch:
+    inputs:
+      apk_url:
+        description: 'Direct download URL for Swift Backup APK (optional)'
+        required: false
+        type: string
+  repository_dispatch:
+    types: [swiftbackup-release]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  check-release:
+    name: Check Telegram Channel
+    runs-on: ubuntu-latest
+    outputs:
+      new_version_found: ${{ steps.check.outputs.new_version_found }}
+      version_code: ${{ steps.check.outputs.version_code }}
+      version_name: ${{ steps.check.outputs.version_name }}
+      doc_title: ${{ steps.check.outputs.doc_title }}
+      url: ${{ steps.check.outputs.url }}
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            tools/
+            app/src/main/java/io/github/s1ddhants1/swiftbackupprem/DexKit.kt
+          sparse-checkout-cone-mode: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Check Telegram Channel for New Release
+        id: check
+        run: |
+          chmod +x tools/fetch_telegram_release.py
+          python3 tools/fetch_telegram_release.py --check-only
+
+  scan-and-update:
+    name: Scan & Update Class Mappings
+    needs: check-release
+    if: needs.check-release.outputs.new_version_found == 'true' || github.event_name == 'workflow_dispatch' || github.event_name == 'repository_dispatch'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Python Dependencies
+        run: |
+          pip install --upgrade pip
+          pip install telethon
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '25'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Grant execute permissions for scripts
+        run: |
+          chmod +x gradlew
+          chmod +x tools/scan_swiftbackup.py
+          chmod +x tools/fetch_telegram_release.py
+
+      - name: Fetch and Scan Release
+        id: release_scanner
+        env:
+          TG_API_ID: ${{ secrets.TG_API_ID }}
+          TG_API_HASH: ${{ secrets.TG_API_HASH }}
+          TG_SESSION: ${{ secrets.TG_SESSION }}
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+          APK_URL: ${{ inputs.apk_url }}
+        run: |
+          if [ -n "$APK_URL" ]; then
+            echo "[*] Downloading custom APK from $APK_URL..."
+            curl -L -o /tmp/swiftbackup_input.apk "$APK_URL"
+            python3 tools/scan_swiftbackup.py --apk /tmp/swiftbackup_input.apk --update-code
+          else
+            echo "[*] Downloading and scanning release from Telegram..."
+            python3 tools/fetch_telegram_release.py --update-code
+          fi
+
+      - name: Verify Code Compilation & Unit Tests
+        run: |
+          git status
+          if [ -n "$(git status --porcelain app/src/main/java/io/github/s1ddhants1/swiftbackupprem/DexKit.kt)" ]; then
+            echo "[*] New mappings detected. Running test suite..."
+            ./gradlew testDebugUnitTest
+          else
+            echo "[*] No code changes detected. Skipping test execution."
+          fi
+
+      - name: Create Pull Request with New Class Mappings
+        uses: peter-evans/create-pull-request@v6
+        with:
+          commit-message: 'feat(targets): add class mappings for ${{ needs.check-release.outputs.doc_title || 'new Swift Backup release' }}'
+          title: 'feat(targets): add class mappings for ${{ needs.check-release.outputs.doc_title || 'new Swift Backup release' }}'
+          body: |
+            ### Automated Target Class Scanner Update
+            
+            This pull request was automatically triggered because a new unmapped release was detected on the [Swift Backup Updates Telegram Channel](https://t.me/swiftbackupupdates):
+            
+            - **Release**: `${{ needs.check-release.outputs.doc_title }}`
+            - **Version Code**: `${{ needs.check-release.outputs.version_code }}`
+            - **Telegram URL**: ${{ needs.check-release.outputs.url }}
+            
+            #### Automated Verification:
+            - Scanned multi-DEX classes with [tools/scan_swiftbackup.py](https://github.com/${{ github.repository }}/blob/main/tools/scan_swiftbackup.py).
+            - Injected new `VersionClasses` mapping in `DexKit.kt`.
+            - Added regression test assertions in `DexKitVersionMapTest.kt`.
+            - Ran `./gradlew testDebugUnitTest` — all unit tests passed cleanly.
+          branch: auto-update/swiftbackup-${{ needs.check-release.outputs.version_code || 'release' }}
+          delete-branch: true
+          labels: |
+            automated-pr
+            targets

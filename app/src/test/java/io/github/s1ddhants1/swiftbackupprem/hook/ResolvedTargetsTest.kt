@@ -65,9 +65,16 @@ class ResolvedTargetsTest {
         assertNull(targets.authRequestBuilderClass)
         assertNull(targets.appBackupClass)
         assertNull(targets.appMetadataXmlClass)
+        assertNull(targets.fireSynchronizerClass)
+        assertNull(targets.firebaseWatcherClass)
+        assertNull(targets.fireSynchronizerSuccessClass)
+        assertNull(targets.fireSynchronizerWriteSuccessClass)
+        assertNull(targets.fireSynchronizerCommittedClass)
+        assertNull(targets.customClassMapperClass)
         assertNull(targets.settingsFragmentClass)
         assertNull(targets.settingsDetailFragmentClass)
         assertNull(targets.baseSettingsFragmentClass)
+        assertNull(targets.rootServiceManagerClass)
         assertFalse(targets.isFullyResolved)
     }
 }
