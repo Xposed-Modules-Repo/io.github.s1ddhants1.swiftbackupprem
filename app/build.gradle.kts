@@ -91,6 +91,10 @@ android {
         versionName = appVersionName
     }
 
+    androidResources {
+        localeFilters += listOf("en")
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
@@ -123,17 +127,19 @@ android {
     packaging {
         resources {
             merges += "META-INF/xposed/*"
+            excludes += listOf(
+                "/META-INF/{AL2.0,LGPL2.1}",
+                "/META-INF/*.version",
+                "/META-INF/**/LICENSE*",
+                "/META-INF/**/NOTICE*",
+                "/META-INF/INDEX.LIST",
+                "/META-INF/DEPENDENCIES",
+                "/DebugProbesKt.bin",
+                "**/*.kotlin_builtins"
+            )
         }
     }
 }
-androidComponents {
-    onVariants(selector().all()) { variant ->
-        variant.outputs.forEach { output ->
-            output.outputFileName.set("SwiftBackupPrem_${appVersionName}-${variant.name}.apk")
-        }
-    }
-}
-
 androidComponents {
     onVariants(selector().all()) { variant ->
         variant.outputs.forEach { output ->
