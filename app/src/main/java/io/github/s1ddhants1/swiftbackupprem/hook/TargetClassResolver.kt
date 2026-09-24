@@ -344,9 +344,9 @@ object TargetClassResolver {
             if (cachePrefs != null && clientId != null && homeVm != null && authUser != null) {
                 cachePrefs.edit()
                     .putInt("cached_version_code", ver)
-                    .putString("clientId", clientId?.name)
-                    .putString("homeViewModel", homeVm?.name)
-                    .putString("authUser", authUser?.name)
+                    .putString("clientId", clientId.name)
+                    .putString("homeViewModel", homeVm.name)
+                    .putString("authUser", authUser.name)
                     .putString("anonUser", anonUser?.name)
                     .putString("oauthHelper", oauthHelper?.name)
                     .putString("authRequestBuilder", authRequestBuilder?.name)
