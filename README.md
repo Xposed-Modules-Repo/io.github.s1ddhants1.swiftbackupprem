@@ -1,27 +1,39 @@
-# ⚡ SwiftBackupPrem
+<div align="center">
+<img src="assets/icon.png" width="100" alt="SwiftBackupPrem Logo"/>
+<h1> SwiftBackupPrem </h1>
 
-<p align="center">
-  <b>An advanced Xposed / LSPosed module for <a href="https://play.google.com/store/apps/details?id=org.swiftapps.swiftbackup">Swift Backup</a> that unlocks Premium features and enables isolated, custom Firebase backend integration.</b>
-</p>
+<p>An advanced Xposed / LSPosed / LSPatch module for Swift Backup that unlocks Premium features, enables cloud backups for local accounts, and supports isolated personal Firebase backends.</p>
 
-<p align="center">
-  <a href="https://github.com/s1ddhants1/SwiftBackupPrem/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/s1ddhants1/SwiftBackupPrem/ci.yml?style=for-the-badge&logo=githubactions&logoColor=white&label=CI" alt="CI Status" /></a>
-  <a href="https://github.com/s1ddhants1/SwiftBackupPrem/releases"><img src="https://img.shields.io/github/v/release/s1ddhants1/SwiftBackupPrem?style=for-the-badge&color=6366f1&logo=android" alt="Release Version" /></a>
-  <a href="https://t.me/SwiftBackupPrem"><img src="https://img.shields.io/badge/Telegram-Join%20Chat-2CA5E0?style=for-the-badge&logo=telegram&logoColor=white" alt="Telegram Support Group" /></a>
-  <a href="https://github.com/s1ddhants1/SwiftBackupPrem/blob/main/LICENSE"><img src="https://img.shields.io/github/license/s1ddhants1/SwiftBackupPrem?style=for-the-badge&color=10b981" alt="License" /></a>
-  <img src="https://img.shields.io/badge/Android-8.1%2B%20(API%2027--37)-f59e0b?style=for-the-badge&logo=android" alt="Android API Support" />
-  <img src="https://img.shields.io/badge/Framework-LSPosed%20%2F%20Xposed-8b5cf6?style=for-the-badge" alt="Xposed / LSPosed" />
-  <img src="https://img.shields.io/badge/UI-Jetpack%20Compose%20M3-06b6d4?style=for-the-badge&logo=jetpackcompose" alt="Jetpack Compose Material 3" />
-</p>
+<a href="https://github.com/s1ddhants1/SwiftBackupPrem/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/s1ddhants1/SwiftBackupPrem/ci.yml?style=for-the-badge&logo=githubactions&logoColor=white&label=CI" alt="CI Status" /></a>
+<a href="https://github.com/s1ddhants1/SwiftBackupPrem/releases"><img src="https://img.shields.io/github/v/release/s1ddhants1/SwiftBackupPrem?style=for-the-badge&color=6366f1&logo=android" alt="Release Version" /></a>
+<a href="https://t.me/SwiftBackupPrem"><img src="https://img.shields.io/badge/Telegram-Join%20Chat-2CA5E0?style=for-the-badge&logo=telegram&logoColor=white" alt="Telegram Support Group" /></a>
+<a href="https://github.com/s1ddhants1/SwiftBackupPrem/blob/main/LICENSE"><img src="https://img.shields.io/github/license/s1ddhants1/SwiftBackupPrem?style=for-the-badge&color=10b981" alt="License" /></a>
+<img src="https://img.shields.io/badge/Android-8.1%2B%20(API%2027--37)-f59e0b?style=for-the-badge&logo=android" alt="Android API Support" />
+<img src="https://img.shields.io/badge/Framework-LSPosed%20%7C%20Xposed%20%7C%20LSPatch-8b5cf6?style=for-the-badge" alt="LSPosed / Xposed / LSPatch" />
+<img src="https://img.shields.io/badge/UI-Jetpack%20Compose%20M3-06b6d4?style=for-the-badge&logo=jetpackcompose" alt="Jetpack Compose Material 3" />
+
+</div>
 
 ---
 
 ## Table of Contents
 
 - [Features](#features)
-- [How it works](#how-it-works)
+  - [Core Features](#core-features)
+  - [Cloud & Migration Capabilities](#cloud--migration-capabilities)
+  - [Companion App & Usability](#companion-app--usability)
+- [How it Works](#how-it-works)
 - [Compatibility & Prerequisites](#compatibility--prerequisites)
 - [Installation & Activation](#installation--activation)
+  - [Method 1: Obtainium (Recommended)](#method-1-obtainium-recommended)
+  - [Method 2: Manual Download](#method-2-manual-download)
+  - [Rooted Activation (LSPosed / LibXposed)](#rooted-activation-lsposed--libxposed)
+  - [Rootless Setup (LSPatch)](#rootless-setup-lspatch)
+  - [Android TV / Leanback Devices](#android-tv--leanback-devices)
+- [Choosing Your Cloud Workflow](#choosing-your-cloud-workflow)
+- [Local Account Cloud Features Guide](#local-account-cloud-features-guide)
+  - [How It Works Under the Hood](#how-it-works-under-the-hood)
+  - [Encryption Keys & Custom UID](#encryption-keys--custom-uid)
 - [Custom Firebase Setup Guide](#custom-firebase-setup-guide)
   - [Why Use Your Own Firebase Instance?](#why-use-your-own-firebase-instance)
   - [Step 1: Create a Firebase Project](#step-1-create-a-firebase-project)
@@ -31,10 +43,11 @@
   - [Step 5: Enable Google Drive API & OAuth Scopes](#step-5-enable-google-drive-api--oauth-scopes)
   - [Step 6: Import or Enter Credentials in SwiftBackupPrem](#step-6-import-or-enter-credentials-in-swiftbackupprem)
 - [Migrating & Accessing Backups from Default Firebase](#migrating--accessing-backups-from-default-firebase)
-- [Backup Migration Hub](#backup-migration-hub)
-  - [Local Migrator (Decrypt & Re-encrypt Tool)](#local-migrator-decrypt--re-encrypt-tool)
-  - [Cloud Discovery & Injection](#cloud-discovery--injection)
+- [Backup Migration](#backup-migration)
+  - [Local Migrator (Decrypt, Convert & Re-encrypt)](#local-migrator-decrypt-convert--re-encrypt)
+  - [Universal Cloud Discovery & Snapshot Injection](#universal-cloud-discovery--snapshot-injection)
   - [Firebase Realtime Database Metadata Sync](#firebase-realtime-database-metadata-sync)
+- [LSPatch Rootless Integration & In-App Settings](#lspatch-rootless-integration--in-app-settings)
 - [Configuration Export & Migration](#configuration-export--migration)
 - [Building from Source](#building-from-source)
 - [Community & Support](#community--support)
@@ -46,34 +59,51 @@
 
 ## Features
 
-- **Premium Toggle & Unlocking**: Enables all Swift Backup Premium functionality without needing Google Play Store licensing.
-- **Disable Telemetry & Tracking**: Blocks Firebase Analytics, Crashlytics, Sessions, Installations, and Google DataTransport tracking calls for maximum privacy.
-- **Custom Firebase Backend**: Directs Swift Backup to use your personal Firebase instance for user authentication and cloud synchronization metadata.
-- **Local Backup Migrator & Re-encryptor**: On-device cryptographic engine to decrypt, repair missing metadata (`.xml`, `.extra`, `metadata.json`), switch encryption keys between Shared Anonymous Key and Custom Firebase UIDs, or export unencrypted portable archives (`.apk`, `.tar.gz`, `.json`).
-- **Universal Cloud Discovery & Snapshot Injection**: Multi-cloud scanner (Google Drive, OneDrive, Dropbox, Box, pCloud, S3, WebDAV / Nextcloud) that discovers cloud backups without prior database catalog state, injects synthetic Firebase `DataSnapshot` objects into the native restore UI, and synchronizes metadata to private Firebase RTDB.
-- **Google Drive Full OAuth Scope Expansion**: Upgrades runtime OAuth scopes from restricted `drive.file` to full `drive` access to discover backups across multiple accounts and past ROM installations.
+### Core Features
 
-### Additional features
+- **Unlocks Premium Features**: Unlocks all Swift Backup Premium features (batch operations, scheduling, cloud backups, app data backup/restore, custom folder backups) without requiring Google Play Store licensing checks.
+- **Privacy & Telemetry Suppression**: Blocks Firebase Analytics, Crashlytics, Sessions, Installations, and Google DataTransport calls to keep your backup operations private.
+- **Root & Rootless Environments**: Works in rooted environments (Magisk, KernelSU, APatch with LSPosed or Vector) and non-rooted environments via [JingMatrix/LSPatch](https://github.com/JingMatrix/LSPatch).
 
-- **Modern Material 3 UI**: Clean user interface built with Jetpack Compose, Material 3 design guidelines, edge-to-edge display, dynamic theme adaptation, and responsive layouts.
-- **Guided Custom Firebase Setup**: In-app Setup with 1-click clipboard helpers (package name, SHA-1 signing fingerprint) and helpful links to [Firebase](https://firebase.google.com/) and [Google Cloud](https://console.cloud.google.com/).
-- **One-Tap JSON Import**: Automatically parses and fills credentials directly from `google-services.json` files.
-- **Configuration Export & Import**: Easily backup or migrate your setup across devices using `sbp_config.json`.
-- **Quick Process Controls**: One-tap Root Force Stop and Launch shortcuts directly inside the app.
+### Cloud & Migration Capabilities
 
-## How it works
+- **Local Account Cloud Features (Zero-Firebase Mode)**: Enables cloud backup creation, cloud file uploads, and cloud backup restores for offline/local accounts without requiring a Google account or Firebase project. Intercepts Realtime Database calls to persist catalog metadata locally and to cloud providers directly, with optional Custom Encryption UID for backups.
+- **Universal Cloud Discovery & Snapshot Injection**: Multi-cloud scanner (Google Drive, Microsoft OneDrive, Dropbox, Box, pCloud, Amazon S3, WebDAV / Nextcloud / ownCloud) that discovers cloud backups without prior database records, injecting synthetic Firebase `DataSnapshot` objects directly into Swift Backup's native restore screens.
+- **Fast-Path Remote Discovery & Cloud Cache**: Caches catalog metadata locally for instant offline navigation across restore screens, and synchronizes canonical cache files to cloud remotes for instant discovery on new devices.
+- **Remote APK Manifest Parsing via HTTP Range Requests**: Uses `ApkRangeManifestParser` for cloud discovered backups to fetch only the remote APK ZIP Central Directory and parse `AndroidManifest.xml` via HTTP byte ranges in seconds, displaying exact app labels, package names, and version codes without downloading gigabytes of data.
+- **Google Drive Full OAuth Scope Expansion**: Upgrades runtime OAuth scopes from restricted `drive.file` to full `drive` access so Swift Backup can query and restore backups uploaded from other devices or Swift Backup accounts on different Firebase projects.
+- **Local Backup Migrator & Re-encryptor**: On-device cryptographic engine to decrypt archives, repair missing metadata, switch encryption keys (Shared Anonymous Key vs Custom Firebase UID), or export unencrypted portable archives (`.apk`, `.tar.gz`, `.json`).
 
-- **Dynamic DexKit Bytecode Scanning**: Utilizes [DexKit](https://github.com/LuckyPray/DexKit) to dynamically locate obfuscated classes and methods at runtime across versions, ensuring compatibility with newer app updates.
+### Companion App & Usability
+
+- **Modern Material 3 UI**: Clean user interface built with Jetpack Compose, Material 3 guidelines, dynamic color adaptation, and edge-to-edge support.
+- **Android TV / Leanback Support**: Features a custom Leanback banner, native D-pad focus traversal, and big-screen friendly layouts for Android TV devices.
+- **In-App Settings Integration**: When running in LSPatch Integrated Mode, module settings inject natively into Swift Backup's settings menu (**Settings → SwiftBackupPrem**).
+- **Guided Setup & 1-Tap Helpers**: In-app Setup Wizard with clipboard helpers (Package Name, SHA-1 signing fingerprint) and one-tap import for `google-services.json` files.
+- **Configuration Export & Import**: Export your active configuration to `sbp_config.json` and restore it instantly on fresh ROM installs or secondary devices.
+- **Quick Process Controls**: One-tap Root Force Stop and Launch shortcuts directly within the app.
+
+---
+
+## How it Works
+
+- **Dynamic DexKit Bytecode Scanning**: Utilizes [DexKit](https://github.com/LuckyPray/DexKit) to dynamically locate obfuscated classes, methods, and fields at runtime across versions, ensuring robust compatibility with newer app releases without requiring fragile hardcoded ProGuard symbols.
+- **Native JNI Protection**: Leverages a companion C native library (`libnativelib.so`) to intercept `JNI_OnLoad` calls, ensuring 16 KB kernel page-size alignment for Android 15+ devices.
+
+---
 
 ## Compatibility & Prerequisites
 
-| Requirement                 | Details                                                                                                                                                                                                                                                                                                 |
-| :-------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Root Solution**           | [Magisk](https://github.com/topjohnwu/Magisk), [KernelSU](https://github.com/tiann/KernelSU), or [APatch](https://github.com/bmax121/APatch)                                                                                                                                                            |
-| **Xposed / Hook Framework** | Modern [LibXposed](https://github.com/libxposed) (API 101 / 102+) compatible frameworks:<br>• [LSPosed](https://github.com/LSPosed/LSPosed) (v2.0.0+)<br>• [Vector](https://github.com/JingMatrix/Vector)<br>• LSPosed variants (LSPosed-Irena, etc)<br>• Other LibXposed-compliant ART hooking loaders |
-| **Android Version**         | Android 8.1 (API 27) up to Android 17 (API 37+)                                                                                                                                                                                                                                                         |
-| **Target Application**      | [Swift Backup](https://play.google.com/store/apps/details?id=org.swiftapps.swiftbackup) (`org.swiftapps.swiftbackup`)                                                                                                                                                                                   |
-| **Supported App Versions**  | v4.2.3, v4.2.5, v5.0.4, v5.1.0, and newer releases                                                                                                                                                                                                                                                      |
+| Requirement                 | Details                                                                                                                                                                                                                                                                                                                                              |
+| :-------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Root Solution**           | [Magisk](https://github.com/topjohnwu/Magisk), [KernelSU](https://github.com/tiann/KernelSU), or [APatch](https://github.com/bmax121/APatch)                                                                                                                                                                                                         |
+| **Rootless Solution**       | [LSPatch](https://github.com/JingMatrix/LSPatch) (Recommended: [JingMatrix fork](https://github.com/JingMatrix/LSPatch); supports both Manager Mode and Integrated Mode)                                                                                                                                                                             |
+| **Xposed / Hook Framework** | Modern [LibXposed](https://github.com/libxposed) (API 101 / 102+) compatible frameworks:<br>• [LSPosed](https://github.com/LSPosed/LSPosed) (v2.0.0+)<br>• [Vector](https://github.com/JingMatrix/Vector)<br>• LSPosed variants (LSPosed-Irena, etc.)<br>• [LSPatch](https://github.com/JingMatrix/LSPatch) (rootless loader; JingMatrix recommended) |
+| **Legacy Xposed Support**   | Available on the [`legacy`](https://github.com/s1ddhants1/SwiftBackupPrem/tree/legacy) branch for older Xposed frameworks (API 82–93 / EdXposed)                                                                                                                                                                                                     |
+| **Android Version**         | Android 8.1 (API 27) up to Android 17 (API 37+)                                                                                                                                                                                                                                                                                                      |
+| **Form Factors**            | Phones, Tablets, Foldables, and Android TV (Leanback)                                                                                                                                                                                                                                                                                                |
+| **Target Application**      | [Swift Backup](https://play.google.com/store/apps/details?id=org.swiftapps.swiftbackup) (`org.swiftapps.swiftbackup`)                                                                                                                                                                                                                                |
+| **Supported App Versions**  | v4.2.3 (561), v4.2.5 (569), v5.0.4 (590), v5.1.0 (620), and newer releases                                                                                                                                                                                                                                                                           |
 
 ---
 
@@ -97,18 +127,86 @@ https://github.com/s1ddhants1/SwiftBackupPrem
 
 ### Method 2: Manual Download
 
-1. **Download**: Grab the latest APK from the [Releases](https://github.com/s1ddhants1/SwiftBackupPrem/releases) page.
-2. **Install**: Install the APK on your rooted Android device.
+1. Download the latest APK from the [Releases](https://github.com/s1ddhants1/SwiftBackupPrem/releases) page.
+2. Install the APK on your device.
 
 ---
 
-### Module Activation (LSPosed / LibXposed)
+### Rooted Activation (LSPosed / LibXposed)
 
 1. Open **LSPosed Manager** (or your active LibXposed framework manager).
 2. Navigate to the **Modules** tab and tap **SwiftBackupPrem**.
 3. Toggle **Enable module**.
 4. Ensure the scope includes **Swift Backup** (`org.swiftapps.swiftbackup`).
-5. Open the **SwiftBackupPrem** app to configure custom Firebase credentials (recommended) or launch Swift Backup directly.
+5. Force stop Swift Backup or reboot your device.
+6. Open **SwiftBackupPrem** to configure your preferred cloud mode (see [Choosing Your Cloud Workflow](#choosing-your-cloud-workflow)).
+
+---
+
+### Rootless Setup (LSPatch)
+
+SwiftBackupPrem fully supports rootless installation via [LSPatch](https://github.com/JingMatrix/LSPatch):
+
+- **Manager Mode**:
+  1. Patch Swift Backup with LSPatch in **Manager Mode**.
+  2. Install SwiftBackupPrem APK as a separate companion application.
+  3. Enable SwiftBackupPrem in LSPatch Manager under Swift Backup's module list.
+- **Integrated Mode (Standalone APK)**:
+  1. Patch Swift Backup with LSPatch in **Integrated Mode**, selecting the SwiftBackupPrem APK as an embedded module.
+  2. Install the patched Swift Backup APK.
+  3. Module settings will appear natively inside Swift Backup under **Settings → SwiftBackupPrem**! (No manager app required).
+
+---
+
+### Android TV / Leanback Devices
+
+SwiftBackupPrem includes native Android TV metadata:
+
+- Sideload the APK onto your Android TV or Google TV box via ADB or a file manager.
+- The app appears directly on your Leanback home screen launcher with a dedicated banner.
+- All interface controls, tabs, and buttons are navigable via the standard D-pad remote control.
+
+---
+
+## Choosing Your Cloud Workflow
+
+SwiftBackupPrem provides two ways to manage cloud backups. Pick the workflow that fits your needs:
+
+- **[Workflow A: Local Account Cloud Features](#local-account-cloud-features-guide)**  
+  Use Swift Backup with a **Local Account** (no Google Sign-In). Enables full cloud backup creation, file uploads, and restores across any supported provider (WebDAV, Nextcloud, S3, OneDrive, Google Drive, etc.) with **zero Firebase or Google Cloud setup**.
+
+- **[Workflow B: Custom Firebase Backend](#custom-firebase-setup-guide)**  
+  Connect your own personal Firebase project to sign in with your **Google Account**. Ideal if you want backups linked to your Google identity and want metadata persisted to your private Realtime Database.
+
+---
+
+## Local Account Cloud Features Guide
+
+Swift Backup normally restricts cloud storage and cloud backups to users signed in with a Google account via Firebase. Selecting "Local Account" disables cloud access.
+
+**Local Account Cloud Features** completely removes this restriction, enabling full cloud backup creation, cloud file uploads, and cloud backup restores for offline and local accounts.
+
+### Quick Setup
+
+1. Open **Swift Backup** and choose **Local Account** (skip Google Sign-In).
+2. Open **SwiftBackupPrem** and toggle on **Local Account Cloud Features**.
+3. _(Optional)_ Under **Encryption Key**, select **Shared Anonymous Key** (offline-restorable on any device) or **Custom Key** (enter any custom UID).
+4. Return to **Swift Backup** > **Settings** > **Cloud Storage** and configure your cloud provider (WebDAV, Nextcloud, OneDrive, Dropbox, Box, pCloud, S3, or Google Drive).
+5. Perform backups, view cloud sync, and restore directly!
+
+### How It Works Under the Hood
+
+- **Identity Spoofing**: `LocalCloudUnlockHook` transparently intercepts `isAnonymous()` calls during cloud operations, making Swift Backup recognize the local user as fully authorized.
+- **Database Virtualization**: `CloudDatabaseManager` virtualizes Firebase Realtime Database reads and writes in memory and keeps a canonical cache at `/sdcard/SwiftBackup/cloud_discovered_cache.json`.
+- **Direct Cloud Uploads**: Application metadata manifests are automatically written and synchronized directly to your connected cloud storage remotes.
+- **Dialog Suppression**: `FirebaseConnectionWatcher` intercepts backend connectivity loops and suppresses network error dialogs.
+
+### Encryption Keys & Custom UID
+
+Swift Backup encrypts backup data using Facebook Conceal (AES-256-GCM) keyed to the account UID:
+
+- **Shared Anonymous Key (`d58b0944415a4889d7f11aa95fbeca50`)**: Standard anonymous key that stores backups under account folder hash `8690a48a4fcc72f1`. These backups can be restored offline on any device running Swift Backup.
+- **Custom Key**: Enter a custom string or UID. The hook sets your custom UID into memory so that encryption key derivation (`deriveConcealKey`) and directory hashes (`computeAccountHash`) match your private key.
 
 ---
 
@@ -116,7 +214,7 @@ https://github.com/s1ddhants1/SwiftBackupPrem
 
 ### Why Use Your Own Firebase Instance?
 
-By default, Swift Backup authenticates against the app developer's Firebase project. If the developer blocks or bans your account on their Firebase instance then access to the account will be revoked and you will not be able to restore your backups.
+By default, Swift Backup authenticates against the app developer's Firebase project. If the developer blocks or bans your account on their Firebase instance, access to the account will be revoked, and you will not be able to restore your backups.
 
 Connecting your own personal Firebase project gives you complete isolation, ensures data privacy, and prevents remote bans.
 
@@ -226,13 +324,13 @@ Connecting your own personal Firebase project gives you complete isolation, ensu
 1. In Firebase Console, go to the **Project Overview** page from the sidebar.
 2. Under "Select a platform to get started", click the **Android** icon (Add app).
 3. Enter the package details:
-   - **Android package name**: `org.swiftapps.swiftbackup` _(or tap "Copy Package" in SwiftBackupPrem custom firebase setup screen)_
+   - **Android package name**: `org.swiftapps.swiftbackup` _(or tap "Copy Package" in SwiftBackupPrem's Custom Firebase setup screen)_
    - **App Nickname**: `SwiftBackupPersonal` _(or any name you like)_
 4. Click **Register app**.
 5. Click **Download google-services.json** to save the configuration file.
 6. Click **Next** through the remaining setup steps, then click **Continue to console**.
 7. On the Project Overview page, click the newly registered app card and select the **Gear icon (Project Settings)**.
-8. Scroll down to the **Your apps** section, click **Add fingerprint**, paste your **SHA-1 fingerprint** _(tap "Copy Fingerprint" in the custom firebase setup screen from the module)_, and click **Save**.
+8. Scroll down to the **Your apps** section, click **Add fingerprint**, paste your **SHA-1 fingerprint** _(tap "Copy Fingerprint" in the Custom Firebase setup screen in the module)_, and click **Save**.
 9. _(Optional)_ Click the **Data privacy** tab on Project Settings and uncheck **Firebase Service Data Sharing**.
 
 <details>
@@ -265,10 +363,11 @@ Connecting your own personal Firebase project gives you complete isolation, ensu
 1. Open the Google Cloud API Credentials Console by clicking **View in Google Cloud** on the Firebase Project Settings page.
 2. Ensure your Firebase / Google Cloud project is selected in the top project dropdown.
 3. In the sidebar, navigate to **APIs & Services > Credentials**.
-4. Under **OAuth 2.0 Client IDs**, edit the auto-generated **Android client for org.swiftapps.swiftbackup**
+4. Under **OAuth 2.0 Client IDs**, edit the auto-generated **Android client for org.swiftapps.swiftbackup**.
 5. Under **Advanced settings**, check **Enable custom URI scheme** (click **Yes** in the confirmation popup).
 6. Click **Save**.
 7. Copy the generated **Client ID** string (e.g., `xxxxxxxxxxxx-xxxxxxxxxxxxxxxx.apps.googleusercontent.com`).
+
 <details>
 <summary>View Google Cloud OAuth Client Screenshots</summary>
 <br>
@@ -315,7 +414,7 @@ If you plan to use Google Drive for cloud backups:
 ### Step 6: Import or Enter Credentials in SwiftBackupPrem
 
 1. Open **SwiftBackupPrem** on your device.
-2. Enable **Custom firebase app**.
+2. Enable **Custom Firebase app**.
 3. Choose either method:
    - **Method A (Automatic)**: Tap **Import google-services.json** and pick the downloaded JSON file. Then paste your **OAuth Client ID** into the Client ID field.
    - **Method B (Manual Wizard)**: Follow the guided setup in the app to review and confirm all fields.
@@ -333,17 +432,17 @@ If you plan to use Google Drive for cloud backups:
 
 ## Migrating & Accessing Backups from Default Firebase
 
-Install Swift Backup with default Firebase and login to pull your UID from `/data/data/org.swiftapps.swiftbackup/shared_prefs/com.google.firebase.auth.api.Store.*.xml`:
+Install Swift Backup with the default Firebase configuration and log in to pull your UID from `/data/data/org.swiftapps.swiftbackup/shared_prefs/com.google.firebase.auth.api.Store.*.xml`:
 
 ```bash
 su -c 'grep -o "GET_TOKEN_RESPONSE\.[^\"]*" /data/data/org.swiftapps.swiftbackup/shared_prefs/com.google.firebase.auth.api.Store.*.xml | cut -d. -f2'
 ```
 
 > [!IMPORTANT]
-> If your account has been banned by the developer of SwiftBackup then you will not be able to fetch your UID if you uninstalled the app post ban as the /data/data/org.swiftapps.swiftbackup/shared_prefs/ directory will be deleted and hence all the cloud backups are not decryptable and thus lost.
-> This is the only way to fetch your UID so don't uninstall the app until you have your UID saved safely somewhere.
+> If your account has been banned by the developer of Swift Backup, you will not be able to fetch your UID if you uninstalled the app after the ban, as the `/data/data/org.swiftapps.swiftbackup/shared_prefs/` directory will be deleted. Without this UID, cloud backups cannot be decrypted and will be permanently lost.
+> This is the only way to fetch your UID, so do not uninstall the app until you have your UID saved safely somewhere.
 
-### Verify UID with Backups (optional)
+### Verify UID with Backups (Optional)
 
 Swift Backup takes the MD5 hash of your Firebase UID and uses the first 16 characters for the folder name:
 
@@ -356,7 +455,7 @@ or in case of cloud folder: `Swift Backup (example16char)`
 
 ---
 
-### Create the User with this UID in your Custom Firebase Project
+### Create the User with this UID in Your Custom Firebase Project
 
 1. Install Firebase tools using your preferred package manager (e.g., via Node.js):
 
@@ -385,7 +484,7 @@ or in case of cloud folder: `Swift Backup (example16char)`
    }
    ```
 
-4. View your Project ID
+4. View your Project ID:
 
    ```bash
    firebase projects:list
@@ -397,22 +496,22 @@ or in case of cloud folder: `Swift Backup (example16char)`
    firebase auth:import users.json --project exampleprojectID
    ```
 
-6. Re-login in Swift Backup.
+6. Log in again to Swift Backup.
 
 ---
 
-## Backup Migration Hub
+## Backup Migration
 
-SwiftBackupPrem features a powerful, built-in **Backup Migration Hub** (accessible by tapping **Open Migrator** on the **Backup Migration** card from the main screen).
+SwiftBackupPrem features a powerful, built-in **Backup Migration Tool** (accessible by tapping the **Backup Migration** card from the main screen).
 
-The Hub bridges the gap between different Firebase environments and cloud storage configurations through two dedicated tabs:
+The Migration Tool bridges the gap between different Firebase environments and cloud storage configurations through two dedicated tabs:
 
 1. **Local Migration**: An on-device cryptographic and metadata reconstruction tool to decrypt, convert, and re-encrypt existing backup folders across different Firebase UIDs, anonymous keys, or unencrypted portable formats.
 2. **Cloud Discovery & Injection**: A runtime hooking and scanning engine that discovers backups across diverse cloud providers (Google Drive, OneDrive, Dropbox, Box, pCloud, S3, WebDAV / Nextcloud) and injects them directly into Swift Backup's restore screens without requiring prior database records.
 
 ---
 
-### Local Migrator (Decrypt & Re-encrypt Tool)
+### Local Migrator (Decrypt, Convert & Re-encrypt)
 
 Swift Backup encrypts application data (`.dat`, `.extdat`, `.med`), system payloads, and directory archives (`folder-base.fld`) using Facebook Conceal (AES-256-GCM + Zstandard compression) keyed against the user's active Firebase UID. If you switch to a custom Firebase backend, set up a new account, or recover backups after being banned from the official backend, the encryption key changes—making older backups unreadable by the new account.
 
@@ -421,7 +520,7 @@ The **Local Migrator** resolves this entirely on-device without requiring intern
 #### 4-Step Migration Workflow
 
 1. **Step 1: Source Folder**
-   - Enter the path to your existing backup directory or tap the folder icon to select it via the system Document Tree picker (e.g. `/sdcard/Download/SwiftBackup` or `/sdcard/SwiftBackup/accounts/<oldHash>/`).
+   - Enter the path to your existing backup directory or tap the folder icon to select it via the system Document picker.
    - The engine recursively walks the directory tree (up to 20 levels deep) to identify all app backup directories (containing `.app`, `.apk`, `.dat`, `.splits`, `.extdat`, `.med`, `.xml`, or `.extra`) and folder backups (starting with `Folder-` or containing `folder-base.*` / `metadata.json`).
 
 2. **Step 2: Decryption Key (Source UID)**
@@ -431,9 +530,9 @@ The **Local Migrator** resolves this entirely on-device without requiring intern
 
 3. **Step 3: Target Encryption Mode**
    Choose how you want the migrated backups to be packaged:
-   - **Shared Anonymous Key (Recommended)**: Re-encrypts archives using Swift Backup's static anonymous key. Output is stored under account hash `8690a48a4fcc72f1` and can be restored immediately in Swift Backup **offline without logging into any Firebase account**.
-   - **Custom Firebase UID**: Re-encrypts archives specifically for your custom Firebase project UID. Ideal if you want backups linked to your logged-in Google account.
-   - **Unencrypted Backups**: Strips AES-256-GCM Conceal encryption completely from data slices (`.dat`, `.extdat`, `.med`, `folder-base.fld`), keeping Swift Backup's directory layout and generating plaintext `.xml` metadata.
+   - **Shared Anonymous Key (Recommended)**: Re-encrypts archives using Swift Backup's static anonymous key. Output can be restored in Swift Backup **offline without logging into any Firebase account**.
+   - **Custom Firebase UID**: Re-encrypts archives specifically for your custom Firebase project UID.
+   - **Unencrypted Backups**: Strips AES-256-GCM Conceal encryption completely from data slices and keeps Swift Backup's directory layout.
      - **Portable Formats Checkbox**: When Unencrypted mode is active, check **Convert to standard portable formats (.apk, .tar.gz, .json)** to extract standard standalone files into `ExtractedBackups/`:
        - `.app` / `.apk` &rarr; `<packageName>.apk`
        - `.splits` &rarr; `<packageName>_splits.tar`
@@ -455,7 +554,7 @@ The **Local Migrator** resolves this entirely on-device without requiring intern
      - `SwiftBackup/accounts/<accountHash>/backups/apps/local/<packageName>/<backupId>/`
      - `SwiftBackup/accounts/<accountHash>/backups/folders/local/<folderName>/`
    - Tap **Start Migration**. The screen displays real-time progress indicators (item count, percentage bar, and current package), along with live execution logs.
-   - **Metadata Reconstruction**: If original `.xml` metadata is missing, the engine automatically extracts metadata from the APK manifest (`versionCode`, `versionName`, app label) and decrypts the `.extra` payload for SSAID, permission states, and notification policy settings.
+   - **Metadata Reconstruction**: If the original `.xml` metadata is missing, the engine automatically extracts metadata from the APK manifest (`versionCode`, `versionName`, app label) and decrypts the `.extra` payload for SSAID, permission states, and notification policy settings.
 
 > [!NOTE]
 > **Storage Permission Notice**  
@@ -463,14 +562,17 @@ The **Local Migrator** resolves this entirely on-device without requiring intern
 
 ---
 
-### Cloud Discovery & Injection
+### Universal Cloud Discovery & Snapshot Injection
 
 Swift Backup normally depends strictly on Firebase Realtime Database (RTDB) records to discover and list cloud backups. If an RTDB record is missing (such as when using a Custom Firebase backend, restoring after an account ban, or restoring across devices), Swift Backup cannot see the backups stored in your cloud, even if the files exist in your cloud drive.
 
-The **Cloud Discovery & Injection** suite bypasses this limitation entirely. Running at the Xposed hook layer, it actively scans configured cloud storage remotes, extracts metadata on the fly, and injects synthetic snapshots into Swift Backup's runtime memory.
+The **Cloud Discovery & Injection** option bypasses this limitation entirely. It scans configured cloud storage remotes, extracts metadata on the fly, and injects snapshots into Swift Backup's runtime memory.
 
-> [!IMPORTANT]
-> All Cloud Discovery and Sync features require **Custom Firebase App** to be enabled in SwiftBackupPrem settings.
+> [!TIP]
+> Cloud Discovery & Snapshot Injection is functional in **both** setup modes:
+>
+> 1. **Local Account Cloud Features**: Works completely offline with zero Firebase setup.
+> 2. **Custom Firebase App**: Works alongside your private Firebase instance.
 
 #### 1. Google Drive Full OAuth Scope Expansion
 
@@ -487,17 +589,17 @@ The **Cloud Discovery & Injection** suite bypasses this limitation entirely. Run
 
 #### 2. Universal Cloud Discovery
 
-When **Universal Cloud Discovery** is toggled on, SwiftBackupPrem deploys native cloud scanners across all connected remote storage providers supported by Swift Backup:
+When **Universal Cloud Discovery** is toggled on, SwiftBackupPrem scans across all connected remote storage providers supported by Swift Backup:
 
-| Provider                          | Scanner Details & Capabilities                                                                                                                    |
-| :-------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Google Drive**                  | Scans Swift Backup root directories, resolves file IDs, and parses nested app directories via Google Drive API v3.                                |
-| **Microsoft OneDrive**            | Restricts scans to validated Swift Backup root folders, encodes relative paths, and handles batch Graph API pagination with HTTP range downloads. |
-| **Dropbox**                       | Queries Dropbox API v2 endpoints to map application and folder backup hierarchies.                                                                |
-| **Box**                           | Traverses Box storage trees using the Box REST API v2.                                                                                            |
-| **pCloud**                        | Inspects cloud archives and directory trees via pCloud REST APIs.                                                                                 |
-| **Amazon S3 / S3-Compatible**     | Scans buckets using AWS S3 API (supports MinIO, Wasabi, Backblaze B2, Ceph, etc.).                                                                |
-| **WebDAV / Nextcloud / ownCloud** | Uses WebDAV XML `PROPFIND` queries to traverse remote directories and discover backup slices.                                                     |
+| Provider                          | Scanner Details & Capabilities                                                                                                       |
+| :-------------------------------- | :----------------------------------------------------------------------------------------------------------------------------------- |
+| **Google Drive**                  | Scans Swift Backup root directories, resolves file IDs, and parses nested app directories via Google Drive API v3.                   |
+| **Microsoft OneDrive**            | Scans Swift Backup root folders, encodes relative paths, and handles batch Microsoft Graph API pagination with HTTP range downloads. |
+| **Dropbox**                       | Scans Dropbox API v2 endpoints to map application and folder backup hierarchies.                                                     |
+| **Box**                           | Scans Box storage trees using the Box REST API v2.                                                                                   |
+| **pCloud**                        | Scans cloud archives and directory trees via pCloud REST APIs.                                                                       |
+| **Amazon S3 / S3-Compatible**     | Scans buckets using AWS S3 API (supports MinIO, Wasabi, Backblaze B2, Ceph, etc.).                                                   |
+| **WebDAV / Nextcloud / ownCloud** | Uses WebDAV XML `PROPFIND` queries to traverse remote directories and discover backup slices. |
 
 ##### Supported Cloud Components:
 
@@ -511,9 +613,9 @@ To display accurate app titles, package names, and version codes without downloa
 
 #### 3. Realtime DB Snapshot Injection
 
-The module includes an in-memory **Firebase Snapshot Synthesizer** (`FirebaseSnapshotSynthesizer`):
+The module includes an in-memory **Firebase Snapshot Synthesizer**:
 
-- Hooks into Swift Backup's internal Firebase queries and DataSnapshot handlers (`AppCloudBackups.fromSnapshot`, single-app details listeners, batch cloud restore loaders, app filter helpers, cloud sync tab, and folder loaders).
+- Hooks into Swift Backup's internal Firebase queries and `DataSnapshot` handlers (single-app details listeners, batch cloud restore loaders, app filter helpers, cloud sync tab, and folder loaders).
 - Synthesizes live `DataSnapshot` objects formatted identically to native RTDB entries under the `cloud_v1` hierarchy.
 - **Result**: Discovered cloud backups appear immediately in:
   - **Single App Details** (with all restorable parts: APK, Data, Ext Data, Splits)
@@ -547,15 +649,37 @@ While Snapshot Injection dynamically provides in-memory restore entries, you can
   _(where `<provider_key>` is resolved in the format `<provider> (<sanitized_email>)`)_.
 - **Smart Deduplication**: Before writing, the sync engine queries your existing RTDB `cloud_v1` tree to skip existing records and avoid redundant write operations.
 - **Token Resolution & Authentication**: Automatically resolves Firebase Auth ID tokens from Swift Backup's OAuth session or exchanged refresh tokens, ensuring secure authenticated database writes.
-- **Legacy Cleanup**: Automatically purges any obsolete `/users/<UID>/backups` node left over from older implementations.
 - **Sync Now Button**: Tap the **Sync Now** button inside the Cloud Discovery tab to trigger an immediate full sync of all local and cloud metadata records.
+
+---
+
+## LSPatch Rootless Integration & In-App Settings
+
+SwiftBackupPrem provides complete, first-class support for rootless setups using [LSPatch](https://github.com/JingMatrix/LSPatch) (the actively maintained **[JingMatrix/LSPatch](https://github.com/JingMatrix/LSPatch)** fork is recommended):
+
+### 1. In-App Settings Injection (Integrated Mode)
+
+When patched using LSPatch's **Integrated Mode**, SwiftBackupPrem's hook engine embeds directly into Swift Backup:
+
+- **Native Settings Menu**: Module preferences are injected into Swift Backup's settings hierarchy under **Settings → SwiftBackupPrem**.
+- **Streamlined Experience**: You can toggle Premium Features, Telemetry Suppression, Local Account Cloud Features, and Custom Firebase directly inside Swift Backup without needing an external manager app.
+
+### 2. Root Service Fix (`RootServiceFixHook`)
+
+Under LSPatch, root daemon processes launched by `libsu` (`RootService`) for SBA root backups would normally crash (`SIGABRT` / `GetObjectField(null)` in `liblspatch.so`) because bare daemon processes lack Android `Application` and `ActivityThread` contexts.
+
+SwiftBackupPrem solves this transparently:
+
+- Intercepts root process startup tasks and wraps execution in an isolated Linux mount namespace (`unshare -m`).
+- Inside the private namespace, it bind-mounts the original, unpatched APK over the patched wrapper.
+- Root SBA backup and restore daemons start and bind cleanly with zero LSPatch crashes.
 
 ---
 
 ## Configuration Export & Migration
 
 - **Export Config**: Tap the top-right menu (⋮) > **Export Config** to save your active configuration to a JSON file (`sbp_config.json`).
-- **Import Config**: On a new device or fresh ROM install, tap **Import Config** to restore your settings in a single click.
+- **Import Config**: Tap **Import Config** to restore your settings in a single tap on a new device or fresh ROM install.
 
 ---
 
@@ -563,9 +687,9 @@ While Snapshot Injection dynamically provides in-memory restore entries, you can
 
 ### Prerequisites
 
-- Adoptium Eclipse Temurin 25 (or JDK 17+)
+- JDK 17+ (e.g. Adoptium Eclipse Temurin 17 or 25)
 - Android SDK with Platform 37 (`compileSdk 37`)
-- Android NDK (`25.1.8937393` or higher) & CMake `3.22.1+`
+- Android NDK (`29.0.14206865` or higher) & CMake `3.22.1+`
 
 ### Build Steps
 
@@ -576,24 +700,36 @@ While Snapshot Injection dynamically provides in-memory restore entries, you can
    cd SwiftBackupPrem
    ```
 
-2. Build debug APK:
+2. Run unit tests:
+
+   ```bash
+   ./gradlew testDebugUnitTest
+   ```
+
+3. Build debug APK:
 
    ```bash
    ./gradlew assembleDebug
    ```
 
-3. Build optimized release APK:
+4. Build optimized release APK:
+
    ```bash
    ./gradlew assembleRelease
    ```
 
-The built APK will be located in `app/build/outputs/apk/release/app-release.apk`.
+The compiled APK will be located in `app/build/outputs/apk/release/app-release.apk`.
+
+### Branch Structure
+
+- **[`main`](https://github.com/s1ddhants1/SwiftBackupPrem/tree/main)**: Modern LibXposed (API 101/102+) implementation for LSPosed v2.0.0+, Vector, and LSPatch.
+- **[`legacy`](https://github.com/s1ddhants1/SwiftBackupPrem/tree/legacy)**: Classic Xposed API implementation for older Android environments (EdXposed / classic Xposed).
 
 ---
 
 ## Community & Support
 
-Join the official Telegram group for discussion, support, release updates, and assistance with Custom Firebase configuration:
+Join the official Telegram group for discussion, support, release updates, and assistance:
 
 <p align="center">
   <a href="https://t.me/SwiftBackupPrem">
@@ -608,6 +744,26 @@ Join the official Telegram group for discussion, support, release updates, and a
 ---
 
 ## Frequently Asked Questions (FAQ)
+
+<details>
+<summary><b>Q: Do I need to set up Firebase if I only want cloud backups?</b></summary>
+<p><b>No!</b> Simply enable <b>Local Account Cloud Features</b> in SwiftBackupPrem and choose <b>Local Account</b> in Swift Backup. You can then connect your cloud storage provider (WebDAV, Nextcloud, OneDrive, Dropbox, Box, pCloud, S3, etc.) and perform cloud backups and restores completely offline with <b>zero Firebase configuration</b>.</p>
+</details>
+
+<details>
+<summary><b>Q: What is the difference between Local Account Cloud Features and Custom Firebase App?</b></summary>
+<p><b>Local Account Cloud Features</b> is designed for offline/local accounts without sign-in, virtualizing Realtime Database records locally and on your cloud drive. <b>Custom Firebase App</b> is for users who want to sign in with their Google account inside Swift Backup, expand Google Drive OAuth scopes to full access (restoring across previous ROMs), and sync catalog records to their private Firebase Realtime Database.</p>
+</details>
+
+<details>
+<summary><b>Q: How do I use SwiftBackupPrem with LSPatch (Rootless)?</b></summary>
+<p>We recommend using the actively maintained <b><a href="https://github.com/JingMatrix/LSPatch">JingMatrix/LSPatch</a></b> fork (as the original repository is archived). You can use either <b>Manager Mode</b> or <b>Integrated Mode</b>. In Manager Mode, patch Swift Backup with LSPatch and keep SwiftBackupPrem installed as a companion app. In Integrated Mode, embed SwiftBackupPrem directly into the patched APK; module settings will be accessible directly inside Swift Backup under <b>Settings → SwiftBackupPrem</b>.</p>
+</details>
+
+<details>
+<summary><b>Q: Can I use SwiftBackupPrem on Android TV?</b></summary>
+<p><b>Yes!</b> SwiftBackupPrem includes a native Android TV Leanback banner and full D-pad focus traversal. You can sideload the APK onto your Android TV or Google TV box and launch it directly from the TV home screen.</p>
+</details>
 
 <details>
 <summary><b>Q: I see "LSPosed Module Not Enabled" in the app.</b></summary>
@@ -643,7 +799,7 @@ Join the official Telegram group for discussion, support, release updates, and a
 
 <details>
 <summary><b>Q: Google Drive shows "Google hasn't verified this app" during sign-in.</b></summary>
-<p>This is expected. When <b>Google Drive Full Access &amp; Cloud Restore</b> is enabled, the module requests the full <code>https://www.googleapis.com/auth/drive</code> scope so Swift Backup can discover and rebuild backups created across past accounts or ROM installs.</p>
+<p>This is expected. When <b>Google Drive Full OAuth Scope</b> is enabled, the module requests the full <code>https://www.googleapis.com/auth/drive</code> scope so Swift Backup can discover and rebuild backups created across past accounts or ROM installs.</p>
 <p>Because your Google Cloud project is personal and unverified, Google shows a standard security notice. Click <b>Advanced > Go to Swift Backup (unsafe)</b> to proceed.</p>
 </details>
 
@@ -656,7 +812,7 @@ Join the official Telegram group for discussion, support, release updates, and a
 <details>
 <summary><b>Q: I uninstalled or wiped Swift Backup after being banned. Can I still recover my old backups?</b></summary>
 <p>Unfortunately, <b>no</b>. When you uninstall or clear data for Swift Backup, the local <code>/data/data/org.swiftapps.swiftbackup/shared_prefs/</code> directory containing the cached Firebase authentication token is deleted. Because the official server has disabled your account, you cannot log in to retrieve the original UID. Without the original UID key, the AES-256-GCM encrypted data cannot be decrypted.</p>
-<p><i>Recommendation: Always backup your Firebase UID or export your SwiftBackupPrem configuration (<code>sbp_config.json</code>) to safe storage.</i></p>
+<p><i>Recommendation: Always back up your Firebase UID or export your SwiftBackupPrem configuration (<code>sbp_config.json</code>) to safe storage.</i></p>
 </details>
 
 <details>
@@ -669,24 +825,23 @@ Join the official Telegram group for discussion, support, release updates, and a
 <p>Ensure you run <code>firebase projects:list</code> to obtain your exact <b>Project ID</b> (not the display name). Use:</p>
 <pre><code class="language-bash">firebase auth:import users.json --project YOUR_PROJECT_ID
 </code></pre>
-<p>Alternatively, you can create the user using the Firebase Admin Python SDK script provided in the Migration Guide.</p>
 </details>
 
 <details>
-<summary><b>Q: Why do uninstalled apps show as package names (e.g. <code>com.whatsapp</code>) or missing icons during Cloud Restore?</b></summary>
+<summary><b>Q: Why do uninstalled apps show as package names or missing icons during Cloud Restore?</b></summary>
 <p>When backups are indexed directly from cloud metadata for apps not currently installed on your device, Swift Backup falls back to displaying the package identifier recorded in the backup headers. Once restored or installed locally, Android resolves the full display name and application icon normally.</p>
 </details>
 
 <details>
-<summary><b>Q: How do I access and use the Backup Migration Hub?</b></summary>
-<p>SwiftBackupPrem includes a built-in <b>Backup Migration Hub</b> (accessible via the <b>Backup Migration</b> card on the main screen by tapping <b>Open Migrator</b>):</p>
+<summary><b>Q: How do I access and use the Backup Migration Tool?</b></summary>
+<p>SwiftBackupPrem includes a built-in <b>Backup Migration Tool</b> (accessible via the <b>Backup Migration</b> card on the main screen by tapping <b>Open Migrator</b>):</p>
 <ul>
   <li><b>Local Migration Tab:</b> Decrypts existing backup folders with your source Firebase UID, rebuilds missing metadata, supports 3 destination encryption modes (Shared Anonymous Key, Custom Firebase UID, or Unencrypted Backups with optional portable extraction), and re-encrypts or extracts them for offline or new account restore.</li>
   <li><b>Cloud Discovery &amp; Injection Tab:</b> Provides granular controls for:
     <ul>
       <li><b>Google Drive Full OAuth Scope:</b> Dynamically expands OAuth scopes to <code>auth/drive</code> to discover backups created across accounts or past ROMs.</li>
       <li><b>Universal Cloud Discovery:</b> Scans and indexes backups across Google Drive, OneDrive, Dropbox, Box, pCloud, S3, and WebDAV / Nextcloud.</li>
-      <li><b>Realtime DB Snapshot Injection:</b> Injects discovered cloud backups directly into Swift Backup restore lists on the fly via synthetic DataSnapshots.</li>
+      <li><b>Realtime DB Snapshot Injection:</b> Injects discovered cloud backups directly into Swift Backup restore lists on the fly via synthetic <code>DataSnapshot</code> objects.</li>
       <li><b>Sync Metadata to Custom Firebase:</b> Pushes reconstructed local and discovered cloud backup metadata directly into your private Firebase Realtime Database (<code>cloud_v1</code> hierarchy).</li>
       <li><b>Cloud Discovery Cache:</b> Manages the local discovery cache for fast offline access, with a 1-tap Clear Cache button.</li>
     </ul>
@@ -695,8 +850,8 @@ Join the official Telegram group for discussion, support, release updates, and a
 </details>
 
 <details>
-<summary><b>Q: Does Cloud Backup Restore support Call Logs, SMS, Wallpapers, WiFi networks, and Folders?</b></summary>
-<p>Yes. The Cloud Discovery and Backup Rebuilder engine indexes and restores Call Logs (<code>.cls</code>), SMS messages (<code>.msg</code>), Wallpapers (<code>.wal</code>/<code>.wal.png</code>), WiFi configurations (<code>.wfi</code>), and Folder backups (<code>.fld</code>/<code>.flm</code>) alongside full application archives (<code>.app</code>, <code>.dat</code>, <code>.splits</code>, <code>.extdat</code>, <code>.extra</code>). Folder metadata (<code>metadata.json</code>) is also automatically reconstructed if missing.</p>
+<summary><b>Q: Does Cloud Backup Restore support Call Logs, SMS, Wallpapers, Wi-Fi networks, and Folders?</b></summary>
+<p>Yes. The Cloud Discovery and Backup Rebuilder engine indexes and restores Call Logs (<code>.cls</code>), SMS messages (<code>.msg</code>), Wallpapers (<code>.wal</code>/<code>.wal.png</code>), Wi-Fi configurations (<code>.wfi</code>), and Folder backups (<code>.fld</code>/<code>.flm</code>) alongside full application archives (<code>.app</code>, <code>.dat</code>, <code>.splits</code>, <code>.extdat</code>, <code>.extra</code>). Folder metadata (<code>metadata.json</code>) is also automatically reconstructed if missing.</p>
 </details>
 
 <details>
@@ -714,9 +869,10 @@ Join the official Telegram group for discussion, support, release updates, and a
 ## Credits & Acknowledgements
 
 - **[Juby210](https://github.com/Juby210)** — Original creator and author of SwiftBackupPrem.
-- **[s1ddhants1](https://github.com/s1ddhants1)** — Maintainer
+- **[s1ddhants1](https://github.com/s1ddhants1)** — Maintainer & Lead Developer.
 - **[LuckyPray/DexKit](https://github.com/LuckyPray/DexKit)** — Powerful runtime DEX search and hooking engine.
 - **[LSPosed](https://github.com/LSPosed/LSPosed)** — ART hooking framework for modern Android.
+- **[JingMatrix/LSPatch](https://github.com/JingMatrix/LSPatch)** — Rootless Xposed hooking framework (actively maintained fork).
 
 ---
 

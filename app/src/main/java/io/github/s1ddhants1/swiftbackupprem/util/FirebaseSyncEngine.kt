@@ -271,29 +271,6 @@ object FirebaseSyncEngine {
         }
     }
 
-    fun deleteLegacyBackupsNode(firebaseDbUrl: String, uid: String, idToken: String? = null): Boolean {
-        return attempt("delete legacy backups node from RTDB", silent = true) {
-            val base = cleanDbUrl(firebaseDbUrl)
-            val authParam = if (!idToken.isNullOrBlank()) "?auth=$idToken" else ""
-            val endpoint = "$base/users/$uid/backups.json$authParam"
-
-            val url = URL(endpoint)
-            val conn = (url.openConnection() as HttpURLConnection).apply {
-                requestMethod = "DELETE"
-                connectTimeout = 10000
-                readTimeout = 10000
-            }
-
-            val responseCode = conn.responseCode
-            conn.disconnect()
-            if (responseCode in 200..299) {
-                Log.i(TAG, "[FirebaseSync] Cleaned up legacy /users/$uid/backups node from RTDB")
-                true
-            } else {
-                false
-            }
-        } ?: false
-    }
 
     private fun executePut(endpoint: String, payload: String): Boolean {
         val conn = (URL(endpoint).openConnection() as HttpURLConnection).apply {
@@ -513,8 +490,6 @@ object FirebaseSyncEngine {
                 }
             }
         }
-
-        deleteLegacyBackupsNode(dbUrl, uid, idToken)
 
         Log.i(TAG, "[FirebaseSync] Finished sync: $totalSynced newly synced, $totalAlreadyExisting already existing, $totalFailed failed")
         return SyncResult(
