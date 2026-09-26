@@ -86,6 +86,7 @@ def scan_apk(apk_path: str):
         "org.swiftapps.swiftbackup:/oauth",
         "setup_cloud_first_startup",
         "KEY_SCHEDULE_ENABLED",
+        "checkCloudConnectPromptNeeded=",
         "clearAnonymousSignIn",
         "anonymous@swiftbackup.app",
         "client ID cannot be null or empty",
@@ -239,7 +240,10 @@ def scan_apk(apk_path: str):
                                     i += 6
                                 else:
                                     i += 2
-                class_strings[class_name] = used_strings
+                class_strings.setdefault(class_name, set()).update(used_strings)
+                if "$" in class_name:
+                    outer = class_name.split("$")[0]
+                    class_strings.setdefault(outer, set()).update(used_strings)
                 class_methods[class_name] = m_list
 
     # Match semantic invariants
@@ -256,23 +260,30 @@ def scan_apk(apk_path: str):
             else:
                 res["oauthHelper"] = f"defpackage.{c}" if not "." in c else c
 
-        if "setup_cloud_first_startup" in s and "KEY_SCHEDULE_ENABLED" in s and "AlarmReceiver" not in c:
+        if ("setup_cloud_first_startup" in s and "KEY_SCHEDULE_ENABLED" in s and "AlarmReceiver" not in c) or \
+           ("checkCloudConnectPromptNeeded=" in s and "AlarmReceiver" not in c):
             res["homeViewModel"] = f"defpackage.{c}" if not "." in c else c
 
         if "client ID cannot be null or empty" in s:
             res["authRequestBuilder"] = f"defpackage.{c}" if not "." in c else c
 
-        if "clearAnonymousSignIn" in s:
-            mths = class_methods.get(c, [])
-            for flags, name, ret, params in mths:
-                if (flags & 0x8) != 0 and "MFirebaseUser" in ret and len(params) == 0:
-                    res["authUser"] = f"defpackage.{c}" if not "." in c else c
+        mths = class_methods.get(c, [])
+        for flags, name, ret, params in mths:
+            if "UserInfo" in ret and any("MFirebaseUser" in pt for pt in params):
+                res["authUser"] = f"defpackage.{c}" if not "." in c else c
+                break
 
         if "anonymous@swiftbackup.app" in s:
-            mths = class_methods.get(c, [])
             for flags, name, ret, params in mths:
-                if (flags & 0x8) != 0 and "MFirebaseUser" in ret and len(params) == 0:
+                if "MFirebaseUser" in ret and len(params) == 0:
                     res["anonUser"] = f"defpackage.{c}" if not "." in c else c
+                    break
+
+        if "clearAnonymousSignIn" in s and "authUser" not in res:
+            for flags, name, ret, params in mths:
+                if "MFirebaseUser" in ret and len(params) == 0:
+                    res["authUser"] = f"defpackage.{c}" if not "." in c else c
+                    break
 
         if "FCW" in s and ".info/connected" in s:
             res["firebaseWatcher"] = f"defpackage.{c}" if not "." in c else c
@@ -287,7 +298,6 @@ def scan_apk(apk_path: str):
                 res["baseSettingsFragment"] = f"defpackage.{sup}" if not "." in sup else sup
 
         if "FireSynchronizer" in s:
-            mths = class_methods.get(c, [])
             for flags, name, ret, params in mths:
                 if len(params) == 2 and params[1] in ("Z", "boolean") and ret not in ("V", "void"):
                     res["fireSynchronizer"] = f"defpackage.{c}" if not "." in c else c
@@ -303,34 +313,47 @@ def scan_apk(apk_path: str):
         if "com.topjohnwu.superuser.RECEIVER_BROADCAST" in s:
             res["rootServiceManager"] = f"defpackage.{c}" if not "." in c else c
 
+    # Fallbacks for pre-5.1.0 unflattened classes
+    if "org.swiftapps.swiftbackup.home.a" in class_methods and "homeViewModel" not in res:
+        res.setdefault("homeViewModel", "org.swiftapps.swiftbackup.home.a")
+    if "org.swiftapps.swiftbackup.anonymous.a" in class_methods and "anonUser" not in res:
+        res.setdefault("anonUser", "org.swiftapps.swiftbackup.anonymous.a")
+
     # Resolve fireSynchronizerSuccess
     fs_base = res.pop("_fireSynchronizerSuccess_base", None)
     fs_dex = res.pop("_fireSynchronizer_dex", None)
     if fs_base:
         base_short = fs_base.replace("defpackage.", "")
         candidates = []
+        snapshot_candidates = []
         for c, sup in class_superclasses.items():
-            if sup == base_short and "$" not in c:
+            if sup == base_short:
                 name_lower = c.lower()
                 if any(bad in name_lower for bad in ("error", "fail", "abort")):
                     continue
                 # Check constructors
-                has_throwable = False
+                has_error = False
+                has_snapshot = False
                 for m_flags, m_name, m_ret, m_params in class_methods.get(c, []):
-                    if m_name == "<init>" and any("Throwable" in p or "Exception" in p for p in m_params):
-                        has_throwable = True
-                        break
-                if not has_throwable:
+                    if m_name == "<init>":
+                        if any(any(bad in param for bad in ("Throwable", "Exception", "Error")) for param in m_params):
+                            has_error = True
+                            break
+                        if any("Snapshot" in param for param in m_params):
+                            has_snapshot = True
+                if not has_error:
                     candidates.append(c)
+                    if has_snapshot:
+                        snapshot_candidates.append(c)
 
-        # Prioritize candidates from same DEX slice as FireSynchronizer
+        pool = snapshot_candidates if snapshot_candidates else candidates
         selected = None
-        for c in candidates:
+        for c in pool:
             if class_dex.get(c) == fs_dex:
                 selected = c
                 break
-        if not selected and candidates:
-            selected = candidates[0]
+        if not selected and pool:
+            selected = pool[0]
 
         if selected:
             res["fireSynchronizerSuccess"] = f"defpackage.{selected}" if not "." in selected else selected
@@ -343,13 +366,15 @@ def format_kotlin_entry(version_code: int, classes: dict) -> str:
     lines = [f"    {version_code} to VersionClasses("]
     keys = [
         "clientId", "homeViewModel", "authUser", "anonUser", "oauthHelper",
-        "authRequestBuilder", "firebaseWatcher", "fireSynchronizer",
-        "fireSynchronizerSuccess", "customClassMapper", "settingsFragment",
-        "settingsDetailFragment", "baseSettingsFragment"
+        "authRequestBuilder", "appBackup", "appMetadataXml", "firebaseWatcher",
+        "fireSynchronizer", "fireSynchronizerSuccess", "customClassMapper",
+        "settingsFragment", "settingsDetailFragment", "baseSettingsFragment",
+        "rootServiceManager"
     ]
     for k in keys:
-        if k in classes:
-            lines.append(f'        {k} = "{classes[k]}",')
+        if k in classes and classes[k] is not None:
+            val_escaped = str(classes[k]).replace("$", "\\$")
+            lines.append(f'        {k} = "{val_escaped}",')
     lines.append("    ),")
     return "\n".join(lines)
 
@@ -417,61 +442,10 @@ def update_tests(test_file: str, version_code: int, classes: dict) -> bool:
     print(f"[+] Updated unit tests in {test_file}")
     return True
 
-def update_reverse_engineering_doc(doc_file: str, version_code: int, classes: dict):
-    """Appends a new version column to docs/REVERSE_ENGINEERING.md target table."""
-    if not os.path.exists(doc_file):
-        return
-    with open(doc_file, "r", encoding="utf-8") as f:
-        content = f.read()
-
-    marker = f"(v{version_code})"
-    if marker in content:
-        return
-
-    # Replace header row to add new version column
-    table_header_pat = r"(\| Logical Target \| Purpose & Responsibility (?:\| Known Classes \([^\)]+\) )+)(\| Semantic Invariant Tokens & Footprint \|)"
-    m = re.search(table_header_pat, content)
-    if m:
-        content = content[:m.start()] + m.group(1) + f"| Known Classes (v{version_code}) " + m.group(2) + content[m.end():]
-        sep_pat = r"(\| :--- \| :--- (?:\| :--- )+)(\| :--- \|)"
-        m_sep = re.search(sep_pat, content)
-        if m_sep:
-            content = content[:m_sep.start()] + m_sep.group(1) + "| :--- " + m_sep.group(2) + content[m_sep.end():]
-
-        row_map = {
-            "vClass": "common.V",
-            "SwiftApp": "org.swiftapps.swiftbackup.SwiftApp",
-            "homeViewModelClass": classes.get("homeViewModel", "-"),
-            "clientIdClass": classes.get("clientId", "-"),
-            "oauthHelperClass": classes.get("oauthHelper", "-"),
-            "authRequestBuilderClass": classes.get("authRequestBuilder", "-"),
-            "authUserClass": classes.get("authUser", "-"),
-            "anonUserClass": classes.get("anonUser", "-"),
-            "firebaseWatcherClass": classes.get("firebaseWatcher", "-"),
-            "fireSynchronizerClass": classes.get("fireSynchronizer", "-"),
-            "fireSynchronizerSuccessClass": classes.get("fireSynchronizerSuccess", "-"),
-            "fireSynchronizerWriteSuccessClass": classes.get("fireSynchronizerWriteSuccess", classes.get("fireSynchronizerSuccess", "-")),
-            "customClassMapperClass": classes.get("customClassMapper", "-"),
-            "settingsFragmentClass": classes.get("settingsFragment", "-"),
-            "baseSettingsFragmentClass": classes.get("baseSettingsFragment", "-"),
-            "libnative-lib.so": "Native library",
-        }
-
-        for target_key, class_val in row_map.items():
-            row_pat = re.compile(r"(\| \*\*`" + re.escape(target_key) + r"`\*\* \| [^\|]+ (?:\| [^\|]+ )+)(\| [^\|]+ \|)")
-            m_row = row_pat.search(content)
-            if m_row:
-                replacement_cell = f"`{class_val}`" if not class_val.startswith("Native") and class_val != "-" else class_val
-                content = content[:m_row.start()] + m_row.group(1) + f"| {replacement_cell} " + m_row.group(2) + content[m_row.end():]
-
-        with open(doc_file, "w", encoding="utf-8") as f:
-            f.write(content)
-        print(f"[+] Updated target table in {doc_file}")
-
 def main():
     parser = argparse.ArgumentParser(description="Scan Swift Backup APK for invariant targets.")
     parser.add_argument("--apk", required=True, help="Path to Swift Backup APK")
-    parser.add_argument("--update-code", action="store_true", help="Automatically inject mapping into DexKit.kt, tests, and docs")
+    parser.add_argument("--update-code", action="store_true", help="Automatically inject mapping into DexKit.kt and tests")
     args = parser.parse_args()
 
     if not os.path.exists(args.apk):
@@ -496,10 +470,8 @@ def main():
         repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         dexkit_kt = os.path.join(repo_root, "app/src/main/java/io/github/s1ddhants1/swiftbackupprem/DexKit.kt")
         test_kt = os.path.join(repo_root, "app/src/test/java/io/github/s1ddhants1/swiftbackupprem/DexKitVersionMapTest.kt")
-        doc_file = os.path.join(repo_root, "docs/REVERSE_ENGINEERING.md")
         update_dexkit_kt(dexkit_kt, vcode, entry_str)
         update_tests(test_kt, vcode, classes)
-        update_reverse_engineering_doc(doc_file, vcode, classes)
 
     if "GITHUB_OUTPUT" in os.environ and vcode:
         with open(os.environ["GITHUB_OUTPUT"], "a") as f:
