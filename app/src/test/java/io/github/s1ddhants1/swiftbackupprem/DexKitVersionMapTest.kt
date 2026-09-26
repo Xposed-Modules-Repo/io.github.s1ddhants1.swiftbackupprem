@@ -9,12 +9,13 @@ class DexKitVersionMapTest {
 
     @Test
     fun versionMapContainsExpectedVersions() {
-        assertTrue(versionMap.containsKey(561))
-        assertTrue(versionMap.containsKey(569))
-        assertTrue(versionMap.containsKey(590))
-        assertTrue(versionMap.containsKey(620))
-        assertTrue(versionMap.containsKey(623))
-        assertTrue(versionMap.containsKey(626))
+        val expectedVersions = listOf(
+            525, 527, 529, 532, 533, 536, 538, 540, 542, 545, 547, 555, 557, 558,
+            561, 566, 569, 584, 585, 587, 588, 590, 596, 598, 601, 603, 620, 623, 626
+        )
+        for (v in expectedVersions) {
+            assertTrue("Expected versionMap to contain version $v", versionMap.containsKey(v))
+        }
     }
 
     @Test
@@ -36,6 +37,45 @@ class DexKitVersionMapTest {
 
     @Test
     fun versionMapReturnsExactMappingsForKnownVersion() {
+        val v525 = versionMap[525]
+        assertNotNull(v525)
+        assertEquals("ve.r0", v525!!.clientId)
+        assertEquals("tf.q", v525.homeViewModel)
+        assertEquals("org.swiftapps.swiftbackup.common.b1", v525.authUser)
+        assertEquals("yd.b", v525.anonUser)
+
+        val v561 = versionMap[561]
+        assertNotNull(v561)
+        assertEquals("kf.s0", v561!!.clientId)
+        assertEquals("ig.q", v561.homeViewModel)
+        assertEquals("org.swiftapps.swiftbackup.common.z0", v561.authUser)
+        assertEquals("ne.b", v561.anonUser)
+
+        val v569 = versionMap[569]
+        assertNotNull(v569)
+        assertEquals("rf.r0", v569!!.clientId)
+        assertEquals("pg.p", v569.homeViewModel)
+        assertEquals("org.swiftapps.swiftbackup.common.k1", v569.authUser)
+        assertEquals("ue.b", v569.anonUser)
+
+        val v590 = versionMap[590]
+        assertNotNull(v590)
+        assertEquals("eh.u", v590!!.clientId)
+        assertEquals("org.swiftapps.swiftbackup.home.b", v590.homeViewModel)
+        assertEquals("org.swiftapps.swiftbackup.common.z0", v590.authUser)
+        assertEquals("org.swiftapps.swiftbackup.anonymous.a", v590.anonUser)
+        assertEquals("org.swiftapps.swiftbackup.common.q0", v590.fireSynchronizer)
+        assertEquals("org.swiftapps.swiftbackup.common.q0\$a\$b", v590.fireSynchronizerSuccess)
+
+        val v603 = versionMap[603]
+        assertNotNull(v603)
+        assertEquals("pi.o2", v603!!.clientId)
+        assertEquals("org.swiftapps.swiftbackup.home.a", v603.homeViewModel)
+        assertEquals("org.swiftapps.swiftbackup.common.a3", v603.authUser)
+        assertEquals("org.swiftapps.swiftbackup.anonymous.a", v603.anonUser)
+        assertEquals("org.swiftapps.swiftbackup.common.b2", v603.fireSynchronizer)
+        assertEquals("org.swiftapps.swiftbackup.common.b2\$a\$b", v603.fireSynchronizerSuccess)
+
         val v620 = versionMap[620]
         assertNotNull(v620)
         assertEquals("defpackage.gn5", v620!!.clientId)
