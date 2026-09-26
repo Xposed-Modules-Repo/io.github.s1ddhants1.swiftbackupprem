@@ -19,7 +19,6 @@ from scan_swiftbackup import (
     format_kotlin_entry,
     update_dexkit_kt,
     update_tests,
-    update_reverse_engineering_doc,
 )
 
 TELEGRAM_CHANNEL = "swiftbackupupdates"
@@ -74,23 +73,6 @@ def get_mapped_versions(dexkit_file: str) -> set:
     codes = re.findall(r"(\d+)\s+to\s+VersionClasses\(", content)
     return set(int(c) for c in codes)
 
-def find_local_apk(version_code: int):
-    """Searches standard local download paths for an APK matching the version code."""
-    search_dirs = [
-        os.path.expanduser("~/Downloads/AyuGram Desktop"),
-        os.path.expanduser("~/Downloads/Telegram Desktop"),
-        os.path.expanduser("~/Downloads"),
-        "/tmp",
-        os.getcwd()
-    ]
-    for d in search_dirs:
-        if not os.path.exists(d):
-            continue
-        for f in os.listdir(d):
-            if f.endswith(".apk") and f"({version_code})" in f:
-                return os.path.join(d, f)
-    return None
-
 def download_via_telethon(msg_id: int, output_path: str) -> bool:
     """Downloads an APK document from Telegram channel using Telethon MTProto."""
     api_id = os.environ.get("TG_API_ID")
@@ -129,14 +111,13 @@ def main():
     parser = argparse.ArgumentParser(description="Fetch and scan new releases from Telegram.")
     parser.add_argument("--apk", help="Explicit path to APK file (bypasses Telegram download)")
     parser.add_argument("--check-only", action="store_true", help="Only check for new releases without updating code")
-    parser.add_argument("--update-code", action="store_true", default=True, help="Automatically update DexKit.kt, tests, and docs")
+    parser.add_argument("--update-code", action="store_true", default=True, help="Automatically update DexKit.kt and tests")
     parser.add_argument("--all-unmapped", action="store_true", help="Include historical unmapped releases below current max version")
     args = parser.parse_args()
 
     repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     dexkit_kt = os.path.join(repo_root, "app/src/main/java/io/github/s1ddhants1/swiftbackupprem/DexKit.kt")
     test_kt = os.path.join(repo_root, "app/src/test/java/io/github/s1ddhants1/swiftbackupprem/DexKitVersionMapTest.kt")
-    doc_file = os.path.join(repo_root, "docs/REVERSE_ENGINEERING.md")
 
     mapped_codes = get_mapped_versions(dexkit_kt)
     max_mapped = max(mapped_codes) if mapped_codes else 0
@@ -188,10 +169,8 @@ def main():
         print(f"=======================================================")
 
         apk_path = args.apk
-        if not apk_path or not os.path.exists(apk_path):
-            apk_path = find_local_apk(vcode)
 
-        if not apk_path:
+        if not apk_path or not os.path.exists(apk_path):
             # Try telethon download if credentials configured
             candidate_download = os.path.join(repo_root, f"SwiftBackup_{vcode}.apk")
             if download_via_telethon(rel["msg_id"], candidate_download):
@@ -219,7 +198,6 @@ def main():
         if args.update_code:
             update_dexkit_kt(dexkit_kt, vcode, entry_str)
             update_tests(test_kt, vcode, classes)
-            update_reverse_engineering_doc(doc_file, vcode, classes)
             print(f"[+] Successfully updated codebase for Swift Backup {vname} ({vcode})!")
             updated_count += 1
 
