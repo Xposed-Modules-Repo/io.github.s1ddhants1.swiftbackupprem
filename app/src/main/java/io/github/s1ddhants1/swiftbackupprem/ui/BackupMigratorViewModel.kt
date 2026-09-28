@@ -101,11 +101,11 @@ class BackupMigratorViewModel(
     }
 
     fun syncFirebaseAll(context: Context, prefs: PreferencesManager) {
-        if (_uiState.value.isSyncingFirebase || !prefs.customFirebaseApp || !prefs.syncMetadataToFirebase || prefs.firebaseDatabaseUrl.isBlank()) return
+        if (_uiState.value.isSyncingFirebase || !prefs.customFirebaseApp || prefs.firebaseDatabaseUrl.isBlank()) return
         _uiState.update { it.copy(isSyncingFirebase = true) }
 
         viewModelScope.launch(ioDispatcher) {
-            val result = syncFirebaseUseCase(context, prefs)
+            val result = syncFirebaseUseCase(context, prefs, force = true)
             _uiState.update { it.copy(isSyncingFirebase = false) }
             _events.send(
                 BackupMigratorUiEvent.FirebaseSyncResult(

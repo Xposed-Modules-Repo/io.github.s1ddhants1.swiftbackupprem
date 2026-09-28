@@ -77,4 +77,19 @@ class BackupMigrationSettingsTest {
         org.junit.Assert.assertEquals(0, result.totalSynced)
         assertTrue(result.errors.any { it.contains("disabled") })
     }
+
+    @Test
+    fun firebaseSyncEngineBypassesDisabledToggleWhenForceIsTrue() {
+        val prefs = PreferencesManager(null).apply {
+            customFirebaseApp = true
+            syncMetadataToFirebase = false
+            firebaseDatabaseUrl = "https://test.firebaseio.com"
+        }
+
+        val result = FirebaseSyncEngine.syncAll(android.app.Application(), prefs, force = true)
+
+        // When forced (one-time manual sync), it should not be blocked by the disabled toggle
+        org.junit.Assert.assertEquals(0, result.totalSynced)
+        assertFalse(result.errors.any { it.contains("disabled") })
+    }
 }

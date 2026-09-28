@@ -82,20 +82,27 @@ object FirebaseSyncEngine {
             }
         }
 
+        val isAndroidEnv = try {
+            File("/system").exists() || File("/data/data").exists() || (System.getProperty("java.vendor") ?: "").contains("Android", ignoreCase = true)
+        } catch (_: Throwable) { false }
+        if (!isAndroidEnv) return null
+
         val suBins = listOf("su", "/system/bin/su", "/data/adb/ksu/bin/su", "/data/adb/ap/bin/su", "/data/adb/magisk/su")
         for (su in suBins) {
+            var proc: Process? = null
             try {
-                val proc = Runtime.getRuntime().exec(arrayOf(su, "-c", "cat /data/data/org.swiftapps.swiftbackup/shared_prefs/org.swiftapps.swiftbackup_preferences.xml 2>/dev/null"))
-                val reader = BufferedReader(InputStreamReader(proc.inputStream, StandardCharsets.UTF_8))
-                val out = StringBuilder()
-                var line: String?
-                while (reader.readLine().also { line = it } != null) {
-                    out.appendLine(line)
+                proc = Runtime.getRuntime().exec(arrayOf(su, "-c", "cat /data/data/org.swiftapps.swiftbackup/shared_prefs/org.swiftapps.swiftbackup_preferences.xml 2>/dev/null"))
+                proc.outputStream.close()
+                val completed = proc.waitFor(1500, java.util.concurrent.TimeUnit.MILLISECONDS)
+                if (completed && proc.exitValue() == 0) {
+                    val res = proc.inputStream.bufferedReader(StandardCharsets.UTF_8).use { it.readText() }.trim()
+                    if (res.isNotBlank()) return res
+                } else {
+                    proc.destroyForcibly()
                 }
-                proc.waitFor(1500, java.util.concurrent.TimeUnit.MILLISECONDS)
-                val res = out.toString().trim()
-                if (res.isNotBlank()) return res
-            } catch (_: Throwable) {}
+            } catch (_: Throwable) {
+                proc?.destroyForcibly()
+            }
         }
 
         return null
@@ -397,13 +404,13 @@ object FirebaseSyncEngine {
         return null
     }
 
-    fun syncAll(context: Context, prefs: PreferencesManager): SyncResult {
+    fun syncAll(context: Context, prefs: PreferencesManager, force: Boolean = false): SyncResult {
         val errors = mutableListOf<String>()
         var totalSynced = 0
         var totalAlreadyExisting = 0
         var totalFailed = 0
 
-        if (!prefs.customFirebaseApp || !prefs.syncMetadataToFirebase) {
+        if (!prefs.customFirebaseApp || (!force && !prefs.syncMetadataToFirebase)) {
             return SyncResult(0, 0, 0, listOf("Firebase metadata sync is disabled."))
         }
 

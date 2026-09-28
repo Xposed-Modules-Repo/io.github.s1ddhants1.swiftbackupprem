@@ -283,4 +283,67 @@ class CloudScannerTest {
         val resolved = OneDriveScanner.resolveToken(testPrefs)
         assertEquals("fake-token-123", resolved)
     }
+
+    @Test
+    fun testOneDriveUploadUrlWithMainFolderId() {
+        val testPrefs = object : android.content.SharedPreferences {
+            val map = mutableMapOf<String, Any?>("one_drive_cloud_main_folder_id" to "folder-abc-999")
+            override fun getAll(): MutableMap<String, *> = map
+            override fun getString(key: String?, defValue: String?): String? = map[key]?.toString() ?: defValue
+            override fun getStringSet(key: String?, defValues: MutableSet<String>?): MutableSet<String>? = null
+            override fun getInt(key: String?, defValue: Int): Int = 0
+            override fun getLong(key: String?, defValue: Long): Long = 0L
+            override fun getFloat(key: String?, defValue: Float): Float = 0f
+            override fun getBoolean(key: String?, defValue: Boolean): Boolean = false
+            override fun contains(key: String?): Boolean = map.containsKey(key)
+            override fun edit(): android.content.SharedPreferences.Editor = throw UnsupportedOperationException()
+            override fun registerOnSharedPreferenceChangeListener(listener: android.content.SharedPreferences.OnSharedPreferenceChangeListener?) {}
+            override fun unregisterOnSharedPreferenceChangeListener(listener: android.content.SharedPreferences.OnSharedPreferenceChangeListener?) {}
+        }
+
+        val url = OneDriveScanner.buildUploadUrl(testPrefs, "cloud_discovered_cache.json")
+        assertEquals("https://graph.microsoft.com/v1.0/me/drive/items/folder-abc-999:/cloud_discovered_cache.json:/content", url)
+    }
+
+    @Test
+    fun testOneDriveUploadUrlWithExplicitRootPath() {
+        val testPrefs = object : android.content.SharedPreferences {
+            val map = mutableMapOf<String, Any?>("one_drive_cloud_main_folder_id" to "folder-abc-999")
+            override fun getAll(): MutableMap<String, *> = map
+            override fun getString(key: String?, defValue: String?): String? = map[key]?.toString() ?: defValue
+            override fun getStringSet(key: String?, defValues: MutableSet<String>?): MutableSet<String>? = null
+            override fun getInt(key: String?, defValue: Int): Int = 0
+            override fun getLong(key: String?, defValue: Long): Long = 0L
+            override fun getFloat(key: String?, defValue: Float): Float = 0f
+            override fun getBoolean(key: String?, defValue: Boolean): Boolean = false
+            override fun contains(key: String?): Boolean = map.containsKey(key)
+            override fun edit(): android.content.SharedPreferences.Editor = throw UnsupportedOperationException()
+            override fun registerOnSharedPreferenceChangeListener(listener: android.content.SharedPreferences.OnSharedPreferenceChangeListener?) {}
+            override fun unregisterOnSharedPreferenceChangeListener(listener: android.content.SharedPreferences.OnSharedPreferenceChangeListener?) {}
+        }
+
+        val url = OneDriveScanner.buildUploadUrl(testPrefs, "Swift Backup/cloud_discovered_cache.json")
+        assertEquals("https://graph.microsoft.com/v1.0/me/drive/root:/Swift%20Backup/cloud_discovered_cache.json:/content", url)
+    }
+
+    @Test
+    fun testOneDriveUploadUrlFallbackWhenNoFolderId() {
+        val testPrefs = object : android.content.SharedPreferences {
+            val map = mutableMapOf<String, Any?>()
+            override fun getAll(): MutableMap<String, *> = map
+            override fun getString(key: String?, defValue: String?): String? = map[key]?.toString() ?: defValue
+            override fun getStringSet(key: String?, defValues: MutableSet<String>?): MutableSet<String>? = null
+            override fun getInt(key: String?, defValue: Int): Int = 0
+            override fun getLong(key: String?, defValue: Long): Long = 0L
+            override fun getFloat(key: String?, defValue: Float): Float = 0f
+            override fun getBoolean(key: String?, defValue: Boolean): Boolean = false
+            override fun contains(key: String?): Boolean = map.containsKey(key)
+            override fun edit(): android.content.SharedPreferences.Editor = throw UnsupportedOperationException()
+            override fun registerOnSharedPreferenceChangeListener(listener: android.content.SharedPreferences.OnSharedPreferenceChangeListener?) {}
+            override fun unregisterOnSharedPreferenceChangeListener(listener: android.content.SharedPreferences.OnSharedPreferenceChangeListener?) {}
+        }
+
+        val url = OneDriveScanner.buildUploadUrl(testPrefs, "cloud_discovered_cache.json")
+        assertEquals("https://graph.microsoft.com/v1.0/me/drive/root:/Swift Backup/cloud_discovered_cache.json:/content", url)
+    }
 }
