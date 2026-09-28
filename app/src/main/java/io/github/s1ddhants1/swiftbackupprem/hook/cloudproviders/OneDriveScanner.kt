@@ -7,6 +7,10 @@ import androidx.annotation.Keep
 import io.github.s1ddhants1.swiftbackupprem.Consts
 import io.github.s1ddhants1.swiftbackupprem.util.attempt
 import org.json.JSONObject
+import java.io.File
+import java.net.HttpURLConnection
+import java.net.URL
+import java.nio.charset.StandardCharsets
 import java.util.LinkedList
 import java.util.Queue
 import java.util.regex.Pattern
@@ -78,36 +82,32 @@ object OneDriveScanner : CloudScanner {
         return if (target.folderPath.isBlank()) name else "${target.folderPath}/$name"
     }
 
-    override fun listFiles(context: Context, prefs: SharedPreferences): List<CloudFileItem> {
-        val token = resolveToken(prefs) ?: return emptyList()
-        val items = mutableListOf<CloudFileItem>()
-        val seenFileIds = mutableSetOf<String>()
-
-        val folderQueue: Queue<FolderTarget> = LinkedList()
+    private fun scanFolder(
+        token: String,
+        folderUrl: String,
+        folderPath: String,
+        items: MutableList<CloudFileItem>,
+        seenFileIds: MutableSet<String>,
+        maxFolders: Int = 15
+    ) {
+        val queue: Queue<FolderTarget> = LinkedList()
         val visited = mutableSetOf<String>()
-
-        folderQueue.add(FolderTarget("https://graph.microsoft.com/v1.0/me/drive/root/children", isRoot = true, folderPath = ""))
-        folderQueue.add(FolderTarget("https://graph.microsoft.com/v1.0/me/drive/special/approot/children", isRoot = false, folderPath = ""))
-        folderQueue.add(FolderTarget("https://graph.microsoft.com/v1.0/me/drive/root:/Swift Backup:/children", isRoot = false, folderPath = "Swift Backup"))
-        folderQueue.add(FolderTarget("https://graph.microsoft.com/v1.0/me/drive/root:/Apps/Swift Backup:/children", isRoot = false, folderPath = "Apps/Swift Backup"))
-        folderQueue.add(FolderTarget("https://graph.microsoft.com/v1.0/me/drive/root:/SwiftBackup:/children", isRoot = false, folderPath = "SwiftBackup"))
+        queue.add(FolderTarget(folderUrl, isRoot = false, folderPath = folderPath))
 
         var scannedCount = 0
-        while (folderQueue.isNotEmpty() && scannedCount < 50) {
-            val target = folderQueue.poll() ?: break
+        while (queue.isNotEmpty() && scannedCount < maxFolders) {
+            val target = queue.poll() ?: break
             if (!visited.add(target.url)) continue
             scannedCount++
 
             var currentUrl: String? = target.url
             while (currentUrl != null) {
-                val urlToFetch = currentUrl
-                val respText = executeGet(urlToFetch, token) ?: break
-                val root = attempt("parse OneDrive JSON", silent = true) { JSONObject(respText) } ?: break
-
+                val respText = executeGet(currentUrl, token) ?: break
+                val root = attempt("parse OneDrive folder JSON", silent = true) { JSONObject(respText) } ?: break
                 val valueArr = root.optJSONArray("value")
                 if (valueArr != null) {
                     for (i in 0 until valueArr.length()) {
-                        val itemObj = valueArr.getJSONObject(i)
+                        val itemObj = valueArr.optJSONObject(i) ?: continue
                         val id = itemObj.optString("id")
                         val name = itemObj.optString("name")
                         val size = itemObj.optLong("size", 0L)
@@ -126,79 +126,64 @@ object OneDriveScanner : CloudScanner {
                             val childFolderPath = resolveRelativePath(itemObj, target, name)
                             val childUrl = "https://graph.microsoft.com/v1.0/me/drive/items/$id/children"
                             if (!visited.contains(childUrl)) {
-                                if (target.isRoot) {
-                                    if (SWIFT_BACKUP_FOLDER_PATTERN.matcher(name).matches()) {
-                                        folderQueue.add(FolderTarget(childUrl, isRoot = false, folderPath = childFolderPath))
-                                    }
-                                } else {
-                                    folderQueue.add(FolderTarget(childUrl, isRoot = false, folderPath = childFolderPath))
-                                }
+                                queue.add(FolderTarget(childUrl, isRoot = false, folderPath = childFolderPath))
                             }
-                        } else if (!target.isRoot && name.isNotBlank() && id.isNotBlank()) {
-                            if (seenFileIds.add(id)) {
-                                val relativePath = resolveRelativePath(itemObj, target, name)
-                                items.add(
-                                    CloudFileItem(
-                                        id = relativePath,
-                                        name = name,
-                                        size = size,
-                                        timestamp = timestamp,
-                                        provider = providerName,
-                                        customDownloadUrl = downloadUrl
-                                    )
+                        } else if (name.isNotBlank() && id.isNotBlank() && seenFileIds.add(id)) {
+                            val relativePath = resolveRelativePath(itemObj, target, name)
+                            items.add(
+                                CloudFileItem(
+                                    id = relativePath,
+                                    name = name,
+                                    size = size,
+                                    timestamp = timestamp,
+                                    provider = providerName,
+                                    customDownloadUrl = downloadUrl
                                 )
-                            }
+                            )
                         }
                     }
                 }
-
                 currentUrl = root.optString("@odata.nextLink").takeIf { it.isNotBlank() }
             }
         }
+    }
 
-        if (items.isEmpty()) {
-            val searchUrl = "https://graph.microsoft.com/v1.0/me/drive/root/search(q='Swift Backup')"
-            val searchResp = executeGet(searchUrl, token)
-            if (searchResp != null) {
-                attempt("parse OneDrive search JSON", silent = true) {
-                    val root = JSONObject(searchResp)
-                    val valueArr = root.optJSONArray("value")
-                    if (valueArr != null) {
-                        for (i in 0 until valueArr.length()) {
-                            val itemObj = valueArr.getJSONObject(i)
-                            val isFolder = itemObj.has("folder") || itemObj.optJSONObject("remoteItem")?.has("folder") == true
-                            if (!isFolder) {
-                                val id = itemObj.optString("id")
-                                val name = itemObj.optString("name")
-                                val size = itemObj.optLong("size", 0L)
-                                val timeStr = itemObj.optString("lastModifiedDateTime").ifBlank {
-                                    itemObj.optJSONObject("fileSystemInfo")?.optString("lastModifiedDateTime") ?: ""
-                                }
-                                val timestamp = if (timeStr.isNotBlank()) {
-                                    attempt("parse OneDrive ISO date", silent = true) {
-                                        java.time.Instant.parse(timeStr).toEpochMilli()
-                                    } ?: 0L
-                                } else 0L
-                                val downloadUrl = itemObj.optString("@microsoft.graph.downloadUrl").takeIf { it.isNotBlank() }
+    override fun listFiles(context: Context, prefs: SharedPreferences): List<CloudFileItem> {
+        val token = resolveToken(prefs) ?: return emptyList()
+        val items = mutableListOf<CloudFileItem>()
+        val seenFileIds = mutableSetOf<String>()
 
-                                if (name.isNotBlank() && id.isNotBlank() && seenFileIds.add(id)) {
-                                    val relativePath = resolveRelativePath(
-                                        itemObj,
-                                        FolderTarget("", isRoot = false, folderPath = "Swift Backup"),
-                                        name
-                                    )
-                                    items.add(
-                                        CloudFileItem(
-                                            id = relativePath,
-                                            name = name,
-                                            size = size,
-                                            timestamp = timestamp,
-                                            provider = providerName,
-                                            customDownloadUrl = downloadUrl
-                                        )
-                                    )
-                                }
-                            }
+        val mainFolderId = resolveMainFolderId(token, prefs)
+        if (!mainFolderId.isNullOrBlank()) {
+            val mainUrl = "https://graph.microsoft.com/v1.0/me/drive/items/$mainFolderId/children"
+            scanFolder(token, mainUrl, folderPath = "Swift Backup", items = items, seenFileIds = seenFileIds)
+            if (items.isNotEmpty()) {
+                Log.d(TAG, "[OneDriveScanner] Direct path discovered ${items.size} backup items in main folder ($mainFolderId)")
+                return items
+            }
+        }
+
+        val directUrl = "https://graph.microsoft.com/v1.0/me/drive/root:/Swift%20Backup:/children"
+        scanFolder(token, directUrl, folderPath = "Swift Backup", items = items, seenFileIds = seenFileIds)
+        if (items.isNotEmpty()) {
+            Log.d(TAG, "[OneDriveScanner] Direct named path discovered ${items.size} backup items in 'Swift Backup'")
+            return items
+        }
+
+        val rootUrl = "https://graph.microsoft.com/v1.0/me/drive/root/children"
+        val rootResp = executeGet(rootUrl, token)
+        if (!rootResp.isNullOrBlank()) {
+            val rootObj = attempt("parse root children", silent = true) { JSONObject(rootResp) }
+            val valArr = rootObj?.optJSONArray("value")
+            if (valArr != null) {
+                for (i in 0 until valArr.length()) {
+                    val item = valArr.optJSONObject(i) ?: continue
+                    if (item.has("folder")) {
+                        val name = item.optString("name", "")
+                        val id = item.optString("id", "")
+                        if (id.isNotBlank() && SWIFT_BACKUP_FOLDER_PATTERN.matcher(name).matches()) {
+                            val folderUrl = "https://graph.microsoft.com/v1.0/me/drive/items/$id/children"
+                            scanFolder(token, folderUrl, folderPath = name, items = items, seenFileIds = seenFileIds)
                         }
                     }
                 }
@@ -286,4 +271,120 @@ object OneDriveScanner : CloudScanner {
             }
         }
     )
+
+    override fun uploadFileText(
+        context: Context,
+        prefs: SharedPreferences,
+        remoteRelativePath: String,
+        content: String
+    ): Boolean = attempt("OneDrive uploadFileText", silent = true) {
+        val bytes = content.toByteArray(StandardCharsets.UTF_8)
+        val contentType = when {
+            remoteRelativePath.endsWith(".json", ignoreCase = true) -> "application/json; charset=utf-8"
+            remoteRelativePath.endsWith(".xml", ignoreCase = true) -> "application/xml; charset=utf-8"
+            else -> "text/plain; charset=utf-8"
+        }
+        uploadBytes(prefs, remoteRelativePath, bytes, contentType)
+    } ?: false
+
+    override fun uploadFile(
+        context: Context,
+        prefs: SharedPreferences,
+        remoteRelativePath: String,
+        file: File
+    ): Boolean = attempt("OneDrive uploadFile", silent = true) {
+        if (!file.exists() || !file.canRead()) return@attempt false
+        val bytes = file.readBytes()
+        uploadBytes(prefs, remoteRelativePath, bytes, "application/octet-stream")
+    } ?: false
+
+    fun resolveMainFolderId(token: String?, prefs: SharedPreferences): String? {
+        val knownId = listOf(
+            "one_drive_cloud_main_folder_id",
+            "onedrive_cloud_main_folder_id",
+            "onedrive_main_folder_id",
+            "one_drive_main_folder_id"
+        ).firstNotNullOfOrNull { k -> prefs.getString(k, null)?.trim()?.takeIf { it.isNotBlank() } }
+        if (knownId != null) return knownId
+
+        if (token.isNullOrBlank()) return null
+
+        val respText = executeGet("https://graph.microsoft.com/v1.0/me/drive/root/children?\$select=id,name,folder", token)
+        if (!respText.isNullOrBlank()) {
+            val root = attempt("parse OneDrive root children", silent = true) { JSONObject(respText) }
+            val arr = root?.optJSONArray("value")
+            if (arr != null) {
+                for (i in 0 until arr.length()) {
+                    val item = arr.optJSONObject(i) ?: continue
+                    if (item.has("folder")) {
+                        val name = item.optString("name", "")
+                        if (SWIFT_BACKUP_FOLDER_PATTERN.matcher(name).matches()) {
+                            val id = item.optString("id", "").trim()
+                            if (id.isNotBlank()) return id
+                        }
+                    }
+                }
+            }
+        }
+        return null
+    }
+
+    fun buildUploadUrl(prefs: SharedPreferences, remoteRelativePath: String, token: String? = null): String {
+        val cleanPath = remoteRelativePath.trim().trimStart('/')
+        val isExplicitRoot = cleanPath.startsWith("Swift Backup/", ignoreCase = true) ||
+                cleanPath.startsWith("SwiftBackup/", ignoreCase = true)
+
+        if (isExplicitRoot) {
+            return "https://graph.microsoft.com/v1.0/me/drive/root:/" + encodeGraphPath(cleanPath) + ":/content"
+        }
+
+        val folderId = resolveMainFolderId(token, prefs)
+        return if (!folderId.isNullOrBlank()) {
+            "https://graph.microsoft.com/v1.0/me/drive/items/$folderId:/" + encodeGraphPath(cleanPath) + ":/content"
+        } else {
+            "https://graph.microsoft.com/v1.0/me/drive/root:/Swift Backup/" + encodeGraphPath(cleanPath) + ":/content"
+        }
+    }
+
+    private fun uploadBytes(
+        prefs: SharedPreferences,
+        remoteRelativePath: String,
+        bytes: ByteArray,
+        contentType: String
+    ): Boolean {
+        val token = resolveToken(prefs) ?: return false
+        val cleanPath = remoteRelativePath.trim().trimStart('/')
+        if (cleanPath.isBlank()) return false
+
+        val targetUrl = buildUploadUrl(prefs, cleanPath, token)
+        return executePut(targetUrl, token, bytes, contentType)
+    }
+
+    fun executePut(
+        urlStr: String,
+        token: String,
+        bytes: ByteArray,
+        contentType: String
+    ): Boolean = attempt("OneDrive HTTP PUT", silent = true) {
+        val conn = (URL(urlStr).openConnection() as HttpURLConnection).apply {
+            requestMethod = "PUT"
+            doOutput = true
+            connectTimeout = 20000
+            readTimeout = 20000
+            setRequestProperty("Authorization", "Bearer $token")
+            setRequestProperty("Content-Type", contentType)
+            setRequestProperty("Content-Length", bytes.size.toString())
+        }
+        try {
+            conn.outputStream.use { os ->
+                os.write(bytes)
+                os.flush()
+            }
+            val code = conn.responseCode
+            Log.d(TAG, "[OneDriveScanner] HTTP PUT returned $code for $urlStr (${bytes.size} bytes)")
+            code in 200..299
+        } finally {
+            conn.disconnect()
+        }
+    } ?: false
 }

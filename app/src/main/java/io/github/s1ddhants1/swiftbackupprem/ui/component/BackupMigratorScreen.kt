@@ -562,14 +562,14 @@ private fun CloudDiscoveryTabContent(
                 Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
                     Button(
                         onClick = {
-                            if (state.isSyncingFirebase || !isSyncEnabled) return@Button
+                            if (state.isSyncingFirebase || !canConfigureSync) return@Button
                             val appContext = context.applicationContext
                             Toast.makeText(appContext, appContext.getString(R.string.msg_sync_firebase_started), Toast.LENGTH_SHORT).show()
                             viewModel.syncFirebaseAll(appContext, prefs)
                         },
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(10.dp),
-                        enabled = isSyncEnabled && !state.isSyncingFirebase
+                        enabled = canConfigureSync && !state.isSyncingFirebase
                     ) {
                         if (state.isSyncingFirebase) {
                             CircularProgressIndicator(modifier = Modifier.size(18.dp), color = MaterialTheme.colorScheme.onPrimary, strokeWidth = 2.dp)
