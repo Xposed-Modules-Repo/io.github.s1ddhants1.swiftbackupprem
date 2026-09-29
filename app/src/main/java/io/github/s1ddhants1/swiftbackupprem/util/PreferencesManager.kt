@@ -58,19 +58,19 @@ class PreferencesManager(
         set(value) {
             rawUpdatedAt = value
             attempt("save preference long updated_at", silent = true) {
-                prefs?.edit(commit = true) { putLong("updated_at", value) }
-                backupPrefs?.edit(commit = true) { putLong("updated_at", value) }
+                prefs?.edit { putLong("updated_at", value) }
+                backupPrefs?.edit { putLong("updated_at", value) }
             }
         }
 
     private fun putString(key: String, value: String?) {
         attempt("save preference string $key", silent = true) {
             val now = System.currentTimeMillis()
-            prefs?.edit(commit = true) {
+            prefs?.edit {
                 putString(key, value)
                 putLong("updated_at", now)
             }
-            backupPrefs?.edit(commit = true) {
+            backupPrefs?.edit {
                 putString(key, value)
                 putLong("updated_at", now)
             }
@@ -83,11 +83,11 @@ class PreferencesManager(
     private fun putBoolean(key: String, value: Boolean) {
         attempt("save preference boolean $key", silent = true) {
             val now = System.currentTimeMillis()
-            prefs?.edit(commit = true) {
+            prefs?.edit {
                 putBoolean(key, value)
                 putLong("updated_at", now)
             }
-            backupPrefs?.edit(commit = true) {
+            backupPrefs?.edit {
                 putBoolean(key, value)
                 putLong("updated_at", now)
             }

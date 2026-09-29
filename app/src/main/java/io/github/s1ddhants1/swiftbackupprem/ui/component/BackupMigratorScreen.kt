@@ -88,11 +88,12 @@ private fun LocalMigrationTabContent(
     prefs: PreferencesManager
 ) {
     val context = LocalContext.current
+    val appContext = remember(context) { context.applicationContext ?: context }
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val scrollState = rememberScrollState()
 
     LaunchedEffect(Unit) {
-        viewModel.autoDetectSourceUids(context)
+        viewModel.autoDetectSourceUids(appContext)
     }
 
     val dirPickerLauncher = rememberLauncherForActivityResult(
@@ -163,8 +164,9 @@ private fun LocalMigrationTabContent(
             }
         }
 
-        AnimatedVisibility(visible = state.errorMessage != null) {
-            state.errorMessage?.let { err ->
+        val displayedError = state.errorMessageRes?.let { stringResource(it) } ?: state.errorMessage
+        AnimatedVisibility(visible = displayedError != null) {
+            displayedError?.let { err ->
                 MigratorCard(containerColor = MaterialTheme.colorScheme.errorContainer) {
                     Row(
                         modifier = Modifier.padding(12.dp),
@@ -357,7 +359,7 @@ private fun LocalMigrationTabContent(
             }
         } else {
             Button(
-                onClick = { viewModel.startMigration(context, prefs) },
+                onClick = { viewModel.startMigration(appContext, prefs) },
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp).height(50.dp),
                 shape = RoundedCornerShape(12.dp),
                 enabled = state.sourcePath.isNotBlank() && state.sourceUid.isNotBlank() && state.targetPath.isNotBlank()
