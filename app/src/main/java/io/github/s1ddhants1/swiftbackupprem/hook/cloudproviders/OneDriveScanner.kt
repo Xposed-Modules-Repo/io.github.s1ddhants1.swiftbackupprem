@@ -342,7 +342,7 @@ object OneDriveScanner : CloudScanner {
         return if (!folderId.isNullOrBlank()) {
             "https://graph.microsoft.com/v1.0/me/drive/items/$folderId:/" + encodeGraphPath(cleanPath) + ":/content"
         } else {
-            "https://graph.microsoft.com/v1.0/me/drive/root:/Swift Backup/" + encodeGraphPath(cleanPath) + ":/content"
+            "https://graph.microsoft.com/v1.0/me/drive/root:/" + encodeGraphPath("Swift Backup/$cleanPath") + ":/content"
         }
     }
 

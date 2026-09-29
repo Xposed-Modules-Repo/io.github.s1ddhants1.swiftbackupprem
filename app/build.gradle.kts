@@ -138,6 +138,20 @@ android {
     testOptions {
         unitTests.isReturnDefaultValues = true
     }
+    lint {
+        abortOnError = true
+        checkReleaseBuilds = false
+        disable += listOf(
+            "DiscouragedApi",
+            "DiscouragedPrivateApi",
+            "PrivateApi",
+            "SetWorldReadable",
+            "SetWorldWritable",
+            "SdCardPath",
+            "QueryPermissionsNeeded",
+            "UseKtx"
+        )
+    }
 }
 
 androidComponents {
