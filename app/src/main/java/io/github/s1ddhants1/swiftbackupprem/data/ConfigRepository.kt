@@ -64,7 +64,7 @@ class ConfigRepositoryImpl(
         }
 
         val resolvedPath = resolvePathFromDocumentUri(uri)
-        if (!resolvedPath.isNullOrBlank()) {
+        if (!resolvedPath.isNullOrBlank() && !resolvedPath.contains('\u0000') && resolvedPath.startsWith("/")) {
             val file = File(resolvedPath)
             if (file.exists() && file.canRead()) {
                 try {
@@ -74,7 +74,8 @@ class ConfigRepositoryImpl(
                 }
             }
             try {
-                val process = Runtime.getRuntime().exec(arrayOf("su", "-c", "cat '$resolvedPath'"))
+                val escapedPath = resolvedPath.replace("'", "'\\''")
+                val process = Runtime.getRuntime().exec(arrayOf("su", "-c", "cat '$escapedPath'"))
                 val text = process.inputStream.bufferedReader().use { it.readText() }
                 process.waitFor()
                 if (text.isNotBlank()) {

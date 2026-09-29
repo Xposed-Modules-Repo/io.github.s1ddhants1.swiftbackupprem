@@ -200,4 +200,20 @@ class ConfigRepositoryTest {
 
         repository.parseConfig(json, prefs)
     }
+
+    @Test
+    fun parseConfigAcceptsJsonWithSingleQuotesAndSpecialCharacters() {
+        val prefs = PreferencesManager(null)
+        val json = """
+            {
+              "enablePremium": true,
+              "disableTelemetry": true,
+              "projectId": "project-with-'quotes'-and-symbols"
+            }
+        """.trimIndent()
+
+        val result = repository.parseConfig(json, prefs)
+        assertTrue(result.enablePremium)
+        assertEquals("project-with-'quotes'-and-symbols", result.projectId)
+    }
 }

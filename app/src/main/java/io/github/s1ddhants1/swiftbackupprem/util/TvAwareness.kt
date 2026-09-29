@@ -7,9 +7,9 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.composed
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -28,20 +28,21 @@ fun rememberIsTvDevice(): Boolean {
     }
 }
 
+@Composable
 fun Modifier.tvFocusable(
     interactionSource: MutableInteractionSource? = null,
-): Modifier = composed {
+): Modifier {
     val isTv = rememberIsTvDevice()
-    if (!isTv) return@composed this
+    if (!isTv) return this
 
     val source = interactionSource ?: remember { MutableInteractionSource() }
-    val isFocused = source.collectIsFocusedAsState()
+    val isFocused by source.collectIsFocusedAsState()
     val focusColor = MaterialTheme.colorScheme.primary
 
-    this
+    return this
         .focusable(interactionSource = source)
         .then(
-            if (isFocused.value) {
+            if (isFocused) {
                 Modifier.drawBehind {
                     drawRoundRect(
                         color = focusColor,

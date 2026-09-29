@@ -130,6 +130,10 @@
     <string name="migrator_result_synced_format">\nSynced to Firebase: %1$d</string>
     <string name="migrator_result_output_format">Output: %1$s</string>
     <string name="migrator_logs_title">Execution Logs</string>
+    <string name="migrator_error_source_dir_invalid">Source directory does not exist or is invalid.</string>
+    <string name="migrator_error_source_uid_required">Source Firebase UID is required to decrypt backups.</string>
+    <string name="migrator_error_dest_path_required">Destination folder path is required.</string>
+    <string name="migrator_error_target_uid_required">Target Firebase UID is required.</string>
 
     <string name="screen_backup_migrator">Backup Migration</string>
     <string name="tab_local_migrator">Local Migration</string>

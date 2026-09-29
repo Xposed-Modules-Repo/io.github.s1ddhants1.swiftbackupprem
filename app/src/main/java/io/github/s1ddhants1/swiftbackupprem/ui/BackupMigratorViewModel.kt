@@ -3,6 +3,7 @@ package io.github.s1ddhants1.swiftbackupprem.ui
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import io.github.s1ddhants1.swiftbackupprem.R
 import io.github.s1ddhants1.swiftbackupprem.domain.usecase.DetectCandidateUidsUseCase
 import io.github.s1ddhants1.swiftbackupprem.domain.usecase.MigrateBackupsUseCase
 import io.github.s1ddhants1.swiftbackupprem.domain.usecase.SyncFirebaseUseCase
@@ -43,7 +44,8 @@ data class BackupMigratorUiState(
     val currentItem: String = "",
     val logs: List<String> = emptyList(),
     val migrationResult: BackupMigratorEngine.MigrationResult? = null,
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
+    val errorMessageRes: Int? = null
 )
 
 sealed interface BackupMigratorUiEvent {
@@ -64,11 +66,11 @@ class BackupMigratorViewModel(
     val events = _events.receiveAsFlow()
 
     fun setSourcePath(path: String) {
-        _uiState.update { it.copy(sourcePath = path, errorMessage = null) }
+        _uiState.update { it.copy(sourcePath = path, errorMessage = null, errorMessageRes = null) }
     }
 
     fun setSourceUid(uid: String) {
-        _uiState.update { it.copy(sourceUid = uid, errorMessage = null) }
+        _uiState.update { it.copy(sourceUid = uid, errorMessage = null, errorMessageRes = null) }
     }
 
     fun setTargetMode(mode: TargetModeSelection) {
@@ -80,11 +82,11 @@ class BackupMigratorViewModel(
     }
 
     fun setCustomTargetUid(uid: String) {
-        _uiState.update { it.copy(customTargetUid = uid, errorMessage = null) }
+        _uiState.update { it.copy(customTargetUid = uid, errorMessage = null, errorMessageRes = null) }
     }
 
     fun setTargetPath(path: String) {
-        _uiState.update { it.copy(targetPath = path, errorMessage = null) }
+        _uiState.update { it.copy(targetPath = path, errorMessage = null, errorMessageRes = null) }
     }
 
     fun setSyncToFirebase(sync: Boolean) {
@@ -92,8 +94,9 @@ class BackupMigratorViewModel(
     }
 
     fun autoDetectSourceUids(context: Context) {
+        val appContext = context.applicationContext ?: context
         viewModelScope.launch(ioDispatcher) {
-            val uids = detectCandidateUidsUseCase(context, javaClass.classLoader)
+            val uids = detectCandidateUidsUseCase(appContext, javaClass.classLoader)
             _uiState.update { state ->
                 state.copy(detectedUids = uids)
             }
@@ -103,9 +106,10 @@ class BackupMigratorViewModel(
     fun syncFirebaseAll(context: Context, prefs: PreferencesManager) {
         if (_uiState.value.isSyncingFirebase || !prefs.customFirebaseApp || prefs.firebaseDatabaseUrl.isBlank()) return
         _uiState.update { it.copy(isSyncingFirebase = true) }
+        val appContext = context.applicationContext ?: context
 
         viewModelScope.launch(ioDispatcher) {
-            val result = syncFirebaseUseCase(context, prefs, force = true)
+            val result = syncFirebaseUseCase(appContext, prefs, force = true)
             _uiState.update { it.copy(isSyncingFirebase = false) }
             _events.send(
                 BackupMigratorUiEvent.FirebaseSyncResult(
@@ -118,19 +122,35 @@ class BackupMigratorViewModel(
 
     fun startMigration(context: Context, prefs: PreferencesManager? = null) {
         val state = _uiState.value
-        val srcDir = File(state.sourcePath.trim())
-        if (!srcDir.exists() || !srcDir.isDirectory) {
-            _uiState.update { it.copy(errorMessage = "Source directory does not exist or is invalid.") }
+        val trimmedSrc = state.sourcePath.trim()
+        val srcDir = File(trimmedSrc)
+        if (trimmedSrc.isEmpty() || !srcDir.exists() || !srcDir.isDirectory) {
+            _uiState.update {
+                it.copy(
+                    errorMessageRes = R.string.migrator_error_source_dir_invalid,
+                    errorMessage = "Source directory does not exist or is invalid."
+                )
+            }
             return
         }
 
         if (state.sourceUid.isBlank()) {
-            _uiState.update { it.copy(errorMessage = "Source Firebase UID is required to decrypt backups.") }
+            _uiState.update {
+                it.copy(
+                    errorMessageRes = R.string.migrator_error_source_uid_required,
+                    errorMessage = "Source Firebase UID is required to decrypt backups."
+                )
+            }
             return
         }
 
         if (state.targetPath.isBlank()) {
-            _uiState.update { it.copy(errorMessage = "Destination folder path is required.") }
+            _uiState.update {
+                it.copy(
+                    errorMessageRes = R.string.migrator_error_dest_path_required,
+                    errorMessage = "Destination folder path is required."
+                )
+            }
             return
         }
 
@@ -138,7 +158,12 @@ class BackupMigratorViewModel(
             TargetModeSelection.ANONYMOUS -> BackupMigratorEngine.TargetEncryptionMode.Anonymous()
             TargetModeSelection.CUSTOM_UID -> {
                 if (state.customTargetUid.isBlank()) {
-                    _uiState.update { it.copy(errorMessage = "Target Firebase UID is required.") }
+                    _uiState.update {
+                        it.copy(
+                            errorMessageRes = R.string.migrator_error_target_uid_required,
+                            errorMessage = "Target Firebase UID is required."
+                        )
+                    }
                     return
                 }
                 BackupMigratorEngine.TargetEncryptionMode.Custom(state.customTargetUid.trim())
@@ -151,11 +176,13 @@ class BackupMigratorViewModel(
         }
 
         val outDir = File(state.targetPath.trim())
+        val appContext = context.applicationContext ?: context
 
         _uiState.update {
             it.copy(
                 isMigrating = true,
                 errorMessage = null,
+                errorMessageRes = null,
                 migrationResult = null,
                 logs = listOf("Initializing migration pipeline..."),
                 processedCount = 0,
@@ -188,7 +215,7 @@ class BackupMigratorViewModel(
                 }
             )
 
-            val result = migrateBackupsUseCase(config, context)
+            val result = migrateBackupsUseCase(config, appContext)
             _uiState.update {
                 it.copy(
                     isMigrating = false,
