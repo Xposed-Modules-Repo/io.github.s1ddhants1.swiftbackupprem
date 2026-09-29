@@ -1,6 +1,7 @@
 package io.github.s1ddhants1.swiftbackupprem.ui.component
 
 import androidx.annotation.DrawableRes
+import androidx.annotation.StringRes
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -38,22 +39,25 @@ import io.github.s1ddhants1.swiftbackupprem.R
 
 private data class Contributor(
     @DrawableRes val avatarRes: Int,
+    @StringRes val avatarCdRes: Int,
     val name: String,
-    val role: String,
+    @StringRes val roleRes: Int,
     val githubUrl: String? = null
 )
 
 private val CONTRIBUTORS = listOf(
     Contributor(
         avatarRes = R.drawable.ic_avatar_s1ddhants1,
+        avatarCdRes = R.string.cd_maintainer_avatar,
         name = "s1ddhants1",
-        role = "Maintainer",
+        roleRes = R.string.about_maintainer_role,
         githubUrl = "https://github.com/s1ddhants1"
     ),
     Contributor(
         avatarRes = R.drawable.ic_avatar_juby210,
+        avatarCdRes = R.string.cd_author_avatar,
         name = "Juby210",
-        role = "Original Author",
+        roleRes = R.string.about_original_author_role,
         githubUrl = "https://github.com/Juby210"
     )
 )
@@ -114,6 +118,28 @@ fun AboutScreen() {
                     )
                 }
                 ContributorItemRow(contributor = contributor, onOpenUrl = { uriHandler.openUri(it) })
+            }
+        }
+
+        SettingsSectionCard(title = stringResource(R.string.about_libraries_technologies)) {
+            val libraries = listOf(
+                R.string.about_lib_dexkit,
+                R.string.about_lib_libxposed,
+                R.string.about_lib_compose,
+                R.string.about_lib_serialization
+            )
+            libraries.forEachIndexed { index, libRes ->
+                if (index > 0) {
+                    HorizontalDivider(
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+                    )
+                }
+                Text(
+                    text = stringResource(libRes),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.padding(vertical = 4.dp)
+                )
             }
         }
 
@@ -178,7 +204,7 @@ private fun ContributorItemRow(
         ) {
             Image(
                 painter = painterResource(id = contributor.avatarRes),
-                contentDescription = contributor.name,
+                contentDescription = stringResource(contributor.avatarCdRes),
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
                     .size(40.dp)
@@ -192,7 +218,7 @@ private fun ContributorItemRow(
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = contributor.role,
+                    text = stringResource(contributor.roleRes),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -210,7 +236,7 @@ private fun ContributorItemRow(
                 ) {
                     Icon(
                         painter = painterResource(id = R.drawable.ic_github_logo),
-                        contentDescription = "GitHub",
+                        contentDescription = stringResource(R.string.cd_github_icon),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(18.dp)
                     )

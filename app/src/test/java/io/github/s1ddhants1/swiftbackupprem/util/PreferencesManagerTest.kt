@@ -292,6 +292,7 @@ class PreferencesManagerTest {
 
         override fun getAll(): Map<String, *> = map
         override fun getString(key: String, defValue: String?): String? = map[key] as? String ?: defValue
+        @Suppress("UNCHECKED_CAST")
         override fun getStringSet(key: String, defValues: Set<String>?): Set<String>? = map[key] as? Set<String> ?: defValues
         override fun getInt(key: String, defValue: Int): Int = map[key] as? Int ?: defValue
         override fun getLong(key: String, defValue: Long): Long = map[key] as? Long ?: defValue

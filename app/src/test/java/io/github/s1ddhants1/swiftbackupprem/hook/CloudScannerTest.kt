@@ -344,6 +344,6 @@ class CloudScannerTest {
         }
 
         val url = OneDriveScanner.buildUploadUrl(testPrefs, "cloud_discovered_cache.json")
-        assertEquals("https://graph.microsoft.com/v1.0/me/drive/root:/Swift Backup/cloud_discovered_cache.json:/content", url)
+        assertEquals("https://graph.microsoft.com/v1.0/me/drive/root:/Swift%20Backup/cloud_discovered_cache.json:/content", url)
     }
 }

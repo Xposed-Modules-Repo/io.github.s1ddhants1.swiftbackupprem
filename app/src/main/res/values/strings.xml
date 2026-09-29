@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools">
     <string name="app_name">SwiftBackupPrem</string>
     <string name="app_description">Swift Backup Premium</string>
 
@@ -22,7 +22,6 @@
     <string name="btn_cloud_console">Cloud Console</string>
     <string name="btn_enable_drive_api">Enable Drive API</string>
     <string name="btn_view_source_github">View Source on GitHub</string>
-    <string name="btn_github">GitHub</string>
     <string name="btn_telegram_support">Telegram Support Group</string>
 
     <string name="msg_config_exported">Config exported</string>
@@ -94,7 +93,6 @@
     <string name="cd_author_avatar">Author avatar</string>
     <string name="cd_maintainer_avatar">Maintainer avatar</string>
     <string name="cd_github_icon">GitHub icon</string>
-    <string name="cd_telegram_icon">Telegram icon</string>
     <string name="cd_pick_directory">Pick directory</string>
     <string name="cd_paste_uid">Paste UID</string>
     <string name="cd_detect_uids">Detect UIDs</string>
@@ -128,7 +126,7 @@
     <string name="migrator_status_processing">Processing…</string>
     <string name="migrator_result_success_title">Migration Completed Successfully</string>
     <string name="migrator_result_fail_title">Migration Completed with Warnings</string>
-    <string name="migrator_result_summary_format">Migrated %1$d apps and %2$d folders\nTarget account hash: %3$s</string>
+    <string name="migrator_result_summary_format" tools:ignore="PluralsCandidate">Migrated %1$d apps and %2$d folders\nTarget account hash: %3$s</string>
     <string name="migrator_result_synced_format">\nSynced to Firebase: %1$d</string>
     <string name="migrator_result_output_format">Output: %1$s</string>
     <string name="migrator_logs_title">Execution Logs</string>
@@ -157,7 +155,7 @@
     <string name="btn_sync_all_firebase">Sync Now</string>
     <string name="btn_syncing">Syncing…</string>
     <string name="msg_sync_firebase_started">Syncing metadata to Firebase…</string>
-    <string name="msg_sync_firebase_success">Synced %1$d metadata records to Firebase</string>
+    <string name="msg_sync_firebase_success" tools:ignore="PluralsCandidate">Synced %1$d metadata records to Firebase</string>
     <string name="msg_sync_firebase_failed">Sync failed: %1$s</string>
     <string name="msg_sync_firebase_no_new">No new backup records found to sync</string>
     <string name="cloud_cache_title">Cloud Discovery Cache</string>
