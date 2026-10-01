@@ -101,6 +101,7 @@ class Module : IXposedHookLoadPackage, HookContext {
 
         if (LSPatchHelper.isLSPatched(ctx)) {
             RootServiceFixHook.apply(this, ctx, cl, targets, prefs)
+            ShizukuServiceFixHook.apply(this, ctx, cl, targets, prefs)
         }
 
         FirebaseInitHook.apply(this, ctx, cl, targets, prefs)
