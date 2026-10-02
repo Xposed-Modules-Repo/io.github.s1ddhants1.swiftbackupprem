@@ -764,6 +764,8 @@ object LocalCloudUnlockHook : HookHandler {
             val connectedCloud = sp.getString("connected_cloud_type", null)
             val activeTag = json.optString("backupTag").takeIf { it.isNotBlank() }
                 ?: (if (connectedCloud != null) sp.getString("${connectedCloud}_cloud_backup_tag", null) else null)
+                ?: sp.getString("one_drive_cloud_backup_tag", null)
+                ?: sp.getString("onedrive_cloud_backup_tag", null)
                 ?: sp.getString("google_drive_cloud_backup_tag", null)
                 ?: sp.getString("cloud_backup_tag", null)
                 ?: BackupTagHelper.getDefaultTag()

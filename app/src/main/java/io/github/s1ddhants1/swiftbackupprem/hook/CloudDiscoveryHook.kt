@@ -1268,7 +1268,11 @@ object CloudDiscoveryHook : HookHandler {
             context.getSharedPreferences("org.swiftapps.swiftbackup_preferences", Context.MODE_PRIVATE)
         } ?: return 0
 
-        val deviceTag = sp.getString("google_drive_cloud_backup_tag", null)
+        val connectedCloud = sp.getString("connected_cloud_type", null)
+        val deviceTag = (if (connectedCloud != null) sp.getString("${connectedCloud}_cloud_backup_tag", null) else null)
+            ?: sp.getString("one_drive_cloud_backup_tag", null)
+            ?: sp.getString("onedrive_cloud_backup_tag", null)
+            ?: sp.getString("google_drive_cloud_backup_tag", null)
             ?: sp.getString("cloud_backup_tag", null)
             ?: BackupTagHelper.getDefaultTag()
 
