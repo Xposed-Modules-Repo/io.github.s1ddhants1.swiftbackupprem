@@ -488,6 +488,8 @@ object CloudDatabaseManager {
         val cloudDir = "${connectedCloud} ($sanitizedEmail)"
 
         val deviceTag = sp.getString("${connectedCloud}_cloud_backup_tag", null)
+            ?: sp.getString("one_drive_cloud_backup_tag", null)
+            ?: sp.getString("onedrive_cloud_backup_tag", null)
             ?: sp.getString("google_drive_cloud_backup_tag", null)
             ?: sp.getString("cloud_backup_tag", null)
             ?: BackupTagHelper.getDefaultTag()
