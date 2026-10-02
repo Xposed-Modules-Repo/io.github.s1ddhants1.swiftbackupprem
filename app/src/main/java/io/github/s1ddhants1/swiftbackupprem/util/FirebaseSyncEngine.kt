@@ -584,13 +584,11 @@ object FirebaseSyncEngine {
             }
         metadataJson.put("backupTag", tag)
 
-        val accountHash = BackupMigratorEngine.computeAccountHash(uid)
-
         val rawJson = metadataJson.toString(2)
+        val tagPrefix = if (!tag.isNullOrBlank()) "$tag/" else ""
         listOf(
-            "$pkgName.meta ($tag) (id-$backupId)",
-            "$pkgName.json ($tag) (id-$backupId)",
-            "SwiftBackup/accounts/$accountHash/backups/apps/local/$pkgName/$backupId/$pkgName.json"
+            "$tagPrefix$pkgName.meta ($tag) (id-$backupId)",
+            "$tagPrefix$pkgName.json ($tag) (id-$backupId)"
         ).forEach { path ->
             CloudScannerRegistry.uploadTextToActiveProviders(context, path, rawJson)
         }
@@ -601,8 +599,7 @@ object FirebaseSyncEngine {
         val xmlContent = "v1:::$encUid:::$encMeta"
 
         listOf(
-            "SwiftBackup/accounts/$accountHash/backups/apps/local/$pkgName/$backupId/$pkgName.xml",
-            "$pkgName.xml ($tag) (id-$backupId)"
+            "$tagPrefix$pkgName.xml ($tag) (id-$backupId)"
         ).forEach { path ->
             CloudScannerRegistry.uploadTextToActiveProviders(context, path, xmlContent)
         }
