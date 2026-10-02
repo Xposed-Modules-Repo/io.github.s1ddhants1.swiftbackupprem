@@ -478,7 +478,7 @@ object CloudDatabaseManager {
         val uid = prefs.localAccountCustomUid.trim().takeIf { it.isNotBlank() }
             ?: getPrimaryUid()
             ?: BackupCrypto.resolveCandidateUids(context, classLoader).firstOrNull { it != BackupMigratorEngine.SWIFT_BACKUP_ANONYMOUS_UID }
-            ?: "ymiQ80Ks3RStD4CEugbLgyQPCUM2"
+            ?: BackupMigratorEngine.SWIFT_BACKUP_ANONYMOUS_UID
 
         val connectedCloud = sp.getString("connected_cloud_type", null) ?: "google_drive"
         val cloudEmail = sp.getString("${connectedCloud}_cloud_email_address", null)

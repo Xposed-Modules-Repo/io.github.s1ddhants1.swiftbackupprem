@@ -8,6 +8,7 @@ import androidx.annotation.Keep
 import io.github.libxposed.api.XposedModule
 import io.github.s1ddhants1.swiftbackupprem.Consts
 import io.github.s1ddhants1.swiftbackupprem.util.AppUtils
+import io.github.s1ddhants1.swiftbackupprem.util.BackupMigratorEngine
 import io.github.s1ddhants1.swiftbackupprem.util.BackupTagHelper
 import io.github.s1ddhants1.swiftbackupprem.util.FirebaseSyncEngine
 import io.github.s1ddhants1.swiftbackupprem.util.PreferencesManager
@@ -160,6 +161,7 @@ object LocalCloudUnlockHook : HookHandler {
                         val enforceLocal = shouldEnforceLocalCloud(prefs, context, classLoader)
                         val customUid = prefs.localAccountCustomUid.trim().takeIf { it.isNotEmpty() }
                             ?: CloudDatabaseManager.getPrimaryUid()
+                            ?: BackupMigratorEngine.SWIFT_BACKUP_ANONYMOUS_UID
                         if (enforceLocal && !customUid.isNullOrBlank()) {
                             if (isAnonymousUserInstance(chain.thisObject)) {
                                 return@intercept customUid
@@ -187,6 +189,7 @@ object LocalCloudUnlockHook : HookHandler {
                         val enforceLocal = shouldEnforceLocalCloud(prefs, context, classLoader)
                         val customUid = prefs.localAccountCustomUid.trim().takeIf { it.isNotEmpty() }
                             ?: CloudDatabaseManager.getPrimaryUid()
+                            ?: BackupMigratorEngine.SWIFT_BACKUP_ANONYMOUS_UID
                         if (enforceLocal && !customUid.isNullOrBlank() && result != null) {
                             try {
                                 val uidField = result.javaClass.declaredFields.firstOrNull { it.name == "uid" }
