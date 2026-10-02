@@ -314,16 +314,25 @@ object OneDriveScanner : CloudScanner {
             val root = attempt("parse OneDrive root children", silent = true) { JSONObject(respText) }
             val arr = root?.optJSONArray("value")
             if (arr != null) {
+                var fallbackId: String? = null
                 for (i in 0 until arr.length()) {
                     val item = arr.optJSONObject(i) ?: continue
                     if (item.has("folder")) {
                         val name = item.optString("name", "")
                         if (SWIFT_BACKUP_FOLDER_PATTERN.matcher(name).matches()) {
                             val id = item.optString("id", "").trim()
-                            if (id.isNotBlank()) return id
+                            if (id.isNotBlank()) {
+                                if (name.contains("(") && name.contains(")")) {
+                                    return id
+                                }
+                                if (fallbackId == null) {
+                                    fallbackId = id
+                                }
+                            }
                         }
                     }
                 }
+                if (fallbackId != null) return fallbackId
             }
         }
         return null

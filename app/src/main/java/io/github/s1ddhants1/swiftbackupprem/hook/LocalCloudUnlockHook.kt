@@ -8,6 +8,7 @@ import androidx.annotation.Keep
 import io.github.libxposed.api.XposedModule
 import io.github.s1ddhants1.swiftbackupprem.Consts
 import io.github.s1ddhants1.swiftbackupprem.util.AppUtils
+import io.github.s1ddhants1.swiftbackupprem.util.BackupCrypto
 import io.github.s1ddhants1.swiftbackupprem.util.BackupMigratorEngine
 import io.github.s1ddhants1.swiftbackupprem.util.BackupTagHelper
 import io.github.s1ddhants1.swiftbackupprem.util.FirebaseSyncEngine
@@ -161,7 +162,6 @@ object LocalCloudUnlockHook : HookHandler {
                         val enforceLocal = shouldEnforceLocalCloud(prefs, context, classLoader)
                         val customUid = prefs.localAccountCustomUid.trim().takeIf { it.isNotEmpty() }
                             ?: CloudDatabaseManager.getPrimaryUid()
-                            ?: BackupMigratorEngine.SWIFT_BACKUP_ANONYMOUS_UID
                         if (enforceLocal && !customUid.isNullOrBlank()) {
                             if (isAnonymousUserInstance(chain.thisObject)) {
                                 return@intercept customUid
@@ -189,7 +189,6 @@ object LocalCloudUnlockHook : HookHandler {
                         val enforceLocal = shouldEnforceLocalCloud(prefs, context, classLoader)
                         val customUid = prefs.localAccountCustomUid.trim().takeIf { it.isNotEmpty() }
                             ?: CloudDatabaseManager.getPrimaryUid()
-                            ?: BackupMigratorEngine.SWIFT_BACKUP_ANONYMOUS_UID
                         if (enforceLocal && !customUid.isNullOrBlank() && result != null) {
                             try {
                                 val uidField = result.javaClass.declaredFields.firstOrNull { it.name == "uid" }
@@ -669,7 +668,7 @@ object LocalCloudUnlockHook : HookHandler {
                     )
                     if (payload != null && (path.contains("apps") || path.contains("cloud_v1"))) {
                         bgExecutor.execute {
-                            dispatchMetadataToCloud(context, path, payload, classLoader)
+                            dispatchMetadataToCloud(context, path, payload, classLoader, prefs)
                         }
                     }
 
@@ -695,7 +694,13 @@ object LocalCloudUnlockHook : HookHandler {
             }
         }
 
-    private fun dispatchMetadataToCloud(context: Context, path: String, payload: Any, classLoader: ClassLoader) {
+    private fun dispatchMetadataToCloud(
+        context: Context,
+        path: String,
+        payload: Any,
+        classLoader: ClassLoader,
+        prefs: PreferencesManager? = null
+    ) {
         attempt("dispatchMetadataToCloud", silent = true) {
             val json = (CloudDatabaseManager.anyToJson(payload, classLoader, null) as? JSONObject) ?: when (payload) {
                 is JSONObject -> payload
@@ -796,7 +801,11 @@ object LocalCloudUnlockHook : HookHandler {
                     if (existingProvider != null) app.copy(provider = existingProvider) else app
                 )
             }
-            FirebaseSyncEngine.syncAppMetadataToCloudProviders(context, pkgName, backupId, json)
+            val activeUid = prefs?.localAccountCustomUid?.trim()?.takeIf { it.isNotBlank() }
+                ?: CloudDatabaseManager.getPrimaryUid()
+                ?: BackupCrypto.resolveCandidateUids(context, classLoader).firstOrNull { it != BackupMigratorEngine.SWIFT_BACKUP_ANONYMOUS_UID }
+                ?: BackupMigratorEngine.SWIFT_BACKUP_ANONYMOUS_UID
+            FirebaseSyncEngine.syncAppMetadataToCloudProviders(context, pkgName, backupId, json, uid = activeUid)
         }
     }
 
