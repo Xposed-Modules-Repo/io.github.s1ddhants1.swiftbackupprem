@@ -43,6 +43,7 @@ import io.github.s1ddhants1.swiftbackupprem.ui.MainViewModel
 import io.github.s1ddhants1.swiftbackupprem.ui.component.AboutScreen
 import io.github.s1ddhants1.swiftbackupprem.ui.component.BackupMigratorScreen
 import io.github.s1ddhants1.swiftbackupprem.ui.component.CustomUidInputSection
+import io.github.s1ddhants1.swiftbackupprem.util.BackupMigratorEngine
 import io.github.s1ddhants1.swiftbackupprem.ui.component.FirebaseSetupScreen
 import io.github.s1ddhants1.swiftbackupprem.ui.component.SettingsSwitch
 import io.github.s1ddhants1.swiftbackupprem.ui.theme.Theme
@@ -477,7 +478,7 @@ private fun SettingsScreenContent(
                             onUidChange = { prefs.localAccountCustomUid = it.trim() },
                             label = stringResource(R.string.pref_local_account_custom_uid_title),
                             keyModeTitle = stringResource(R.string.pref_encryption_key_mode_title),
-                            anonymousUidValue = "",
+                            anonymousUidValue = BackupMigratorEngine.SWIFT_BACKUP_ANONYMOUS_UID,
                             anonymousChipLabel = stringResource(R.string.pref_key_mode_anonymous),
                             customChipLabel = stringResource(R.string.pref_key_mode_custom),
                             prefs = prefs
